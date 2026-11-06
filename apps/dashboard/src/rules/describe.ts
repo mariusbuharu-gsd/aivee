@@ -9,7 +9,8 @@ const ROLE: Record<NonNullable<Condition['role']>, string> = {
 export const ZONE_TAGS: { value: string; label: string; plural: string }[] = [
   { value: 'table', label: 'Masă', plural: 'fiecare masă' },
   { value: 'entrance', label: 'Intrare', plural: 'intrare' },
-  { value: 'staff', label: 'Zonă personal', plural: 'zona personalului' },
+  // The stored tag stays `staff`; only the words changed ("Personal" read like a person).
+  { value: 'staff', label: 'Zonă angajați', plural: 'zona angajaților' },
 ];
 
 export const tagLabel = (tag: string) => ZONE_TAGS.find((t) => t.value === tag)?.label ?? tag;
