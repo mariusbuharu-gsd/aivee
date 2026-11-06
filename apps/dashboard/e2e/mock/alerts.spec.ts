@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { MOCK_PASSWORD, choose, signIn } from '../helpers';
+import { MOCK_PASSWORD, signIn } from '../helpers';
 
 // The mock opens "Masa 2" about 4 s after the page loads and closes it after 32 s.
 
@@ -26,7 +26,11 @@ test('staff take an open alert with "Merg eu" and the timeline shows who and how
 test('the history filters by kind and keeps the period', async ({ page }) => {
   await signIn(page, 'owner', MOCK_PASSWORD, '/istoric');
   await expect(page.getByText(/a confirmat că #7 e din personal/)).toBeVisible();
-  await choose(page, 'Tip', 'Reguli');
+  // One alert is one row: its timeline and total, the raw entries folded inside.
+  const thread = page.locator('.audit-row.is-thread', { hasText: 'Masa 1' });
+  await expect(thread.getByRole('list', { name: /Cronologia alertei/ })).toContainText('închisă');
+  await expect(thread).toContainText('în total');
+  await page.getByRole('group', { name: 'Tip' }).getByRole('button', { name: 'Reguli' }).click();
   await expect(page.getByText(/a schimbat regula/)).toBeVisible();
   await expect(page.getByText(/a confirmat că #7/)).toHaveCount(0);
 });

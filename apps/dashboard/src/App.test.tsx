@@ -122,12 +122,14 @@ describe('App with the mock API', () => {
     const user = userEvent.setup();
     renderApp('/istoric');
     expect(await screen.findByText(/a confirmat că #7 e din personal/)).toBeInTheDocument();
-    await user.click(screen.getByRole('combobox', { name: 'Tip' }));
-    await user.click(screen.getByRole('option', { name: 'Reguli' }));
+    await user.click(
+      within(screen.getByRole('group', { name: 'Tip' })).getByRole('button', { name: 'Reguli' }),
+    );
     expect(await screen.findByText(/a schimbat regula „Masă neservită”/)).toBeInTheDocument();
     expect(screen.queryByText(/a confirmat că #7/)).toBeNull();
-    // The change reads in words; the active filter shows as a removable chip.
-    expect(screen.getAllByText(/→/).length).toBeGreaterThan(0);
+    // The change reads in words, without the raw field name.
+    expect(screen.getByText('Nimeni de la personal:')).toBeInTheDocument();
+    expect(screen.queryByText(/absent_staff_s:/)).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Șterge filtrele' }));
     expect(await screen.findByText(/a confirmat că #7 e din personal/)).toBeInTheDocument();
   });
