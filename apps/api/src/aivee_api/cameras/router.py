@@ -13,10 +13,12 @@ from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.cameras.service import CameraService
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Invalid
+from aivee_api.videos.kind import is_upload_camera, is_upload_device
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
 
 NO_DEVICE_HERE = "Locația nu are un dispozitiv conectat la acest server."
+RESERVED_RO = "Id-urile care încep cu „video-” sau „upload-” sunt rezervate analizei video."
 
 
 async def _check_device(s: SessionDep, loc: str, device: str | None) -> None:
@@ -33,7 +35,9 @@ async def list_cameras(
     s: SessionDep, svc: ServicesDep, access: Annotated[Access, Depends(require(ALERTS_VIEW))]
 ) -> list[CameraOut]:
     ids = await camera_ids_at(s, access.location_id)
-    return [c for c in await CameraService(s, svc.sync).list_all() if c.id in ids]
+    cameras = await CameraService(s, svc.sync).list_all()
+    # Uploaded clips' virtual cameras live on the Analiză video page, not among cameras.
+    return [c for c in cameras if c.id in ids and not is_upload_device(c.device)]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -49,6 +53,8 @@ async def create_camera(
     authorize_at(p, DEVICES_MANAGE, loc, "Locația nu există.")
     if loc != svc.sync.site:
         raise Invalid(NO_DEVICE_HERE)
+    if is_upload_camera(data.id) or is_upload_device(data.device):
+        raise Invalid(RESERVED_RO)
     await _check_device(s, loc, data.device or svc.sync.device)
     camera = await CameraService(s, svc.sync).create(data)
     await _record(s, p, "camera.created", loc, camera, after=camera)
@@ -68,6 +74,8 @@ async def update_camera(
 ) -> CameraOut:
     """Change name, source and/or device; zones are kept (edit them through `/zones`)."""
     loc = await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
+    if is_upload_device(data.device):
+        raise Invalid(RESERVED_RO)
     await _check_device(s, loc, data.device)
     service = CameraService(s, svc.sync)
     before = await service.get(camera_id)

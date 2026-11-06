@@ -20,6 +20,7 @@ from aivee_api.errors import NotFound
 from aivee_api.events.schemas import DetectionsMessage, EventOut, event_out
 from aivee_api.events.scope import LiveScope
 from aivee_api.events.service import LEGACY_STATES, LiveFeed, snapshot_file
+from aivee_api.videos.kind import not_upload
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ async def list_events(
     stmt = (
         events_at(access.location_id)
         .where(EventRow.state.in_(LEGACY_STATES))  # `arrived` only reaches the dashboard folded
+        .where(not_upload(EventRow.device_id, EventRow.camera_id))
         .order_by(EventRow.at.desc())
         .limit(limit)
     )

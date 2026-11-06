@@ -8,6 +8,7 @@ from aivee_api.auth.deps import Access, require
 from aivee_api.auth.permissions import ALERTS_VIEW
 from aivee_api.db.repositories import DeviceRepository
 from aivee_api.deps import SessionDep
+from aivee_api.videos.kind import is_upload_device
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 
@@ -31,5 +32,5 @@ async def list_devices(
             last_seen=d.last_seen,
         )
         for d in await DeviceRepository(s).list_all()
-        if d.site_id == access.location_id
+        if d.site_id == access.location_id and not is_upload_device(d.id)
     ]

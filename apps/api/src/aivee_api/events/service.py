@@ -16,6 +16,7 @@ from aivee_api.events.schemas import (
     event_out,
     suggestion_out,
 )
+from aivee_api.videos.kind import is_upload
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -58,7 +59,7 @@ class LiveFeed:
         async with self._sessions() as s:
             for e in await EventRepository(s).after(self._last_event):
                 self._last_event = e.id
-                if e.state in LEGACY_STATES:
+                if e.state in LEGACY_STATES and not is_upload(e.device_id, e.camera_id):
                     out.append(AlertMessage(data=event_out(e)))
             for r in await SuggestionRepository(s).after(self._last_suggestion):
                 self._last_suggestion = r.id

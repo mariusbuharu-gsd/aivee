@@ -12,6 +12,7 @@ from aivee_api.auth.scope import events_at
 from aivee_api.db.models import EventRow
 from aivee_api.db.repositories import DeviceRepository
 from aivee_api.deps import ServicesDep, SessionDep
+from aivee_api.videos.kind import is_upload_device, not_upload
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
 
@@ -30,16 +31,25 @@ async def get_metrics(
     s: SessionDep, svc: ServicesDep, access: Annotated[Access, Depends(require(ALERTS_VIEW))]
 ) -> DashboardMetrics:
     loc = access.location_id
-    devices = [d for d in await DeviceRepository(s).list_all() if d.site_id == loc]
+    devices = [
+        d
+        for d in await DeviceRepository(s).list_all()
+        if d.site_id == loc and not is_upload_device(d.id)
+    ]
     midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    today = (await s.scalars(events_at(loc).where(EventRow.at >= midnight))).all()
+    live = not_upload(EventRow.device_id, EventRow.camera_id)
+    today = (await s.scalars(events_at(loc).where(EventRow.at >= midnight, live))).all()
     delays = [
         (e.received_at - e.at).total_seconds() * 1000
         for e in today
         if e.state == "opened" and e.received_at >= e.at
     ]
     return DashboardMetrics(
-        devices=[sample.metrics for sample in svc.metrics.latest() if sample.site == loc],
+        devices=[
+            sample.metrics
+            for sample in svc.metrics.latest()
+            if sample.site == loc and not is_upload_device(sample.metrics.device)
+        ],
         devices_online=sum(d.state == "online" for d in devices),
         devices_total=len(devices),
         events_today=sum(e.state == "opened" for e in today),

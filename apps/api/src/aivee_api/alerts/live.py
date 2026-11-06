@@ -49,6 +49,8 @@ class AlertFeed:
             ids = list(dict.fromkeys([*changed, *stamped]))
             if not ids:
                 return []
-            views = await repo.views(alert_ids=ids, location_ids=self._locations, limit=len(ids))
+            views = await repo.views(
+                alert_ids=ids, location_ids=self._locations, live_only=True, limit=len(ids)
+            )
         views.sort(key=lambda v: v.at)
         return [AlertViewMessage(data=v) for v in views]
