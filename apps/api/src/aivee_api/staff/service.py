@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import secrets
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,7 @@ from aivee_api.db.repositories import StaffRepository, SuggestionRepository
 from aivee_api.edge.sync import EdgeCommands, EdgeSync, SuggestionDecision
 from aivee_api.errors import Conflict, Invalid, NotFound, Unavailable
 from aivee_api.events.schemas import SuggestionOut, suggestion_out
+from aivee_api.staff.capture import capture_candidates
 from aivee_api.staff.enrol import Enroller, Upload, l2_normalise
 from aivee_api.staff.schemas import DecisionOut, EnrolOut, ProfileOut
 
@@ -19,6 +22,15 @@ NO_ENROLLER = "Înrolarea din poze nu este disponibilă pe acest server (lipsesc
 MODELS_FAILED = (
     "Înrolarea din poze nu merge acum: modelele nu au putut fi încărcate. Încearcă mai târziu."
 )
+
+
+NO_PERSON = (
+    "Nu am văzut pe nimeni în fața camerei. Stai la 1-3 metri de cameră, cu tot corpul "
+    "în imagine, și încearcă din nou."
+)
+NOTHING_KEPT = "Alege cel puțin o poză."
+BAD_CANDIDATE = "Poza aleasă nu face parte din captură."
+NO_NAME = "Scrie numele angajatului."
 
 
 class StaffService:
@@ -70,6 +82,64 @@ class StaffService:
             crops=result.crops,
             examples_added=len(result.embeddings),
             skipped=result.skipped,
+            published=published,
+        )
+
+    async def capture_crops(self, jpegs: Sequence[bytes]) -> tuple[list[Any], list[bytes]]:
+        """Largest person per frame plus thumbnails; raises when there is nobody."""
+        if self._enroller is None:
+            raise Unavailable(NO_ENROLLER)
+        try:
+            crops, thumbs = await asyncio.to_thread(capture_candidates, self._enroller, jpegs)
+        except (RuntimeError, OSError) as e:
+            log.exception("enrolment models failed to load")
+            raise Unavailable(MODELS_FAILED) from e
+        if not crops:
+            raise Invalid(NO_PERSON)
+        return crops, thumbs
+
+    async def enrol_crops(
+        self,
+        crops: Sequence[Any],
+        keep: Sequence[int],
+        profile_id: str | None,
+        name: str,
+        description_ro: str = "",
+    ) -> EnrolOut:
+        """Embed the kept crops of a capture into a profile (new unless `profile_id`)."""
+        if self._enroller is None:
+            raise Unavailable(NO_ENROLLER)
+        indices = sorted(set(keep))
+        if not indices:
+            raise Invalid(NOTHING_KEPT)
+        if any(i < 0 or i >= len(crops) for i in indices):
+            raise Invalid(BAD_CANDIDATE)
+        name = name.strip()
+        if profile_id is not None:
+            if await self._staff.get_profile(profile_id) is None:
+                raise NotFound(f"Profilul {profile_id} nu există.")
+        elif not name:
+            raise Invalid(NO_NAME)
+        else:
+            profile_id = f"staff-{secrets.token_hex(4)}"
+        try:
+            embeddings = await asyncio.to_thread(
+                self._enroller.embed_crops, [crops[i] for i in indices]
+            )
+        except (RuntimeError, OSError) as e:
+            log.exception("enrolment models failed to load")
+            raise Unavailable(MODELS_FAILED) from e
+        profile = await self._ensure_profile(profile_id, name, description_ro.strip())
+        await self._add_examples(profile.id, embeddings, "capture")
+        await self._s.commit()
+        published = await self._sync.publish_profiles() if embeddings else False
+        return EnrolOut(
+            profile=await self._profile_out(profile),
+            files=0,
+            frames=len(crops),
+            crops=len(indices),
+            examples_added=len(embeddings),
+            skipped=[],
             published=published,
         )
 

@@ -102,7 +102,7 @@ describe('setupSteps', () => {
       expect(steps.find((s) => s.id === id)?.waitingFor).toBe('Adaugă întâi o cameră.');
     }
     expect(steps.find((s) => s.id === 'zones')?.to).toBe('/dispozitive');
-    expect(steps.find((s) => s.id === 'photos')?.to).toBe('/alerte#poze-personal');
+    expect(steps.find((s) => s.id === 'photos')?.to).toBe('/dispozitive');
     expect(steps.find((s) => s.id === 'alerts')?.to).toBe('/alerte#notificari');
   });
 });

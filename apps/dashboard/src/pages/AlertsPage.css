@@ -33,7 +33,16 @@
 }
 .alerts-staff .upload {
   padding-top: 10px;
+}
+.alerts-staff > details {
+  padding-top: 6px;
   border-top: 1px solid var(--border-soft);
+}
+.alerts-staff > .link {
+  align-self: flex-start;
+}
+.alerts-telegram h3 {
+  margin: 0;
 }
 
 /* Owner-only: push cannot work here. Quiet, above the content, says what to do. */

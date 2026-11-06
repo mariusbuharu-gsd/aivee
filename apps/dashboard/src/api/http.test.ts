@@ -307,7 +307,7 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     vi.useRealTimers();
   });
 
-  it('acknowledges an alert with "Merg eu"', async () => {
+  it('acknowledges an alert with "Preiau"', async () => {
     const api = new HttpApi('http://api:8000');
     const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));
     await api.ackAlert('e-1');
@@ -358,6 +358,26 @@ describe('HttpApi camera frames', () => {
     await expect(api.captureFrame('cam-1')).rejects.toMatchObject({
       status: 404,
       message: 'Nu există încă o imagine.',
+    });
+  });
+
+  it('pushes a phone frame as a JPEG body with the session cookie', async () => {
+    const fetch = mockFetch(new Response(null, { status: 204 }));
+    const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
+    await api.pushFrame('cam-1', jpeg);
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe('http://api:8000/api/ingest/frames/cam-1');
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    expect(init?.body).toBe(jpeg);
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('image/jpeg');
+  });
+
+  it('turns a refused frame into the API error', async () => {
+    mockFetch(json({ detail: { code: 'conflict', message_ro: 'Nu e cameră cloud.' } }, 409));
+    await expect(api.pushFrame('cam-1', new Blob(['x']))).rejects.toMatchObject({
+      status: 409,
+      message: 'Nu e cameră cloud.',
     });
   });
 

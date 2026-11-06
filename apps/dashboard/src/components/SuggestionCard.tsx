@@ -81,7 +81,7 @@ export function SuggestionCard({
         </div>
       )}
       <div className="suggestion-q-body">
-        <h3 id={headingId}>#{suggestion.track_id} pare să fie din personal?</h3>
+        <h3 id={headingId}>Persoana asta e din personal?</h3>
         <p className="muted small">
           {suggestion.reason_ro}
           {cameraName ? ` · ${cameraName}` : ''}

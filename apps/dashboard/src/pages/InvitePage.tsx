@@ -55,7 +55,7 @@ export function InvitePage() {
         <>
           <h2 className="auth-claim">Echipa ta te așteaptă.</h2>
           <p className="auth-lead">
-            Primești alertele locației pe telefon și apeși „Merg eu” când pleci spre masă.
+            Primești alertele locației pe telefon și apeși „Preiau” când pleci spre masă.
           </p>
         </>
       }

@@ -57,9 +57,17 @@
   margin-top: auto;
 }
 
+.device-tech {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.device-tech[open] > summary {
+  margin-bottom: 2px;
+}
 .device-health {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -94,6 +102,9 @@
   flex-direction: column;
   gap: 8px;
 }
+.device-offline.is-stale {
+  border-left-color: var(--warn);
+}
 .device-offline-title {
   margin: 0;
   font-size: 0.9rem;
@@ -114,8 +125,28 @@
   align-self: flex-start;
 }
 
+.device-system-tech {
+  margin-top: var(--gap);
+}
 .device-system {
-  margin: var(--gap) 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.phone-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  text-align: center;
+}
+.phone-qr .qr {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  background: #fff;
+}
+.phone-qr a {
+  word-break: break-all;
 }

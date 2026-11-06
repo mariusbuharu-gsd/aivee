@@ -30,7 +30,24 @@ class FrameDecoder(Protocol):
 
 
 class PersonCropper(Protocol):
-    def crops(self, frame: Any) -> list[Any]: ...
+    def crops(self, frame: Any, largest_only: bool = False) -> list[Any]:
+        """Person crops of a frame; with `largest_only`, at most the biggest one (the person
+        standing in front of the camera, not the guests behind them)."""
+        ...
+
+
+class CropEncoder(Protocol):
+    def jpeg(self, crop: Any, max_side: int) -> bytes:
+        """A small JPEG of a crop, its longer side at most `max_side` px."""
+        ...
+
+
+Box = tuple[float, float, float, float]
+
+
+def largest_box(boxes: Sequence[Box]) -> Box | None:
+    """The box (x1, y1, x2, y2) with the biggest area, or None."""
+    return max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]), default=None)
 
 
 class ImageEmbedder(Protocol):
@@ -53,11 +70,16 @@ class EnrolResult:
 
 class Enroller:
     def __init__(
-        self, decoder: FrameDecoder, cropper: PersonCropper, embedder: ImageEmbedder
+        self,
+        decoder: FrameDecoder,
+        cropper: PersonCropper,
+        embedder: ImageEmbedder,
+        encoder: CropEncoder | None = None,
     ) -> None:
         self._decoder = decoder
         self._cropper = cropper
         self._embedder = embedder
+        self._encoder = encoder
 
     def enrol(self, uploads: Sequence[Upload]) -> EnrolResult:
         """CPU-bound: call it from a worker thread."""
@@ -78,3 +100,21 @@ class Enroller:
             if found == 0:
                 result.skipped.append(upload.filename)
         return result
+
+    def largest_person(self, jpeg: bytes) -> Any | None:
+        """The biggest person in a live camera frame, or None. CPU-bound. No whole-image
+        fallback here: a frame without anyone is just skipped."""
+        for frame in self._decoder.frames(Upload("frame.jpg", "image/jpeg", jpeg)):
+            crops = self._cropper.crops(frame, largest_only=True)
+            if crops:
+                return crops[0]
+        return None
+
+    def thumbnail(self, crop: Any, max_side: int = 240) -> bytes:
+        if self._encoder is None:
+            raise RuntimeError("no crop encoder configured")
+        return self._encoder.jpeg(crop, max_side)
+
+    def embed_crops(self, crops: Sequence[Any]) -> list[list[float]]:
+        """L2-normalised embeddings of crops already cut out. CPU-bound."""
+        return [l2_normalise(self._embedder.embed(c)) for c in crops]

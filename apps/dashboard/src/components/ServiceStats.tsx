@@ -21,8 +21,8 @@ import { LookingEyes } from '../ui/Eyes';
 import { useToast } from '../ui/toast';
 
 const TILES: { key: 'reaction' | 'travel'; label: string; hint: string }[] = [
-  { key: 'reaction', label: 'Reacție', hint: 'de la alertă până apasă cineva „Merg eu”' },
-  { key: 'travel', label: 'Drum', hint: 'de la „Merg eu” până ajunge cineva' },
+  { key: 'reaction', label: 'Reacție', hint: 'de la alertă până apasă cineva „Preiau”' },
+  { key: 'travel', label: 'Drum', hint: 'de la „Preiau” până ajunge cineva' },
 ];
 
 const fmt = (s: number | null) => (s === null ? '—' : duration(s));

@@ -51,15 +51,15 @@ export async function navLinks(page: Page): Promise<string[]> {
 }
 
 export const STAFF_NAV = ['Live', 'Alerte', 'Metrici', 'Istoric'];
-// Sidebar order: what happens now, then setup, then administration.
+// Sidebar order: what happens now, then setup, then administration, then "Avansat".
 export const MANAGER_NAV = [
   'Live',
   'Alerte',
   'Metrici',
   'Reguli',
-  'Dispozitive',
-  'Analiză video',
-  'Istoric',
+  'Camere',
+  'Testează pe un clip',
   'Echipă',
+  'Istoric',
 ];
 export const OWNER_NAV = [...MANAGER_NAV, 'Locații'];

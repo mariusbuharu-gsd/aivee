@@ -22,6 +22,9 @@ import {
   type CameraPatch,
   type NewCamera,
   type SavedZones,
+  type StaffCapture,
+  type StaffCaptureConfirm,
+  type StaffEnrolResult,
   type StaffProfile,
   type RulePatch,
   type RegisterInput,
@@ -34,6 +37,16 @@ import {
   type VideoUpload,
 } from './client';
 import { fromContract } from '../live/detections';
+
+/** A person-shaped placeholder thumbnail for the mock capture (no real camera here). */
+function silhouette(hue: number): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="200" viewBox="0 0 120 200">` +
+    `<rect width="120" height="200" fill="hsl(${hue} 20% 88%)"/>` +
+    `<circle cx="60" cy="45" r="22" fill="hsl(${hue} 15% 60%)"/>` +
+    `<path d="M22 200V120a38 38 0 0 1 76 0v80z" fill="hsl(${hue} 45% 35%)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const wait = (ms: number) =>
@@ -309,7 +322,7 @@ function seedAlerts(): AlertView[] {
     ev('e-3', 'r-mana', 'z-masa-2', 'opened', 21, 'Masa 2: un client a ridicat mâna'),
     ev('e-4', 'r-mana', 'z-masa-2', 'closed', 20, 'Masa 2: clientul a fost servit'),
     // An object disappeared from a table, confirmed by the AI check (before/after snapshots).
-    // Closed, so the open alerts of the demo timeline stay the first "Merg eu" on the page.
+    // Closed, so the open alerts of the demo timeline stay the first "Preiau" on the page.
     {
       ...ev('e-5', 'r-pahar', 'z-masa-1', 'opened', 9, 'Masa 1: a dispărut paharul de vin'),
       snapshot_url: tableSketch(false),
@@ -459,6 +472,16 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     allOf = [
       { kind: 'count', role: 'guest', min_count: Math.max(1, n) },
       { kind: 'absent', role: 'staff', min_duration_s: 0 },
+    ];
+  } else if (/dispar|dispăr|lipse[sș]te|ia cineva/.test(t) && /pahar|sticl|cea[sș]c/.test(t)) {
+    name = 'A dispărut un obiect';
+    allOf = [
+      {
+        kind: 'object_gone',
+        role: 'any',
+        objects: /vin/.test(t) ? ['wine glass'] : ['wine glass', 'cup'],
+        min_duration_s: 60,
+      },
     ];
   } else if (/debaras|pahar|farfur|sticl|strâns|strans/.test(t)) {
     name = 'Masă nedebarasată';
@@ -623,6 +646,14 @@ export class MockApi implements ApiClient {
   /** No connector in mock mode: the live view keeps its placeholder. */
   liveMjpegUrl(): string | null {
     return null;
+  }
+
+  /** Frames from the phone page go nowhere in mock mode; the camera must exist. */
+  async pushFrame(cameraId: string): Promise<void> {
+    await wait(this.latency);
+    if (!this.cameras.some((c) => c.id === cameraId)) {
+      throw new ApiError('Camera nu există.', 'not_found', 404);
+    }
   }
 
   async captureFrame(cameraId: string): Promise<CameraFrame> {
@@ -814,6 +845,42 @@ export class MockApi implements ApiClient {
         has_centroid: true,
       });
     await this.delay(null);
+  }
+
+  private captures = new Map<string, number>();
+
+  async captureStaff(cameraId: string): Promise<StaffCapture> {
+    await wait(this.latency * 4);
+    if (!this.cameras.some((c) => c.id === cameraId))
+      throw new ApiError(`Camera ${cameraId} nu există.`, 'not_found', 404);
+    const token = uid('cap');
+    const candidates = [200, 210, 220, 205, 215, 30].map((hue, index) => ({
+      index,
+      thumbnail: silhouette(hue),
+    }));
+    this.captures.set(token, candidates.length);
+    return { token, camera_id: cameraId, frames: 12, candidates, expires_in_s: 600 };
+  }
+
+  async confirmStaffCapture(token: string, input: StaffCaptureConfirm): Promise<StaffEnrolResult> {
+    await wait(this.latency);
+    if (!this.captures.has(token))
+      throw new ApiError('Captura a expirat sau nu există. Începe din nou.', 'not_found', 404);
+    if (input.keep.length === 0) throw new ApiError('Alege cel puțin o poză.', 'invalid', 422);
+    this.captures.delete(token);
+    let profile = this.staffProfiles.find((p) => p.id === input.profile_id);
+    if (profile) profile.examples += input.keep.length;
+    else {
+      profile = {
+        id: uid('staff'),
+        name: input.name?.trim() || 'Angajat',
+        description_ro: input.description_ro ?? '',
+        examples: input.keep.length,
+        has_centroid: true,
+      };
+      this.staffProfiles.push(profile);
+    }
+    return { profile: { ...profile }, examples_added: input.keep.length, published: true };
   }
 
   /** Empty until a photo is uploaded, so the setup checklist shows "Poze cu uniforma" to do. */

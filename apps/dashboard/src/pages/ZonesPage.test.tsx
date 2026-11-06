@@ -36,7 +36,7 @@ describe('ZonesPage', () => {
       { name: 'Unelte de desen' },
       { timeout: 5000 },
     );
-    for (const label of ['Masă', 'Intrare', 'Personal']) {
+    for (const label of ['Masă', 'Intrare', 'Zonă angajați']) {
       expect(within(tools).getByRole('button', { name: label })).toHaveAttribute(
         'aria-pressed',
         'false',

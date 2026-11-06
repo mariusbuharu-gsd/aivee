@@ -28,12 +28,14 @@ interface NavItem {
   any: Permission[];
 }
 
-type NavGroup = 'now' | 'setup' | 'admin';
+type NavGroup = 'now' | 'setup' | 'admin' | 'more';
 
 const GROUP_LABEL: Record<NavGroup, string | null> = {
   now: null,
   setup: 'Configurare',
   admin: 'Administrare',
+  // Rarely needed day to day; kept last so the daily pages stay on top.
+  more: 'Avansat',
 };
 
 // Grouped in sidebar order; the phone's bottom bar shows the first TABS links the role can see.
@@ -42,23 +44,23 @@ const NAV: NavItem[] = [
   { to: '/alerte', label: 'Alerte', icon: 'alerts', group: 'now', any: ['alerts.view'] },
   { to: '/metrici', label: 'Metrici', icon: 'metrics', group: 'now', any: ['alerts.view'] },
   { to: '/reguli', label: 'Reguli', icon: 'rules', group: 'setup', any: ['rules.manage'] },
+  { to: '/dispozitive', label: 'Camere', icon: 'devices', group: 'setup', any: ['devices.manage'] },
   {
-    to: '/dispozitive',
-    label: 'Dispozitive',
-    icon: 'devices',
+    to: '/video',
+    label: 'Testează pe un clip',
+    icon: 'video',
     group: 'setup',
     any: ['devices.manage'],
   },
-  { to: '/video', label: 'Analiză video', icon: 'video', group: 'setup', any: ['devices.manage'] },
+  { to: '/echipa', label: 'Echipă', icon: 'team', group: 'admin', any: ['users.manage'] },
   {
     to: '/istoric',
     label: 'Istoric',
     icon: 'history',
-    group: 'admin',
+    group: 'more',
     any: ['audit.view', 'audit.view.own'],
   },
-  { to: '/echipa', label: 'Echipă', icon: 'team', group: 'admin', any: ['users.manage'] },
-  { to: '/locatii', label: 'Locații', icon: 'location', group: 'admin', any: ['locations.manage'] },
+  { to: '/locatii', label: 'Locații', icon: 'location', group: 'more', any: ['locations.manage'] },
 ];
 
 /** Tabs that fit the phone's bottom bar; the rest go under "Mai mult". */

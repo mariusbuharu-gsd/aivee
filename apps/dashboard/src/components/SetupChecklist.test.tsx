@@ -82,10 +82,12 @@ describe('SetupChecklist', () => {
     expect(await screen.findByRole('heading', { name: 'Configurare' })).toBeVisible();
     expect(screen.getByTestId('setup-progress')).toHaveTextContent('5 din 8');
     expect(step('rule')).toHaveClass('is-done');
-    expect(within(step('photos')).getByRole('link', { name: 'Încarcă poze' })).toHaveAttribute(
+    expect(within(step('photos')).getByRole('link', { name: 'Adaugă angajat' })).toHaveAttribute(
       'href',
-      '/alerte#poze-personal',
+      '/dispozitive',
     );
+    // A manager cannot link Telegram (locations.manage): no inline button.
+    expect(within(step('alerts')).queryByRole('button', { name: /Telegram/ })).toBeNull();
     expect(
       within(step('alerts')).getByRole('link', { name: 'Activează notificările' }),
     ).toHaveAttribute('href', '/alerte#notificari');
@@ -102,8 +104,14 @@ describe('SetupChecklist', () => {
         { id: 'demo', name: 'Terasa demo', type: 'restaurant', telegram_chat_id: '-100' },
       ]),
     });
+    const user = userEvent.setup();
     setup({ api });
     expect(await screen.findByTestId('setup-progress')).toHaveTextContent('7 din 8');
+    // One step left: the card is a single line until "Arată".
+    expect(screen.getByText('Mai ai 1 pas: Alertă de test trimisă')).toBeInTheDocument();
+    expect(step('photos')).toBeNull();
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Arată' }));
     expect(step('photos')).toHaveClass('is-done');
     expect(step('alerts')).toHaveClass('is-done');
   });
@@ -180,7 +188,9 @@ describe('SetupChecklist', () => {
   it('sends a test push and marks the step done after success', async () => {
     const user = userEvent.setup();
     const { push } = setup({ push: fakePush('on') });
-    const button = await screen.findByRole('button', { name: 'Trimite un test' });
+    // Two steps left: the card starts as one line.
+    await user.click(await screen.findByRole('button', { name: 'Arată' }));
+    const button = screen.getByRole('button', { name: 'Trimite un test' });
     expect(step('alerts')).toHaveClass('is-done');
     await user.click(button);
     expect(push.sendTest).toHaveBeenCalled();
@@ -191,9 +201,36 @@ describe('SetupChecklist', () => {
   it('a test that reached nobody stays to do', async () => {
     const user = userEvent.setup();
     setup({ push: fakePush('on', 0) });
-    await user.click(await screen.findByRole('button', { name: 'Trimite un test' }));
+    await user.click(await screen.findByRole('button', { name: 'Arată' }));
+    await user.click(screen.getByRole('button', { name: 'Trimite un test' }));
     expect(await screen.findByText(/Niciun dispozitiv abonat/)).toBeVisible();
     expect(step('test')).not.toHaveClass('is-done');
     expect(isTestSent(FAKE_ME.user.id)).toBe(false);
+  });
+
+  it('offers "Conectează Telegram" inside the alerts step to an owner', async () => {
+    setup({ role: 'owner' });
+    await screen.findByRole('heading', { name: 'Configurare' });
+    expect(
+      await within(step('alerts')).findByRole('button', { name: /Conectează Telegram/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('starts as one line with two steps left, and keeps "Ascunde"', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({
+      listStaffProfiles: vi.fn(async () => [
+        { id: 'p', name: 'U', description_ro: '', examples: 1, has_centroid: true },
+      ]),
+    });
+    setup({ api });
+    expect(
+      await screen.findByText('Mai ai 2 pași: Alerte pe telefon, Alertă de test trimisă'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arată' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Ascunde' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Arată' }));
+    expect(step('alerts')).not.toBeNull();
+    expect(screen.queryByText(/^Mai ai/)).toBeNull();
   });
 });

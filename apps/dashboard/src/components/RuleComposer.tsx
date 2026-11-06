@@ -232,9 +232,17 @@ export function RuleComposer({
               className={`small ${empty ? 'composer-hint' : 'muted'}`}
               aria-live="polite"
             >
-              {empty
-                ? 'Scrie mai întâi ce să urmărească camera, sau pornește de la un exemplu.'
-                : 'Scrie cum i-ai spune unui coleg. Enter trimite, Shift+Enter trece pe rândul următor.'}
+              {empty ? (
+                'Scrie mai întâi ce să urmărească camera, sau pornește de la un exemplu.'
+              ) : (
+                <>
+                  Scrie cum i-ai spune unui coleg.
+                  <span className="composer-keys">
+                    {' '}
+                    Enter trimite, Shift+Enter trece pe rândul următor.
+                  </span>
+                </>
+              )}
             </p>
             <button
               type="submit"

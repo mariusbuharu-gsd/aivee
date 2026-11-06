@@ -12,6 +12,7 @@ import { clock, duration } from '../alerts/format';
 import { Snapshot } from '../components/AlertFeed';
 import { Icon } from '../components/Icon';
 import { useLiveData } from '../state/context';
+import { defaultCamera } from '../devices/defaultCamera';
 import { Banner } from '../ui/Banner';
 import { Select } from '../ui/Select';
 import { EmptyState, Skeleton } from '../ui/controls';
@@ -87,7 +88,7 @@ export function VideoPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Analiză video</h1>
+        <h1>Testează pe un clip</h1>
       </header>
       <p className="muted">
         Clipul trece prin aceleași zone și reguli ca o cameră live. Nu trimite notificări
@@ -145,7 +146,7 @@ export function VideoPage() {
 function UploadForm({ onUploaded }: { onUploaded: (u: VideoUpload) => void }) {
   const api = useApi();
   const toast = useToast();
-  const { cameras } = useLiveData();
+  const { cameras, rules } = useLiveData();
   const inputId = useId();
   const fileErrorId = useId();
   // Clips run as virtual cameras ("video-…"); they are not a source of zones.
@@ -156,7 +157,9 @@ function UploadForm({ onUploaded }: { onUploaded: (u: VideoUpload) => void }) {
   const [rotate, setRotate] = useState('0');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sourceId = sources.some((c) => c.id === source) ? source : (sources[0]?.id ?? '');
+  const sourceId = sources.some((c) => c.id === source)
+    ? source
+    : (defaultCamera(sources, rules)?.id ?? '');
 
   function onFile(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;

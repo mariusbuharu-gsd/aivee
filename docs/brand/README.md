@@ -102,4 +102,4 @@ and timers. UI copy is Romanian, with diacritics (ă, â, î, ș, ț).
 ## Voice
 
 Plain Romanian, second person singular, short. Say what happened and where: "Masa 4 așteaptă de 6 min",
-not "Eveniment detectat". Buttons say what they do: "Merg eu", "Confirmă", "Activează regula".
+not "Eveniment detectat". Buttons say what they do: "Preiau", "Confirmă", "Activează regula".

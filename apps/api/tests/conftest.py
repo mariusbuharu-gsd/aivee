@@ -64,13 +64,20 @@ class ListDecoder:
 class EvenCropper:
     """Finds a person only in even frames."""
 
-    def crops(self, frame: Any) -> list[Any]:
+    def crops(self, frame: Any, largest_only: bool = False) -> list[Any]:
         return [frame] if int(frame) % 2 == 0 else []
+
+
+class TagEncoder:
+    """A "JPEG" thumbnail that just names the crop."""
+
+    def jpeg(self, crop: Any, max_side: int) -> bytes:
+        return b"\xff\xd8\xff" + f"crop-{crop}".encode()
 
 
 @pytest.fixture
 def fake_enroller() -> Enroller:
-    return Enroller(ListDecoder(), EvenCropper(), OneHotEmbedder())
+    return Enroller(ListDecoder(), EvenCropper(), OneHotEmbedder(), TagEncoder())
 
 
 @pytest.fixture

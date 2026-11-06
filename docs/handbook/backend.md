@@ -80,7 +80,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/events` | `alerts.view`; raw AlertEvents + `device_id`, `snapshot_url` |
 | GET | `/api/snapshots/{id}` | `alerts.view` (event) or `staff.review` (suggestion); blurred JPEG; `{event_id}-before` is an object change's before image, with the event's rights |
 | GET | `/api/cameras/{id}/frame` | `alerts.view`; the camera's newest face-blurred still (today: its latest alert's whole-frame snapshot), time in `X-Frame-At`, `no-store`; 404 until one exists |
-| POST | `/api/ingest/frames/{camera_id}` | HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time); body one JPEG ≤ 500 KB → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
+| POST | `/api/ingest/frames/{camera_id}` | HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time); body one JPEG ≤ 500 KB, or (no Authorization header) the session cookie with `devices.manage` at the camera's location, only for a cloud camera (`source` = `mqtt-frames://<id>`, else 409; 403 without the permission) — the dashboard's `/telefon` page → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
 | GET | `/api/cameras/{id}/live.mjpg` | `alerts.view`; `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
 | POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed |
@@ -91,6 +91,8 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/staff/suggestions` | `staff.review` |
 | POST | `/api/staff/suggestions/{id}/confirm` · `/reject` | `staff.review`; sends an EdgeCommand |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | `staff.enrol`; multipart `photo` or `files` (≤ 50 MB each) |
+| POST | `/api/staff/capture` | `staff.enrol` on the camera's location; `{camera_id, seconds: 5–30 (20)}`. Samples the camera's in-memory live frames every 1.5 s, keeps only the largest person per frame → `{token, frames, candidates: [{index, thumbnail (data URL)}], expires_in_s}`. Lasts ≈ `seconds`. 404 no live frames, 422 nobody found, 503 no models |
+| POST | `/api/staff/capture/{token}/confirm` | same user only; `{keep: [index], name, description_ro?, profile_id?}` → EnrolOut; new profile `staff-<hex>` unless `profile_id`; publishes profiles; token used once, kept 10 min in memory (single replica) |
 | GET | `/api/push/public-key` | public; 503 without VAPID keys |
 | POST / DELETE | `/api/push/subscribe` | session; the subscription belongs to the user |
 | POST | `/api/push/test` | session; test push to the caller's own devices → `{sent, removed, failed}` |

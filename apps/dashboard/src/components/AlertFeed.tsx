@@ -29,7 +29,7 @@ function waited(a: AlertItem): string {
 
 /**
  * `list` (default): one card shape for every alert, as on Live.
- * `hero`: open alerts, large, with the snapshot, a running clock and "Merg eu".
+ * `hero`: open alerts, large, with the snapshot, a running clock and "Preiau".
  * `rows`: closed alerts, one line each with a duration bar; the details expand.
  */
 export type AlertFeedVariant = 'list' | 'hero' | 'rows';
@@ -54,7 +54,7 @@ export function AlertFeed({
   empty?: ReactNode;
   /** Lifecycle per alert key; adds the timeline. */
   cases?: Record<string, AlertCase>;
-  /** Shows "Merg eu" on open alerts nobody took yet (omit when the role cannot ack). */
+  /** Shows "Preiau" on open alerts nobody took yet (omit when the role cannot ack). */
   onAck?: (eventId: string) => Promise<void>;
   variant?: AlertFeedVariant;
   /** `hero`: names the rule under the summary. */
@@ -197,7 +197,7 @@ function AckButton({
 }: {
   onAck: () => Promise<void>;
   zone: string;
-  /** Says "Merg eu" is optional: it only tells colleagues; the camera closes the alert. */
+  /** Says "Preiau" is optional: it only tells colleagues; the camera closes the alert. */
   hint?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
@@ -209,7 +209,7 @@ function AckButton({
         type="button"
         className="btn btn-accent"
         disabled={busy}
-        aria-label={`Merg eu la ${zone}`}
+        aria-label={`Preiau ${zone}`}
         onClick={async () => {
           setBusy(true);
           setError(null);
@@ -225,7 +225,7 @@ function AckButton({
           }
         }}
       >
-        Merg eu
+        Preiau
       </button>
       {hint && (
         <span className="muted small">
