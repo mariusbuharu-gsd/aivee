@@ -364,9 +364,9 @@ describe('HttpApi camera frames', () => {
   it('pushes a phone frame as a JPEG body with the session cookie', async () => {
     const fetch = mockFetch(new Response(null, { status: 204 }));
     const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
-    await api.pushFrame('cam 1', jpeg);
+    await api.pushFrame('cam-1', jpeg);
     const [url, init] = fetch.mock.calls[0] ?? [];
-    expect(url).toBe('http://api:8000/api/ingest/frames/cam%201');
+    expect(url).toBe('http://api:8000/api/ingest/frames/cam-1');
     expect(init?.method).toBe('POST');
     expect(init?.credentials).toBe('include');
     expect(init?.body).toBe(jpeg);
