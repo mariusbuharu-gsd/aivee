@@ -1,0 +1,6 @@
+# Live view: the edge (or the phone) publishes RTSP to rtsp://localhost:8554/<camera-id>;
+# the dashboard plays it over WebRTC at http://localhost:8889/<camera-id>.
+webrtc: yes
+rtsp: yes
+paths:
+  all_others:

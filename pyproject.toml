@@ -1,0 +1,43 @@
+[project]
+name = "aivee"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/contracts", "apps/edge", "apps/api", "apps/ingest"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "testcontainers[postgres]>=4.8",
+    "pre-commit>=4",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+packages = ["aivee_contracts", "aivee_edge.domain"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages", "apps"]
+markers = ["integration: needs Docker (testcontainers)"]
+addopts = "-m 'not integration' --import-mode=importlib"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["aivee_contracts", "aivee_edge", "aivee_api", "aivee_ingest"]

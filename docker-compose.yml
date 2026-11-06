@@ -1,0 +1,33 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    env_file: .env
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/acl:/mosquitto/config/acl:ro
+      - ./infra/mosquitto/entrypoint.sh:/entrypoint.sh:ro
+      - mosquitto-data:/mosquitto/data
+    ports: ["1883:1883"]
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    env_file: .env
+    volumes:
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg-data:/var/lib/postgresql/data
+    ports: ["${POSTGRES_HOST_PORT:-5433}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      retries: 10
+
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    volumes:
+      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    ports: ["8554:8554", "8889:8889", "8189:8189/udp"]
+
+volumes:
+  mosquitto-data: {}
+  pg-data: {}

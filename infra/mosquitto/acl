@@ -1,0 +1,17 @@
+# API publishes rules/profiles and may read everything.
+user aivee-api
+topic readwrite aivee/#
+
+# Ingest only reads.
+user aivee-ingest
+topic read aivee/#
+topic read $share/ingest/aivee/#
+
+# Edge devices: %u = MQTT username = device id. A device can only touch its own topics.
+pattern write aivee/+/%u/status
+pattern write aivee/+/%u/events
+pattern write aivee/+/%u/metrics
+pattern write aivee/+/%u/suggestions
+pattern write aivee/+/%u/snapshots/#
+pattern read aivee/+/%u/rules
+pattern read aivee/+/%u/profiles
