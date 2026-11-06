@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { MOCK_PASSWORD, openMore, signIn, signOut } from '../helpers';
+import { MOCK_PASSWORD, STAFF_NAV, navLinks, openMore, signIn, signOut } from '../helpers';
+
+test('a demo role card signs in with one click', async ({ page }) => {
+  await page.goto('/intra');
+  const demo = page.getByRole('group', { name: /Încearcă un cont demo/ });
+  await demo.getByRole('button', { name: /Ospătar/ }).click();
+  await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
+  expect(await navLinks(page)).toEqual(STAFF_NAV);
+});
 
 test('an anonymous visit goes to the login page and comes back after signing in', async ({
   page,

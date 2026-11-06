@@ -26,6 +26,10 @@ export function RegisterPage() {
 
   if (status === 'authed' && !busy) return <Navigate to="/" replace />;
 
+  /** Step 1 fills on the left as the form fills. */
+  const filled = [name.trim(), isEmail(email), org.trim(), password.length >= MIN_PASSWORD, terms];
+  const done = filled.filter(Boolean).length;
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -58,6 +62,18 @@ export function RegisterPage() {
                 <span>
                   <strong>{title}</strong>
                   <span className="auth-step-hint">{hint}</span>
+                  {i === 0 && (
+                    <span
+                      className="auth-step-progress"
+                      role="progressbar"
+                      aria-label="Cont completat"
+                      aria-valuemin={0}
+                      aria-valuemax={filled.length}
+                      aria-valuenow={done}
+                    >
+                      <span style={{ width: `${(done / filled.length) * 100}%` }} />
+                    </span>
+                  )}
                 </span>
               </li>
             ))}
@@ -67,7 +83,8 @@ export function RegisterPage() {
     >
       <form className="auth-form auth-form-wide" onSubmit={submit} noValidate>
         <div className="auth-head">
-          <span className="mono small muted">pasul 1 din 3</span>
+          {/* On a phone the step list is hidden, so the step is named here instead. */}
+          <span className="mono small muted auth-step-phone">pasul 1 din 3</span>
           <h1>Cont nou</h1>
         </div>
         <div className="field-pair">
