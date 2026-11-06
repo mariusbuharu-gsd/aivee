@@ -2144,11 +2144,19 @@ label.btn:focus-within {
   cursor: pointer;
   font-weight: 600;
 }
+.switch {
+  position: relative;
+}
+/* The real checkbox covers the whole switch, invisible, so every click lands on it. */
 .switch input {
   position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   opacity: 0;
-  width: 1px;
-  height: 1px;
+  cursor: inherit;
 }
 .switch-track {
   position: relative;
@@ -2467,7 +2475,7 @@ label.btn:focus-within {
   padding: 12px;
 }
 .tile-offline .link {
-  color: var(--coral);
+  color: var(--danger-on-night);
   min-height: 32px;
 }
 
@@ -2607,6 +2615,11 @@ label.btn:focus-within {
 .audit-row {
   grid-template-columns: 56px 32px minmax(0, 1fr);
 }
+@media (max-width: 760px) {
+  .audit-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+}
 
 /* Team */
 .member-role {
@@ -2664,4 +2677,34 @@ label.btn:focus-within {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.tile-offline .muted {
+  color: var(--night-muted);
+}
+.composer-camera .select-label {
+  white-space: nowrap;
+}
+
+/* The sheet opens inside the dark tab bar; give it back the light-ground tokens */
+.tabbar .dialog {
+  --text: #14161b;
+  --muted: #4b515c;
+  color: var(--text);
+}
+.tabbar .dialog .btn-ghost {
+  color: var(--text);
+}
+/* Phone: the offline overlay keeps to the essentials so nothing collides */
+@media (max-width: 760px) {
+  .tile-offline {
+    gap: 4px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+  .tile-offline .small {
+    display: none;
+  }
+}
+.terms {
+  margin-top: 20px;
 }

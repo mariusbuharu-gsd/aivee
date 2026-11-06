@@ -51,7 +51,7 @@ test('staff load alerts without forbidden calls and can take an open one', async
   await signIn(page, 'staff', password, '/alerte');
   expect(await navLinks(page)).toEqual(STAFF_NAV);
   await expect(page.getByRole('heading', { name: 'Alerte', level: 1 })).toBeVisible();
-  await expect(page.locator('.banner-error')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
   expect(errors).toEqual([]);
 
   const go = page.getByRole('button', { name: /Merg eu la/ }).first();

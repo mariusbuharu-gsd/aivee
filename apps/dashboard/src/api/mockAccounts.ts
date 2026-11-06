@@ -716,9 +716,11 @@ export class MockAccounts {
   serviceMetrics(q: { location_id: string; from?: string; to?: string }): ServiceMetrics {
     this.require('alerts.view', q.location_id);
     const cases = this.cases(q.location_id).filter((c) => c.closed_at || c.arrived_at);
+    // A day-sized window gets its own deterministic spread, so the demo trend is not flat.
+    const scale = rangeScale(q.from, q.to);
     const pick = (f: (c: AlertCase) => number | null, i: 0 | 1 | 2) => [
       ...cases.map(f).filter((x): x is number => x !== null),
-      ...HISTORY.map((h) => h[i]),
+      ...HISTORY.map((h) => Math.round(h[i] * scale)),
     ];
     return {
       location_id: q.location_id,
@@ -730,6 +732,13 @@ export class MockAccounts {
       travel: stat(pick((c) => c.travel_s, 2)),
     };
   }
+}
+
+/** 1 for open ranges; 0.7–1.3 for a bounded window, stable per start date. */
+function rangeScale(from?: string, to?: string): number {
+  if (!from || !to) return 1;
+  const day = Math.floor(Date.parse(from) / 86_400_000);
+  return 0.7 + (((day * 37) % 13) / 12) * 0.6;
 }
 
 function seedAudit(): AuditEntry[] {
