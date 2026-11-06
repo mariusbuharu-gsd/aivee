@@ -253,7 +253,7 @@ describe('App with the mock API', () => {
     await user.click(screen.getByRole('button', { name: 'Creează regula' }));
     const panel = await screen.findByRole('region', { name: 'Ce am înțeles' });
     const before = screen.getAllByRole('heading', { level: 3 }).length;
-    await user.click(within(panel).getByRole('button', { name: /Confirmă și salvează/ }));
+    await user.click(within(panel).getByRole('button', { name: /Pornește regula/ }));
     expect(await screen.findByText(/a fost salvată și pornită/)).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(before);
   });

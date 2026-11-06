@@ -2,10 +2,14 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import type { RuleDraft } from '../api/client';
 import { useApi } from '../api/context';
 import type { Condition, Rule } from '../contracts';
-import { describeRule } from '../rules/describe';
+import { type ChipKey, type Phrase, type RuleChip, ruleChips, rulePhrases } from '../rules/chips';
+import { describeRule, ZONE_TAGS } from '../rules/describe';
+import { RuleReader } from '../rules/RuleReader';
+import { Select } from '../ui/Select';
 import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
+import './RuleComposer.css';
 
 // Web Speech API is not in lib.dom yet; describe the small part we use.
 interface SpeechRecognitionLike {
@@ -30,14 +34,12 @@ function speechCtor(): SpeechCtor | null {
 export function RuleComposer({
   cameraId,
   onCreated,
-  compact = false,
   camera,
   examples = [],
   startHere = false,
 }: {
   cameraId: string;
   onCreated?: (rule: Rule) => void;
-  compact?: boolean;
   /** The camera picker, shown inside the composer so it is clear what it applies to. */
   camera?: ReactNode;
   /** Example requests; picking one fills the text (nothing is translated or saved yet). */
@@ -48,30 +50,54 @@ export function RuleComposer({
   const api = useApi();
   const toast = useToast();
   const inputId = useId();
+  const editorId = useId();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [empty, setEmpty] = useState(false);
   const [draft, setDraft] = useState<RuleDraft | null>(null);
+  /** The sentence the draft was made from, with the phrases the eyes read in it. */
+  const [read, setRead] = useState<{ text: string; phrases: Phrase[] } | null>(null);
+  const [field, setField] = useState<ChipKey | null>(null);
   const [editing, setEditing] = useState(false);
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const titleRef = useRef<HTMLHeadingElement | null>(null);
+  const focusInput = useRef(false);
   const Speech = typeof window === 'undefined' ? null : speechCtor();
 
   useEffect(() => () => recRef.current?.stop(), []);
+  // Move focus only when the view switches (text field <-> draft), not on every draft edit.
+  const hasDraft = draft !== null;
+  useEffect(() => {
+    if (hasDraft) titleRef.current?.focus();
+    else if (focusInput.current) {
+      focusInput.current = false;
+      inputRef.current?.focus();
+    }
+  }, [hasDraft]);
 
   const message = (err: unknown, fallback: string) =>
     err instanceof Error && err.message ? err.message : fallback;
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
     const value = text.trim();
-    if (!value || busy) return;
+    if (busy) return;
+    if (!value) {
+      setEmpty(true);
+      inputRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     setEditing(false);
+    setField(null);
     try {
-      setDraft(await api.draftRuleFromText(value, cameraId));
+      const next = await api.draftRuleFromText(value, cameraId);
+      setRead({ text: value, phrases: rulePhrases(value, next.rule) });
+      setDraft(next);
     } catch (err) {
       setDraft(null);
       setError(message(err, 'Nu am putut înțelege cererea'));
@@ -92,6 +118,7 @@ export function RuleComposer({
       });
       setDraft(null);
       setEditing(false);
+      setField(null);
       setText('');
       onCreated?.(created);
     } catch (err) {
@@ -103,15 +130,18 @@ export function RuleComposer({
 
   function pickExample(example: string) {
     setText(example);
+    setEmpty(false);
     setDraft(null);
     setEditing(false);
     setError(null);
     inputRef.current?.focus();
   }
 
-  function discard() {
+  function backToText() {
+    focusInput.current = true;
     setDraft(null);
     setEditing(false);
+    setField(null);
     setError(null);
   }
 
@@ -128,6 +158,7 @@ export function RuleComposer({
       const transcript = Array.from(e.results)
         .map((r) => r[0]?.transcript ?? '')
         .join(' ');
+      setEmpty(false);
       setText((t) => (t ? `${t} ${transcript}` : transcript).trim());
     };
     rec.onend = () => setListening(false);
@@ -137,42 +168,75 @@ export function RuleComposer({
     rec.start();
   }
 
+  const hintId = `${inputId}-hint`;
+  const chips = draft ? ruleChips(draft.rule) : [];
+  const openChip = chips.find((c) => c.key === field);
+
   return (
-    <section className={`composer ${compact ? 'composer-compact' : ''}`} aria-label="Regulă nouă">
-      <form className="composer-bar" onSubmit={submit}>
-        <div className="composer-top">
-          <label htmlFor={inputId} className="composer-label">
-            Spune-i camerei ce să vadă
-          </label>
-          {camera}
-        </div>
-        <div className="composer-row">
-          <input
-            id={inputId}
-            ref={inputRef}
-            className="input"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="ex. Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut"
-            autoComplete="off"
-          />
-          <button
-            type="button"
-            className={`btn btn-icon ${listening ? 'btn-recording' : ''}`}
-            onClick={toggleMic}
-            disabled={!Speech}
-            aria-pressed={listening}
-            aria-label={listening ? 'Oprește dictarea' : 'Dictează regula'}
-            title={Speech ? undefined : 'Dictarea nu e disponibilă în acest browser'}
-          >
-            <Icon name="mic" />
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={busy || !text.trim()}>
-            {busy && !draft ? 'Se analizează…' : 'Creează regula'}
-          </button>
-        </div>
-      </form>
-      {examples.length > 0 && !startHere && (
+    <section className="composer" aria-label="Regulă nouă">
+      {!draft && (
+        <form className="composer-bar" onSubmit={submit} noValidate>
+          <div className="composer-top">
+            <label htmlFor={inputId} className="composer-label">
+              Spune-i camerei ce să vadă
+            </label>
+            {camera}
+          </div>
+          <div className={`composer-field ${empty ? 'is-invalid' : ''}`}>
+            <textarea
+              id={inputId}
+              ref={inputRef}
+              className="composer-input"
+              rows={3}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (e.target.value.trim()) setEmpty(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder="ex. Dacă la o masă stă un client și nu vine nimeni 2 minute, anunță ospătarul"
+              autoComplete="off"
+              aria-invalid={empty || undefined}
+              aria-describedby={hintId}
+            />
+            <button
+              type="button"
+              className={`btn btn-icon composer-mic ${listening ? 'btn-recording' : ''}`}
+              onClick={toggleMic}
+              disabled={!Speech}
+              aria-pressed={listening}
+              aria-label={listening ? 'Oprește dictarea' : 'Dictează regula'}
+              title={Speech ? undefined : 'Dictarea nu e disponibilă în acest browser'}
+            >
+              <Icon name="mic" />
+            </button>
+          </div>
+          <div className="composer-foot">
+            <p
+              id={hintId}
+              className={`small ${empty ? 'composer-hint' : 'muted'}`}
+              aria-live="polite"
+            >
+              {empty
+                ? 'Scrie mai întâi ce să urmărească camera, sau pornește de la un exemplu.'
+                : 'Scrie cum i-ai spune unui coleg. Enter trimite, Shift+Enter trece pe rândul următor.'}
+            </p>
+            <button
+              type="submit"
+              className="btn btn-accent composer-go"
+              aria-busy={busy || undefined}
+            >
+              {busy ? 'Se analizează…' : 'Creează regula'}
+            </button>
+          </div>
+        </form>
+      )}
+      {!draft && examples.length > 0 && !startHere && (
         <div className="chips composer-examples" role="group" aria-labelledby={`${inputId}-ex`}>
           <span id={`${inputId}-ex`} className="small muted">
             Exemple
@@ -189,7 +253,7 @@ export function RuleComposer({
           ))}
         </div>
       )}
-      {examples.length > 0 && startHere && (
+      {!draft && examples.length > 0 && startHere && (
         <div className="rule-starters" role="group" aria-labelledby={`${inputId}-start`}>
           <p id={`${inputId}-start`} className="small muted">
             Camera nu are încă nicio regulă. Pornește de la un exemplu și adaptează-l:
@@ -207,12 +271,34 @@ export function RuleComposer({
         </div>
       )}
       {error && <Banner tone="error" title={error} />}
-      {draft && (
+      {draft && read && (
         <div className="understood" role="region" aria-label="Ce am înțeles">
-          <h3 className="understood-title">Ce am înțeles</h3>
-          <p className="understood-name">
-            <strong>{draft.rule.name}</strong> <span className="pill pill-muted">ciornă</span>
-          </p>
+          <div className="composer-top">
+            <h3 className="understood-title" ref={titleRef} tabIndex={-1}>
+              Ce am înțeles
+            </h3>
+            <p className="understood-name">
+              <strong>{draft.rule.name}</strong> <span className="pill pill-muted">ciornă</span>
+            </p>
+          </div>
+          <RuleReader
+            key={draft.rule.id}
+            text={read.text}
+            phrases={read.phrases}
+            chips={chips}
+            open={field}
+            editorId={editorId}
+            onPick={(key) => setField((f) => (f === key ? null : key))}
+          />
+          {openChip && (
+            <ChipEditor
+              id={editorId}
+              chip={openChip}
+              rule={draft.rule}
+              onChange={(rule) => setDraft({ ...draft, rule })}
+              onDone={() => setField(null)}
+            />
+          )}
           {draft.explanation_ro && <p data-testid="rule-explanation">{draft.explanation_ro}</p>}
           <p className="muted small" data-testid="rule-summary">
             {describeRule(draft.rule)}
@@ -220,29 +306,133 @@ export function RuleComposer({
           {editing && (
             <RuleDraftEditor rule={draft.rule} onChange={(rule) => setDraft({ ...draft, rule })} />
           )}
-          <div className="actions">
-            <button className="btn btn-primary" onClick={confirm} disabled={busy}>
-              <Icon name="check" /> {busy ? 'Se salvează…' : 'Confirmă și salvează'}
-            </button>
-            <button
-              className="btn"
-              onClick={() => setEditing((v) => !v)}
-              aria-pressed={editing}
-              disabled={busy}
-            >
-              <Icon name="edit" /> {editing ? 'Gata cu modificările' : 'Modifică'}
-            </button>
-            <button className="btn btn-ghost" onClick={discard} disabled={busy}>
-              Renunță
-            </button>
+          <div className="composer-foot">
+            <p className="small muted">
+              Așa a înțeles AiVee. Corectezi orice bucată cu un click; nimic nu e salvat încă.
+            </p>
+            <div className="actions">
+              <button className="btn btn-ghost" onClick={backToText} disabled={busy}>
+                Schimbă textul
+              </button>
+              <button
+                className="btn"
+                onClick={() => setEditing((v) => !v)}
+                aria-pressed={editing}
+                disabled={busy}
+              >
+                <Icon name="edit" /> {editing ? 'Gata cu modificările' : 'Modifică'}
+              </button>
+              <button className="btn btn-accent" onClick={confirm} disabled={busy}>
+                <Icon name="check" /> {busy ? 'Se salvează…' : 'Pornește regula'}
+              </button>
+            </div>
           </div>
-          <details className="tech">
-            <summary>Detalii tehnice</summary>
-            <pre className="mono json">{JSON.stringify(draft.rule, null, 2)}</pre>
-          </details>
         </div>
       )}
     </section>
+  );
+}
+
+const minutes = (s: number | undefined) => Math.round(((s ?? 0) / 60) * 100) / 100;
+const fromMinutes = (v: string) => Math.max(0, Math.round((Number(v) || 0) * 60));
+
+/** Opens only the values behind one chip, so a correction does not need the whole editor. */
+function ChipEditor({
+  id,
+  chip,
+  rule,
+  onChange,
+  onDone,
+}: {
+  id: string;
+  chip: RuleChip;
+  rule: Rule;
+  onChange: (rule: Rule) => void;
+  onDone: () => void;
+}) {
+  const setCondition = (i: number, patch: Partial<Condition>) => {
+    const all_of = rule.all_of.map((c, j) => (j === i ? { ...c, ...patch } : c)) as Rule['all_of'];
+    onChange({ ...rule, all_of });
+  };
+  const many = chip.fields.filter((f) => f.kind === 'duration').length > 1;
+  return (
+    <fieldset className="chip-editor" id={id}>
+      <legend>Corectezi: {chip.label}</legend>
+      {chip.fields.length === 0 && (
+        <p className="small muted">
+          Aici nu e nimic de ajustat. Dacă vrei altceva, schimbă textul și creează regula din nou.
+        </p>
+      )}
+      {chip.fields.map((f, n) => {
+        const autoFocus = n === 0;
+        switch (f.kind) {
+          case 'zone':
+            return (
+              <Select
+                key="zone"
+                label="Zona"
+                value={rule.zone_tag}
+                options={ZONE_TAGS.map((t) => ({ value: t.value, label: t.label }))}
+                onChange={(zone_tag) => onChange({ ...rule, zone_tag })}
+              />
+            );
+          case 'duration':
+            return (
+              <label className="field" key={`d${f.index}`}>
+                <span>{many ? `Cât timp, condiția ${f.index + 1}` : 'Cât timp'} (minute)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  autoFocus={autoFocus}
+                  value={minutes(rule.all_of[f.index]?.min_duration_s)}
+                  onChange={(e) =>
+                    setCondition(f.index, { min_duration_s: fromMinutes(e.target.value) })
+                  }
+                />
+              </label>
+            );
+          case 'count':
+            return (
+              <label className="field" key={`c${f.index}`}>
+                <span>Câte persoane, cel puțin</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  step={1}
+                  autoFocus={autoFocus}
+                  value={rule.all_of[f.index]?.min_count ?? 1}
+                  onChange={(e) =>
+                    setCondition(f.index, {
+                      min_count: Math.max(1, Math.round(Number(e.target.value) || 1)),
+                    })
+                  }
+                />
+              </label>
+            );
+          case 'cooldown':
+            return (
+              <label className="field" key="cooldown">
+                <span>Pauză între alerte (minute)</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  autoFocus={autoFocus}
+                  value={minutes(rule.cooldown_s ?? 300)}
+                  onChange={(e) => onChange({ ...rule, cooldown_s: fromMinutes(e.target.value) })}
+                />
+              </label>
+            );
+        }
+      })}
+      <button type="button" className="btn btn-ghost chip-editor-done" onClick={onDone}>
+        Gata
+      </button>
+    </fieldset>
   );
 }
 

@@ -1,0 +1,26 @@
+/* Reguli: rule cards read as one short sentence with a status pill. */
+
+.rule-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.rule-title h3 {
+  margin: 0;
+}
+.rule-line {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.rule-prompt {
+  margin: -4px 0 0;
+}
+.rule-card .tech p {
+  margin: 6px 0 0;
+}
+.rule-card.is-off .rule-line {
+  color: var(--muted);
+}

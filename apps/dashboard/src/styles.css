@@ -450,46 +450,6 @@ p {
 }
 
 /* ---------- Rule composer ---------- */
-.composer {
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.composer-bar {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.composer-label {
-  font-weight: 500;
-}
-.composer-row {
-  display: flex;
-  gap: 8px;
-}
-.composer-row .input {
-  flex: 1;
-  min-width: 0;
-}
-.understood {
-  border-top: 1px solid var(--border-soft);
-  padding-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.understood-title {
-  font-family: var(--mono);
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--coral-strong);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
 details summary {
   cursor: pointer;
   color: var(--muted);

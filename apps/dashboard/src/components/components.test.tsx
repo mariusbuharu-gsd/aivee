@@ -39,7 +39,14 @@ describe('RuleComposer', () => {
     const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
     renderWithApi(<RuleComposer cameraId="cam-sala" onCreated={onCreated} />, api);
 
-    expect(screen.getByRole('button', { name: 'Creează regula' })).toBeDisabled();
+    // The button stays active; an empty field gets an inline message instead.
+    await user.click(screen.getByRole('button', { name: 'Creează regula' }));
+    expect(api.draftRuleFromText).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(screen.getByText(/Scrie mai întâi ce să urmărească camera/)).toBeInTheDocument();
     await typeRequest(user);
 
     expect(api.draftRuleFromText).toHaveBeenCalledWith(rule.prompt_ro, 'cam-sala');
@@ -53,7 +60,7 @@ describe('RuleComposer', () => {
     expect(api.createRule).not.toHaveBeenCalled();
     expect(onCreated).not.toHaveBeenCalled();
 
-    await user.click(within(panel).getByRole('button', { name: /Confirmă și salvează/ }));
+    await user.click(within(panel).getByRole('button', { name: /Pornește regula/ }));
     expect(api.createRule).toHaveBeenCalledWith(rule);
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Regula „Masă neservită” a fost salvată',
@@ -75,7 +82,7 @@ describe('RuleComposer', () => {
     const first = screen.getByLabelText('Durată condiția 1 (secunde)');
     await user.clear(first);
     await user.type(first, '120');
-    await user.click(screen.getByRole('button', { name: /Confirmă și salvează/ }));
+    await user.click(screen.getByRole('button', { name: /Pornește regula/ }));
     expect(api.createRule).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Masă uitată',
@@ -92,9 +99,66 @@ describe('RuleComposer', () => {
     const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
     renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
     await typeRequest(user);
-    await user.click(await screen.findByRole('button', { name: 'Renunță' }));
+    await user.click(await screen.findByRole('button', { name: 'Schimbă textul' }));
     expect(screen.queryByRole('region', { name: 'Ce am înțeles' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveValue(rule.prompt_ro);
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveFocus();
     expect(api.createRule).not.toHaveBeenCalled();
+  });
+
+  it('reads the sentence back as four chips, underlining what it understood', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
+    await typeRequest(user);
+    const panel = await screen.findByRole('region', { name: 'Ce am înțeles' });
+    const text = within(panel).getByTestId('rule-text');
+    expect(text).toHaveTextContent(rule.prompt_ro);
+    expect([...text.querySelectorAll('.reader-k')].map((k) => k.textContent)).toEqual([
+      'Anunță ospătarul',
+      'la o masă',
+      'nu a venit nimeni de 1 minut',
+    ]);
+    const chips = within(panel).getByRole('list', { name: 'Părțile regulii' });
+    expect(
+      within(chips)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([
+      'Undeorice masă',
+      'Clientstă 1 min',
+      'Personallipsește 1 min',
+      'Atuncimesaj pe Telegram',
+    ]);
+  });
+
+  it('a chip opens only its own field and the change is what gets saved', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
+    await typeRequest(user);
+    const staff = await screen.findByRole('button', { name: /Personal/ });
+    await user.click(staff);
+    expect(staff).toHaveAttribute('aria-expanded', 'true');
+    const group = screen.getByRole('group', { name: 'Corectezi: Personal' });
+    const minutes = within(group).getByLabelText('Cât timp (minute)');
+    expect(minutes).toHaveFocus();
+    expect(screen.queryByLabelText('Nume')).not.toBeInTheDocument();
+    await user.clear(minutes);
+    await user.type(minutes, '3');
+    expect(staff).toHaveTextContent('lipsește 3 min');
+    await user.click(within(group).getByRole('button', { name: 'Gata' }));
+    expect(screen.queryByRole('group', { name: 'Corectezi: Personal' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Pornește regula/ }));
+    expect(api.createRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        all_of: [
+          { kind: 'present', role: 'guest', min_duration_s: 60 },
+          { kind: 'absent', role: 'staff', min_duration_s: 180 },
+        ],
+      }),
+    );
   });
 
   it('shows the Romanian API error', async () => {

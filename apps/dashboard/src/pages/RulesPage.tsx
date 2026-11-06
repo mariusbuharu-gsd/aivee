@@ -3,6 +3,7 @@ import { useApi } from '../api/context';
 import { RuleComposer, RuleDraftEditor } from '../components/RuleComposer';
 import type { Rule } from '../contracts';
 import { useAuth } from '../auth/context';
+import { shortRule } from '../rules/chips';
 import { describeRule } from '../rules/describe';
 import { ruleTemplates } from '../rules/templates';
 import { useLiveData } from '../state/context';
@@ -12,6 +13,7 @@ import { Menu } from '../ui/Menu';
 import { Select } from '../ui/Select';
 import { EmptyState, Switch } from '../ui/controls';
 import { useToast } from '../ui/toast';
+import './RulesPage.css';
 
 export function RulesPage() {
   const { rules, cameras, addRule } = useLiveData();
@@ -121,12 +123,17 @@ function RuleCard({ rule }: { rule: Rule }) {
   return (
     <li className={`card rule-card ${on ? '' : 'is-off'}`}>
       <div className="side-head">
-        <h3>{rule.name}</h3>
+        <div className="rule-title">
+          <h3>{rule.name}</h3>
+          <span className={`pill ${on ? 'pill-ok' : 'pill-muted'}`}>
+            {on ? 'activă' : 'oprită'}
+          </span>
+        </div>
         <div className="rule-tools">
           <Switch
             checked={on}
             disabled={busy}
-            label={<span className="small">{on ? 'activă' : 'oprită'}</span>}
+            label={<span className="visually-hidden">Regula {rule.name} e activă</span>}
             onChange={(v) => void setEnabled(v)}
           />
           <Menu
@@ -139,11 +146,12 @@ function RuleCard({ rule }: { rule: Rule }) {
           />
         </div>
       </div>
-      <p className="muted">„{rule.prompt_ro}”</p>
-      <p>{describeRule(rule)}</p>
+      <p className="rule-line">{shortRule(rule)}</p>
+      {rule.prompt_ro && <p className="muted small rule-prompt">„{rule.prompt_ro}”</p>}
       {error && <Banner tone="error" title={error} />}
       <details className="tech">
-        <summary>Detalii tehnice</summary>
+        <summary>Detalii</summary>
+        <p className="small">{describeRule(rule)}</p>
         <pre className="mono json">{JSON.stringify(rule, null, 2)}</pre>
       </details>
       {dialog === 'delete' && (
