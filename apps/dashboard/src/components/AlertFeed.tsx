@@ -28,11 +28,26 @@ export function AlertFeed({
         const open = a.closed_at === null;
         return (
           <li key={a.key} className={`feed-item ${open ? 'is-open' : 'is-closed'}`}>
-            {showSnapshot && (
-              <div className="snapshot" role="img" aria-label="Captură cu fețele estompate">
-                <Icon name="snapshot" size={22} />
-              </div>
-            )}
+            {showSnapshot &&
+              (a.snapshot_url ? (
+                <a
+                  className="snapshot snapshot-img"
+                  href={a.snapshot_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <img
+                    src={a.snapshot_url}
+                    alt="Captură cu fețele estompate"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </a>
+              ) : (
+                <div className="snapshot" role="img" aria-label="Captură cu fețele estompate">
+                  <Icon name="snapshot" size={22} />
+                </div>
+              ))}
             <div className="feed-body">
               <div className="feed-head">
                 <span className={`pill ${open ? 'pill-alert' : 'pill-muted'}`}>

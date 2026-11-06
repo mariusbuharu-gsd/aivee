@@ -1,4 +1,4 @@
-import type { AlertEvent } from '../contracts';
+import type { AlertView } from '../api/client';
 
 /** An alert as the user sees it: an `opened` event, plus the `closed` event that ended it. */
 export interface AlertItem {
@@ -10,15 +10,17 @@ export interface AlertItem {
   opened_at: string;
   closed_at: string | null;
   snapshot: boolean;
+  /** Face-blurred JPEG of the moment the alert opened, when the edge sent one. */
+  snapshot_url: string | null;
 }
 
-const situation = (e: AlertEvent) => `${e.camera_id}|${e.rule_id}|${e.zone_id}`;
+const situation = (e: AlertView) => `${e.camera_id}|${e.rule_id}|${e.zone_id}`;
 
 /**
  * Pair opened/closed events per (camera, rule, zone) into alerts, newest first.
  * Duplicate event ids are ignored, so replaying the socket after a reconnect is safe.
  */
-export function foldAlerts(events: readonly AlertEvent[]): AlertItem[] {
+export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
   const seen = new Set<string>();
   const open = new Map<string, AlertItem>();
   const items: AlertItem[] = [];
@@ -38,6 +40,7 @@ export function foldAlerts(events: readonly AlertEvent[]): AlertItem[] {
         opened_at: e.at,
         closed_at: null,
         snapshot: e.snapshot ?? false,
+        snapshot_url: e.snapshot_url ?? null,
       };
       open.set(key, item);
       items.push(item);
