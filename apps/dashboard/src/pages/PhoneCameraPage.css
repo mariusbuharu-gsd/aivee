@@ -1,0 +1,60 @@
+/* Phone as a camera: one column at phone width, the preview as large as the screen allows. */
+.phone-page {
+  max-width: 640px;
+}
+
+.phone-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  max-height: 40vh;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--night-2);
+}
+
+.phone-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.phone-preview-idle {
+  position: absolute;
+  color: var(--muted);
+}
+
+.phone-preview .phone-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  font-family: var(--sans);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.9rem;
+  background: var(--night);
+  color: var(--night-text);
+  border-color: var(--night-border);
+}
+.phone-preview .phone-status.pill-live {
+  color: var(--live-on-night);
+  border-color: var(--live-on-night);
+}
+
+.phone-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.phone-btn {
+  min-height: 56px;
+  justify-content: center;
+}
+
+@media (max-width: 420px) {
+  .phone-actions {
+    grid-template-columns: 1fr;
+  }
+}

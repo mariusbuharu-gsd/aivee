@@ -32,6 +32,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     createCamera: vi.fn(async (c) => ({ ...c, zones: [], online: false })),
     listDevices: vi.fn(async () => []),
     liveMjpegUrl: vi.fn(() => null),
+    pushFrame: vi.fn(async () => undefined),
     captureFrame: vi.fn(async () => {
       throw new ApiError('Nu există încă o imagine de la această cameră.', 'not_found', 404);
     }),

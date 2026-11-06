@@ -361,6 +361,26 @@ describe('HttpApi camera frames', () => {
     });
   });
 
+  it('pushes a phone frame as a JPEG body with the session cookie', async () => {
+    const fetch = mockFetch(new Response(null, { status: 204 }));
+    const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
+    await api.pushFrame('cam 1', jpeg);
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe('http://api:8000/api/ingest/frames/cam%201');
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    expect(init?.body).toBe(jpeg);
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('image/jpeg');
+  });
+
+  it('turns a refused frame into the API error', async () => {
+    mockFetch(json({ detail: { code: 'conflict', message_ro: 'Nu e cameră cloud.' } }, 409));
+    await expect(api.pushFrame('cam-1', new Blob(['x']))).rejects.toMatchObject({
+      status: 409,
+      message: 'Nu e cameră cloud.',
+    });
+  });
+
   it('passes last_seen through from /api/devices', async () => {
     mockFetch(
       json([{ device: 'edge-01', state: 'online', last_seen: '2026-11-06T19:00:00Z', site: 's' }]),
