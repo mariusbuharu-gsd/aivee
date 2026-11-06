@@ -125,6 +125,36 @@ function evening(gsap, ScrollTrigger) {
   gsap.set(note, { yPercent: 140, opacity: 0, rotate: 4 });
   z4.classList.remove("is-alert");
 
+  // Phone: the beats would scroll under the pinned scene. Instead one text slot under the scene
+  // shows the current beat and crossfades to the next as the story scrolls. The original list keeps
+  // the scroll length and stays in the accessibility tree; the slot copies are aria-hidden.
+  const slot = [];
+  if (matchMedia("(max-width: 860px)").matches) {
+    const box = document.createElement("div");
+    box.className = "beat-slot";
+    box.setAttribute("aria-hidden", "true");
+    for (const beat of $$(".beat", beats)) {
+      const copy = /** @type {HTMLElement} */ (beat.cloneNode(true));
+      box.append(copy);
+      slot.push(copy);
+    }
+    $(".stage").append(box);
+    document.querySelector(".story")?.classList.add("has-slot");
+  }
+  // The closest beat is the only one shown; CSS fades between them in 0.2 s, so wherever the
+  // scroll stops, exactly one beat is fully visible.
+  let shown = -1;
+  // Scene time (timeline seconds) at which each beat starts: guests sit, waiter passes, the wait
+  // turns into an alert, the phone buzzes, the waiter takes it. Keeps the text in step with the scene.
+  const BEAT_AT = [0, 1.1, 2.4, 3.2, 4.1];
+  const crossfade = (t) => {
+    const i = Math.min(slot.length - 1, BEAT_AT.filter((at) => t >= at).length - 1);
+    if (i === shown) return;
+    shown = i;
+    slot.forEach((el, k) => el.classList.toggle("is-on", k === i));
+  };
+  if (slot.length) crossfade(0);
+
   const tl = gsap.timeline({ defaults: { ease: "none" } });
   tl.to($$(".person.g", scene), { opacity: 1, scale: 1, duration: 0.6, stagger: 0.2 }, 0.1)
     .to($$(".det.g", scene), { opacity: 1, scale: 1, duration: 0.4, stagger: 0.2 }, 0.4)
@@ -139,11 +169,12 @@ function evening(gsap, ScrollTrigger) {
   ScrollTrigger.create({
     trigger: beats,
     start: "top 60%",
-    end: "bottom 70%",
+    end: slot.length ? "bottom bottom" : "bottom 70%",
     scrub: 0.6,
     animation: tl,
     onUpdate: (self) => {
       const t = self.progress * total;
+      if (slot.length) crossfade(t);
       // Evening clock 21:40 → 21:47; the table timer runs 0:00 → 6:12 while nobody comes.
       const minutes = Math.min(7, (t / total) * 7.4);
       clock.textContent = `21:${pad(40 + Math.floor(minutes))}:${pad(Math.floor((minutes % 1) * 60))}`;
