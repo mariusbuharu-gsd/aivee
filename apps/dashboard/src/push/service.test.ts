@@ -171,4 +171,15 @@ describe('notificationFromPush', () => {
       url: '/alerte',
     });
   });
+
+  it('rings again for a re-alert but replaces the alarm quietly on ack', () => {
+    const realert = notificationFromPush({ title: 'AiVee · Nu a ajuns nimeni', tag: 'e1' });
+    expect(realert.options).toMatchObject({ tag: 'e1', renotify: true });
+    const ack = notificationFromPush({ title: 'AiVee · Preluată', tag: 'e1' });
+    expect(ack.options).toMatchObject({ tag: 'e1', renotify: false });
+  });
+
+  it('honours an explicit kind over the title', () => {
+    expect(notificationFromPush({ title: 'x', kind: 'realert' }).options.renotify).toBe(true);
+  });
 });
