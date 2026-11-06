@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 from collections.abc import Iterable
 from typing import Any, Protocol
 
@@ -17,22 +18,41 @@ def l2_normalise(vec: Iterable[float]) -> list[float]:
     return [v / norm for v in values] if norm > 0 else values
 
 
+CLIP_MODEL = "ViT-B-32"
+CLIP_PRETRAINED = "laion2b_s34b_b79k"
+
+_LOADED: dict[tuple[str, str], tuple[Any, Any]] = {}
+_LOAD_LOCK = threading.Lock()
+
+
+def load_clip(model: str = CLIP_MODEL, pretrained: str = CLIP_PRETRAINED) -> tuple[Any, Any]:
+    """(model, preprocess), loaded once per process: the appearance embedder and the visual
+    scorer share one copy of the weights."""
+    with _LOAD_LOCK:
+        key = (model, pretrained)
+        if key not in _LOADED:
+            import open_clip
+
+            net, _, preprocess = open_clip.create_model_and_transforms(
+                model, pretrained=pretrained, device="cpu"
+            )
+            net.eval()
+            _LOADED[key] = (net, preprocess)
+        return _LOADED[key]
+
+
 class ClipEmbedder:
     """open_clip image encoder on CPU. `crop` is a BGR uint8 array (OpenCV layout)."""
 
     def __init__(
-        self, model: str = "ViT-B-32", pretrained: str = "laion2b_s34b_b79k", threads: int = 0
+        self, model: str = CLIP_MODEL, pretrained: str = CLIP_PRETRAINED, threads: int = 0
     ) -> None:
-        import open_clip
         import torch
 
         if threads > 0:
             torch.set_num_threads(threads)
         self._torch = torch
-        self._model, _, self._preprocess = open_clip.create_model_and_transforms(
-            model, pretrained=pretrained, device="cpu"
-        )
-        self._model.eval()
+        self._model, self._preprocess = load_clip(model, pretrained)
 
     def embed(self, crop: Any) -> list[float]:
         from PIL import Image

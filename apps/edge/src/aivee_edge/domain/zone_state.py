@@ -14,10 +14,14 @@ freeze during the gap and the grace window starts again from the first frame aft
 
 With `arrive_s > 0` a staff member counts as present only once their foot point has
 stayed in the zone for `arrive_s`: a waiter walking past a table has not served it.
+
+`object_present` counts an object by its base, like `object_gone` (a bear stands on the
+floor, a knife lies on the table), with the same grace. The whole-frame pseudo-zone
+(tag `anywhere`) holds every person and object in the image, edges included.
 """
 
-from aivee_contracts.geometry import Zone
-from aivee_contracts.rules import Role
+from aivee_contracts.geometry import Point, Zone
+from aivee_contracts.rules import ANYWHERE_TAG, Role
 
 from aivee_edge.domain.geometry import box_centre, foot_point, point_in_polygon
 from aivee_edge.domain.objects import Gone, ObjectPresence
@@ -45,6 +49,12 @@ class ZoneState:
         self._staff_since: dict[int, float] = {}
         self._staff_last_seen: dict[int, float] = {}
         self.objects = ObjectPresence()
+        self._present_objects_since: dict[str, float] = {}
+        self._present_objects_last: dict[str, float] = {}
+        self._whole_frame = zone.tag == ANYWHERE_TAG
+
+    def _inside(self, p: Point) -> bool:
+        return self._whole_frame or point_in_polygon(p, self.zone.polygon)
 
     @property
     def occupied_since(self) -> float | None:
@@ -55,8 +65,8 @@ class ZoneState:
         ts = frame.ts
         if self.started_at is None:
             self.started_at = ts
-        poly = self.zone.polygon
-        self._tracks = [t for t in frame.tracks if point_in_polygon(foot_point(t.bbox), poly)]
+        inside = self._inside
+        self._tracks = [t for t in frame.tracks if inside(foot_point(t.bbox))]
         settled = self._update_staff(ts)
 
         for role in ROLES:
@@ -78,11 +88,18 @@ class ZoneState:
 
         counts: dict[str, int] = {}
         for o in frame.objects:
-            if point_in_polygon(foot_point(o.bbox), poly):
+            if inside(foot_point(o.bbox)):
                 counts[o.label] = counts.get(o.label, 0) + 1
         self.objects.update(ts, counts)
+        for label in counts:
+            self._present_objects_since.setdefault(label, ts)
+            self._present_objects_last[label] = ts
+        for label in list(self._present_objects_since):
+            if label not in counts and self._expired(self._present_objects_last[label], ts):
+                del self._present_objects_since[label]
+                del self._present_objects_last[label]
 
-        labels = {o.label for o in frame.objects if point_in_polygon(box_centre(o.bbox), poly)}
+        labels = {o.label for o in frame.objects if inside(box_centre(o.bbox))}
         for label in labels:
             self.objects_since.setdefault(label, ts)
             self._objects_last_seen[label] = ts
@@ -102,7 +119,12 @@ class ZoneState:
         for times in (self.present_since, self.last_seen):
             for role in times:
                 times[role] = moved(times[role])
-        for labels in (self.objects_since, self._objects_last_seen):
+        for labels in (
+            self.objects_since,
+            self._objects_last_seen,
+            self._present_objects_since,
+            self._present_objects_last,
+        ):
             for label in labels:
                 labels[label] += dt
         for tracks in (self._staff_since, self._staff_last_seen):
@@ -156,6 +178,15 @@ class ZoneState:
         if not placed:
             return None
         return now - max(min(placed), self.empty_since)
+
+    def object_present(self, labels: list[str], now: float) -> tuple[str, float] | None:
+        """The longest-present of `labels` in the zone and for how long; None if none is."""
+        here = [
+            (label, now - self._present_objects_since[label])
+            for label in labels
+            if label in self._present_objects_since
+        ]
+        return max(here, key=lambda h: h[1], default=None)
 
     def gone(self, labels: list[str], min_present_s: float, now: float) -> Gone | None:
         """A still-holding disappearance of one of `labels` (see `ObjectPresence`)."""

@@ -1,13 +1,14 @@
 import uuid
 
 from aivee_contracts.geometry import Zone
-from aivee_contracts.rules import Action, Rule
+from aivee_contracts.rules import ANYWHERE_TAG, Action, Rule
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.db.repositories import CameraRepository, RuleRepository, camera_config
 from aivee_api.edge.sync import EdgeSync
 from aivee_api.errors import NotFound
+from aivee_api.rules.prompt import COCO_CLASSES
 from aivee_api.rules.schemas import RuleIn, RulePatch
 from aivee_api.rules.translator import RuleDraft, RuleTranslator, TranslationError
 
@@ -75,11 +76,23 @@ def draft_to_rule(draft: RuleDraft, camera_id: str, text: str, zones: list[Zone]
         raise TranslationError(
             "clarify", draft.clarification_ro or "Nu am înțeles cererea. Puteți reformula?"
         )
-    tags = {z.tag for z in zones}
+    open_kinds = {"object_present", "visual"}
+    anywhere_ok = bool(draft.all_of) and all(c.kind in open_kinds for c in draft.all_of)
+    tags = {z.tag for z in zones} | ({ANYWHERE_TAG} if anywhere_ok else set())
     if draft.zone_tag not in tags:
         raise TranslationError(
             "clarify",
             f"Camera nu are nicio zonă de tip „{draft.zone_tag}”. Desenați-o mai întâi.",
+        )
+    unknown = sorted(
+        {o for c in draft.all_of if c.kind == "object_present" for o in c.objects}
+        - set(COCO_CLASSES)
+    )
+    if unknown:
+        raise TranslationError(
+            "clarify",
+            "AiVee nu recunoaște încă acest obiect pe cameră. Încercați să descrieți ce se vede "
+            "(de exemplu „dacă e foc”) sau alegeți un obiect obișnuit.",
         )
     try:
         return Rule(

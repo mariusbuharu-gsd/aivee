@@ -14,7 +14,7 @@ class EdgeSettings(BaseSettings):
     MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, GRACE_S,
     DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH,
     STAFF_W_APPEARANCE, STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE,
-    CONFIG_WAIT_S."""
+    CONFIG_WAIT_S, VISUAL_HZ."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
@@ -53,6 +53,9 @@ class EdgeSettings(BaseSettings):
     staff_w_standing: float = Field(0.25, ge=0)
     staff_w_behaviour: float = Field(0.15, ge=0)
     """Staff score fusion weights, normalised over the signals available per track."""
+    visual_hz: float = Field(2.0, ge=0)
+    """Visual rules ("dacă e foc"): CLIP scorings per second, on a background thread and
+    only while an enabled visual rule exists. 0 turns visual rules off on this edge."""
     blur: bool = True
     yunet_model: str = "models/face_detection_yunet_2023mar.onnx"
 

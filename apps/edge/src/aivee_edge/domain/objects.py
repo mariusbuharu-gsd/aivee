@@ -30,6 +30,40 @@ OBJECT_RO: dict[str, str] = {
 }
 
 
+OBJECT_PRESENT_RO: dict[str, str] = {
+    "bear": "un urs",
+    "dog": "un câine",
+    "cat": "o pisică",
+    "bird": "o pasăre",
+    "horse": "un cal",
+    "cow": "o vacă",
+    "sheep": "o oaie",
+    "knife": "un cuțit",
+    "scissors": "o foarfecă",
+    "backpack": "un rucsac",
+    "suitcase": "o valiză",
+    "handbag": "o geantă",
+    "umbrella": "o umbrelă",
+    "laptop": "un laptop",
+    "cell phone": "un telefon",
+    "bicycle": "o bicicletă",
+    "motorcycle": "o motocicletă",
+    "car": "o mașină",
+    "bottle": "o sticlă",
+    "wine glass": "un pahar de vin",
+    "cup": "o ceașcă",
+    "fire hydrant": "un hidrant",
+    "teddy bear": "un ursuleț de pluș",
+    "sports ball": "o minge",
+    "chair": "un scaun",
+}
+
+
+def object_present_ro(label: str) -> str:
+    """Romanian name (indefinite) of a COCO class that appeared: "un urs", "un cuțit"."""
+    return OBJECT_PRESENT_RO.get(label, f"un obiect ({label})")
+
+
 def object_ro(label: str) -> str:
     """Romanian name (with article) of a COCO class, for alert texts."""
     return OBJECT_RO.get(label, f"un obiect ({label})")

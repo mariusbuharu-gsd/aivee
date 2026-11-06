@@ -1,12 +1,20 @@
-"""YOLO + ByteTrack detector: persons become tracks, table objects become ObjectObs."""
+"""YOLO + ByteTrack detector: persons become tracks, table objects become ObjectObs.
+
+The detector keeps only `DEFAULT_CLASSES` (the restaurant table subset) unless rules ask
+for more: `set_extra_classes` adds the COCO classes of `object_present` rules ("bear",
+"dog", "knife"…) at run time. Names the model does not know are logged and skipped.
+"""
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from aivee_edge.domain.observation import BBox, Frame, ObjectObs, TrackObs
+
+log = logging.getLogger("aivee_edge.yolo")
 
 PERSON = "person"
 # COCO subset relevant to a restaurant table ("dining table" is excluded on purpose:
@@ -71,6 +79,21 @@ def class_ids_for(names: Mapping[int, str], wanted: Sequence[str]) -> list[int]:
     return [by_name[w] for w in wanted]
 
 
+def with_extra(
+    names: Mapping[int, str], base: Sequence[str], extra: Sequence[str]
+) -> tuple[list[int], list[str]]:
+    """Class ids for `base` plus the known names of `extra`, and the unknown extra names."""
+    by_name = {v: k for k, v in names.items()}
+    ids = class_ids_for(names, base)
+    unknown = []
+    for name in extra:
+        if name not in by_name:
+            unknown.append(name)
+        elif by_name[name] not in ids:
+            ids.append(by_name[name])
+    return ids, unknown
+
+
 class YoloDetector:
     """PersonDetector backed by ultralytics (`.pt` or an `*_openvino_model/` dir)."""
 
@@ -86,11 +109,24 @@ class YoloDetector:
 
         self._model: Any = YOLO(str(model_path), task="detect")
         self._names: dict[int, str] = dict(self._model.names)
+        self._base = list(classes)
         self._class_ids = class_ids_for(self._names, classes)
+        self._extra: list[str] = []
         self._conf = conf
         self._imgsz = imgsz
         self._tracker = tracker
         self.last_result: Any = None
+
+    def set_extra_classes(self, extra: Sequence[str]) -> None:
+        """Also detect these COCO classes (from the rules), on top of the default subset."""
+        wanted = sorted(set(extra))
+        if wanted == self._extra:
+            return
+        self._extra = wanted
+        self._class_ids, unknown = with_extra(self._names, self._base, wanted)
+        if unknown:
+            log.warning("detector_unknown_classes names=%s", ",".join(unknown))
+        log.info("detector_classes extra=%s", ",".join(wanted) or "-")
 
     def detect(self, image: Any, ts: float) -> Frame:
         results = self._model.track(

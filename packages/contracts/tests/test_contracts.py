@@ -3,7 +3,7 @@ from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import DetectedObject, DetectedTrack, Detections
 from aivee_contracts.events import AlertEvent, StaffSuggestion, Verification, before_snapshot_id
 from aivee_contracts.geometry import Zone
-from aivee_contracts.rules import Action, Condition, Rule
+from aivee_contracts.rules import ANYWHERE_TAG, VISUAL_THRESHOLD, Action, Condition, Rule
 from aivee_contracts.topics import Topics
 from pydantic import ValidationError
 
@@ -189,3 +189,70 @@ def test_before_snapshot_topic_and_id() -> None:
     t = Topics(site="demo", device="edge-01")
     assert t.snapshot_before("e1") == "aivee/demo/edge-01/snapshots/e1-before"
     assert before_snapshot_id("e1") == "e1-before"
+
+
+# -- open rules: object_present and visual ------------------------------------------------
+
+
+def test_object_present_needs_objects_and_never_a_person() -> None:
+    with pytest.raises(ValidationError):
+        Condition(kind="object_present")
+    with pytest.raises(ValidationError):
+        Condition(kind="object_present", objects=["person"])
+    c = Condition(kind="object_present", objects=["bear"], min_duration_s=2)
+    assert c.objects == ["bear"] and c.role == "any"
+
+
+def test_visual_needs_a_positive_prompt() -> None:
+    with pytest.raises(ValidationError):
+        Condition(kind="visual", negative=["a normal room"])
+    with pytest.raises(ValidationError):
+        Condition(kind="visual", positive=["  "])
+
+
+def test_visual_threshold_is_a_share_and_defaults_from_calibration() -> None:
+    c = Condition(kind="visual", positive=["a photo of fire"], negative=["a room"])
+    assert c.threshold == VISUAL_THRESHOLD and c.crop is None
+    for bad in (-0.1, 1.5):
+        with pytest.raises(ValidationError):
+            Condition(kind="visual", positive=["fire"], threshold=bad)
+    with pytest.raises(ValidationError):
+        Condition.model_validate({"kind": "visual", "positive": ["fire"], "crop": "table"})
+
+
+def test_visual_rule_on_the_whole_frame_round_trips() -> None:
+    rule = Rule(
+        id="r9",
+        camera_id="cam-1",
+        name="Foc",
+        prompt_ro="dacă e foc",
+        zone_tag=ANYWHERE_TAG,
+        all_of=[
+            Condition(
+                kind="visual",
+                positive=["a photo of fire", "flames"],
+                negative=["a photo of a normal restaurant room"],
+                min_duration_s=3,
+                threshold=0.6,
+                crop="frame",
+                label_ro="foc",
+            )
+        ],
+        action=Action(type="telegram"),
+        cooldown_s=120,
+    )
+    assert Rule.model_validate_json(rule.model_dump_json()) == rule
+
+
+def test_old_rule_payloads_without_the_new_fields_stay_valid() -> None:
+    old = {
+        "id": "r1",
+        "camera_id": "cam-1",
+        "name": "Masă nedebarasată",
+        "prompt_ro": "masa nedebarasată",
+        "zone_tag": "table",
+        "all_of": [{"kind": "objects_unattended", "role": "any", "objects": ["cup"]}],
+        "action": {"type": "telegram"},
+    }
+    rule = Rule.model_validate(old)
+    assert rule.all_of[0].positive == [] and rule.all_of[0].label_ro == ""

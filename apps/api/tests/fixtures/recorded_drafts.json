@@ -1,0 +1,195 @@
+{
+  "present-bear": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Urs în imagine",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "object_present",
+        "role": "any",
+        "min_duration_s": 2,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "bear"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": "urs"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă apare un urs oriunde în imagine cel puțin 2 secunde, cu cel mult o alertă la 2 minute."
+  },
+  "present-knife": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Cuțit vizibil",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "object_present",
+        "role": "any",
+        "min_duration_s": 2,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "knife"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": "cuțit"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț când se vede un cuțit oriunde în imagine timp de cel puțin 2 secunde."
+  },
+  "visual-fire": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Foc în imagine",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "a photo of fire",
+          "flames",
+          "a burning fire"
+        ],
+        "negative": [
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo",
+          "a photo of a normal restaurant room",
+          "people sitting at tables"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "foc"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede foc oriunde în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "visual-water": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Apă pe jos",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "water spilled on the floor",
+          "a wet floor with a puddle",
+          "liquid spilled on the floor"
+        ],
+        "negative": [
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo",
+          "a photo of a normal restaurant room",
+          "a dry clean floor",
+          "people sitting at tables"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "apă pe jos"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede apă sau lichid vărsat pe jos oriunde în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "visual-door": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Ușă rămasă deschisă",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "an open door",
+          "a door left wide open"
+        ],
+        "negative": [
+          "a closed door",
+          "a photo of a normal restaurant room",
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "ușă deschisă"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede o ușă deschisă în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "refuse-face": {
+    "understood": false,
+    "clarification_ro": "Îmi pare rău, AiVee nu poate recunoaște fețe sau identifica persoane anume, precum Ion. Pot în schimb să vă anunț, de exemplu, când se formează coadă la intrare.",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 0,
+    "explanation_ro": ""
+  },
+  "refuse-age-gender": {
+    "understood": false,
+    "clarification_ro": "Îmi pare rău, AiVee nu poate estima vârsta sau genul persoanelor, deoarece nu judecăm trăsăturile oamenilor. Vă pot anunța, de exemplu, când se formează coadă la intrare.",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 0,
+    "explanation_ro": ""
+  },
+  "gone-glass": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Pahar dispărut de pe masă",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "object_gone",
+        "role": "any",
+        "min_duration_s": 30,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "wine glass",
+          "cup"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 60,
+    "explanation_ro": "Te anunț când un pahar care a stat pe o masă cel puțin 30 de secunde dispare de pe ea."
+  }
+}

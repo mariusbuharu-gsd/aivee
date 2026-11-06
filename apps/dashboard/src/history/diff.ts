@@ -43,6 +43,10 @@ function conditionLabel(kind: string, role: string | undefined): string | null {
       return 'Obiecte fără nimeni';
     case 'object_gone':
       return 'Obiect dispărut';
+    case 'object_present':
+      return 'Obiect apărut';
+    case 'visual':
+      return 'Se vede în imagine';
     default:
       return null;
   }

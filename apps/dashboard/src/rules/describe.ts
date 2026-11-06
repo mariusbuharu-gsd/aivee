@@ -39,6 +39,10 @@ export function describeCondition(c: Condition): string {
       return `rămân obiecte (${(c.objects ?? []).join(', ') || 'vase'}) fără nimeni${duration(c.min_duration_s)}`;
     case 'object_gone':
       return `dispare un obiect (${(c.objects ?? []).join(', ') || 'pahar'}) aflat pe masă${duration(c.min_duration_s)}`;
+    case 'object_present':
+      return `apare un obiect (${(c.objects ?? []).join(', ')})${duration(c.min_duration_s)}`;
+    case 'visual':
+      return `se vede ${c.label_ro?.trim() || c.positive?.[0] || 'situația căutată'}${duration(c.min_duration_s)} (verificat pe imagine înainte de alertă)`;
   }
 }
 
@@ -51,7 +55,9 @@ const ACTION: Record<Rule['action']['type'], string> = {
 /** Romanian one-liner for the "Ce am înțeles" panel. */
 export function describeRule(rule: Rule): string {
   const where =
-    ZONE_TAGS.find((t) => t.value === rule.zone_tag)?.plural ?? `zona „${rule.zone_tag}”`;
+    rule.zone_tag === 'anywhere'
+      ? 'oricare loc din imagine'
+      : (ZONE_TAGS.find((t) => t.value === rule.zone_tag)?.plural ?? `zona „${rule.zone_tag}”`);
   const when = rule.all_of.map(describeCondition).join(' și ');
   return `La ${where}, când ${when} → ${ACTION[rule.action.type]}.`;
 }

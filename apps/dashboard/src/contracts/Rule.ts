@@ -12,7 +12,15 @@ export type ZoneTag = string;
  * @minItems 1
  */
 export type AllOf = [Condition, ...Condition[]];
-export type Kind = 'present' | 'absent' | 'count' | 'pose' | 'objects_unattended' | 'object_gone';
+export type Kind =
+  | 'present'
+  | 'absent'
+  | 'count'
+  | 'pose'
+  | 'objects_unattended'
+  | 'object_gone'
+  | 'object_present'
+  | 'visual';
 export type Role = 'guest' | 'staff' | 'any';
 export type MinDurationS = number;
 export type MinCount = number;
@@ -21,6 +29,26 @@ export type Pose = 'raised_hand' | null;
  * COCO class names
  */
 export type Objects = string[];
+/**
+ * visual: English CLIP prompts of what to find, e.g. ["a photo of fire"]
+ */
+export type Positive = string[];
+/**
+ * visual: English contrast prompts, e.g. ["a photo of a normal room"]
+ */
+export type Negative = string[];
+/**
+ * visual: share of the softmax on the positive prompts needed to count
+ */
+export type Threshold = number;
+/**
+ * visual: score the zone's box ("zone", default) or "frame"
+ */
+export type Crop = ('zone' | 'frame') | null;
+/**
+ * Short Romanian name of what is looked for, e.g. "foc"
+ */
+export type LabelRo = string;
 export type Type = 'telegram' | 'push' | 'webhook';
 export type Target = string | null;
 export type CooldownS = number;
@@ -53,6 +81,11 @@ export interface Rule {
  * - object_gone: an object of `objects` was in the zone for at least `min_duration_s`
  *   and has now been missing for a short confirm window (a few seconds, set by the
  *   edge), so detector flicker does not count as a disappearance
+ * - object_present: an object of `objects` (COCO class names, not "person") has been in
+ *   the zone for at least `min_duration_s` ("a apărut un urs", "cineva are un cuțit")
+ * - visual: a zero-shot image check (CLIP) of the zone crop (or the whole frame) has
+ *   scored the `positive` prompts above `threshold` against the `negative` ones for at
+ *   least `min_duration_s`, continuously ("e foc", "e apă pe jos", "ușa e deschisă")
  */
 export interface Condition {
   kind: Kind;
@@ -61,6 +94,11 @@ export interface Condition {
   min_count?: MinCount;
   pose?: Pose;
   objects?: Objects;
+  positive?: Positive;
+  negative?: Negative;
+  threshold?: Threshold;
+  crop?: Crop;
+  label_ro?: LabelRo;
 }
 export interface Action {
   type: Type;

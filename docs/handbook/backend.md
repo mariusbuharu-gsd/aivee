@@ -15,7 +15,8 @@
 | `make fake-edge SCENARIO=unattended SPEED=10` | scripted people through the real edge pipeline (`unattended`, `hand`, `queue`, `uncleared`); zones and rules come from the retained config |
 | `make test` / `make test-all` / `make lint` | unit / + integration (Docker) / ruff + mypy |
 | `make schema` | regenerate JSON Schema from contracts |
-| `make eval` | Romanian request → rule eval (21 cases, real API calls) |
+| `make eval` | Romanian request → rule eval (30 cases, real API calls) |
+| `uv run python tools/visual_probe.py IMG_OR_VIDEO "positive" … --negative …` | CLIP score of a visual rule's prompts per image / frame (calibration, see „Reguli libere”) |
 | `make keys` / `make telegram-id` | paste API keys into `.env` / detect the Telegram group |
 | `make vapid` | generate the Web Push VAPID keys into `.env` (never printed; kept if already set) |
 
@@ -28,7 +29,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
 | Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
-| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
+| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
 
@@ -162,7 +163,8 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
   `🔴 <b>headline</b>` / explanation / blank / `📍 location · camera · HH:MM` (Europe/Bucharest).
   Names come from the DB (`locations.alert_context`: site, camera, zone, rule, verification); ids
   only when a name is missing. The branch is the rule's most specific condition, in the edge's
-  order: object_gone ("Masa 1: a dispărut un pahar de vin" / "Verifică masa."), pose ("Masa 2: un
+  order: object_gone ("Masa 1: a dispărut un pahar de vin" / "Verifică masa."), visual ("Sala principală:
+  posibil foc"), object_present ("Terasă: a apărut un urs"), pose ("Masa 2: un
   client cheamă"), objects_unattended ("Masa 3 e nedebarasată de 3 min"), count ("Bar: 4 persoane
   așteaptă"), absent ("Masa 1 așteaptă de 1 min" / "Nu a venit nimeni la client."), present; no
   rule → the edge's `summary_ro`. A confirmed vision check's `summary_ro` is the explanation.
@@ -232,7 +234,84 @@ timeout, no image) → normal alert. Results on the opened row (`verification_*`
 ## Request → rule
 `apps/api/.../rules/translator.py`: `messages.parse`, model `claude-opus-5-5`, effort low, `RuleDraft` output;
 fixed instructions first, camera zones last (cache-friendly). Handles refusal / max_tokens / SDK errors with
-Romanian messages. Eval: `evals/nl_to_rule` — 20/20, median 2.4 s (21 cases since `gone-glass`, not re-run yet).
+Romanian messages. Eval: `evals/nl_to_rule` — 30/30, median 2.7 s (2026-11-06, with the open-rule cases);
+each run also writes `drafts.json` (raw model output per case), the source of `tests/fixtures/recorded_drafts.json`.
+
+## Reguli libere (open rules: `object_present`, `visual`)
+
+The owner can ask for anything a camera image shows: „anunță-mă dacă vine un urs”, „dacă e foc”,
+„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă cineva are un cuțit”, „dacă ușa
+rămâne deschisă”. Refusals do not change: faces, identifying people, age, gender, ethnicity and any
+judgement of a person's appearance stay refused; theft is only `object_gone` (an object gone from a table).
+
+**How it works.**
+1. *Translation* (`rules/prompt.py`, situations 6 and 7). A COCO class → `object_present` (`objects`,
+   `min_duration_s` 2). Anything else visible (fire, smoke, water or a spill on the floor, an open door,
+   broken glass, a fight) → `visual`: the model writes 2-3 English CLIP prompts in `positive`, 4-6 in
+   `negative` (always "a photo of a person", "a photo of a room", "a blurry photo" plus the normal look of
+   the place), `min_duration_s` 3, `threshold` 0.5, `crop` "frame" or null, and a Romanian `label_ro`
+   ("foc"). `cooldown_s` 120. `object_present` is preferred when a COCO class fits. The API refuses
+   `object_present` names outside the 80 COCO classes.
+2. *Where.* A rule that names no place (or a place with no zone, „în bucătărie”) gets `zone_tag:
+   "anywhere"` (`ANYWHERE_TAG` in contracts). Nobody draws it: the edge adds a pseudo-zone with id and tag
+   `anywhere`, the whole image, named after the camera, only while an enabled rule uses it
+   (`domain/visual.py: with_whole_frame`). Every person and object in the image is in it, edges included,
+   so the alert reads „Sala principală: posibil foc”, and the API / ingest take the zone name from the
+   summary. The API accepts `anywhere` only for rules made of open conditions.
+3. *Edge, `object_present`* (`zone_state.py`): the YOLO detections already there; an object counts by its
+   base (bottom-centre), with the engine's grace. The detector's class filter (`DEFAULT_CLASSES`) is
+   extended at run time with the classes of enabled `object_present` rules (`YoloDetector.set_extra_classes`,
+   log `detector_classes extra=bear`); unknown names are logged as `detector_unknown_classes`.
+4. *Edge, `visual`* (`domain/visual.py`, `adapters/clip_visual.py`): the `VisualScorer` port is CLIP
+   ViT-B-32 (laion2b), the same weights as the appearance embedder plus its text encoder. Prompt
+   embeddings are computed once per rule load and cached. Score = softmax over [positive…, negative…]
+   with the model's temperature (`logit_scale` = 100); the positive probability is the sum over the
+   positive prompts. Crop: the zone's bounding box, or the whole frame for `crop: "frame"` and for
+   `anywhere`. Scoring runs on one background thread (2 torch threads), one frame in flight, at most
+   `VISUAL_HZ` times per second (default 2) and only while an enabled visual rule exists; the CLIP weights
+   load on the first visual rule (log `visual_model_loaded`). Offline clip runs score inline. A run starts
+   at the first sample at or above `threshold` and holds `min_duration_s`; a sample below it ends the run
+   only once the last one above is more than `GRACE_S` old, so one bad sample does not reset it and the
+   alert closes about `GRACE_S` after the scene stops matching. Capture gaps freeze it like other timers.
+   Log `visual_score ms=… jobs=… scores=<rule>/<zone>=0.97` every 5 s (every sample at DEBUG).
+5. *Both kinds* open and close through the same engine path as the other kinds: cooldown, snapshot on
+   open, arrival, grace, stream gaps. Nothing changes for the existing kinds.
+6. *Verification* (`verify.py`, `VERIFY_ALERTS`): the snapshot is checked with the „visible” question,
+   built from the rule's `prompt_ro` and `label_ro`: „Se vede cu adevărat în imagine: foc? Răspunde da doar
+   dacă este real în scenă, nu pe un ecran, poster sau telefon…”. **This is the main false-alarm guard
+   for open rules**: rejected means no notification. Keep `VERIFY_ALERTS=true` when open rules are on.
+7. *Message* (`alert_message.py`): „🔴 Sala principală: posibil foc” / „Verifică imediat locul.” and
+   „🔴 Terasă: a apărut un urs” / „Verifică locul.”; a confirmed check replaces the second line with its
+   summary. Dashboard: the card reads Unde / Ce caută / Cât timp / Atunci.
+
+**Calibration** (`tools/visual_probe.py`, 2026-11-06; `apps/edge/tests/fixtures/` holds two public-domain
+images, licences in `LICENSES.md`). Fire prompts ["a photo of fire", "flames"] vs the five recommended
+negatives: campfire photo 1.000, cv2-synthetic flames 0.997, the fire pasted over 60 % of a restaurant
+snapshot 0.625, over 30 % 0.058; 16 real face-blurred room and person snapshots 0.000-0.048, bear photo
+0.002. A bear prompt: bear photo 1.000, everything else ≤ 0.036 (but 0.000 for the bear pasted over 40 % of
+a room snapshot, which YOLO finds as `bear` 0.79: use `object_present` for animals and objects). Scores are
+nearly binary (logit scale 100), so the default `threshold` is **0.5** (`VISUAL_THRESHOLD`): well above every
+normal room, below a fire filling half the image. Without the generic negatives the same fire prompts gave
+0.99 on a person crop and 0.99 on a bear: the negatives matter more than the threshold. Re-tune on the real
+camera with the probe on recorded frames before relying on a rule.
+
+**Limits.** CLIP is coarse: fire on a TV or phone screen counts, so does a red-lit crowd (a football photo
+with a red blurred background scored 0.93 for fire); small or distant things are missed (a fire over 30 %
+of the image scored 0.06); it sees one frame, not motion (smoke and a fight are guesses). Every alert is
+double-checked by the vision model before anyone is told, and the alert stays visible as „Neconfirmat”
+when rejected.
+
+**Costs.** Edge: about 0.15 s of CLIP per sample on 2 threads (median 156 ms, p90 219 ms measured with a
+busy machine), so ~0.3 core at `VISUAL_HZ=2`; the pipeline thread pays ~10 µs per frame (hand-off only).
+Text encoding ~0.1 s per new prompt, once per rule load. Memory: the CLIP weights (~600 MB) load only with
+the first visual rule (shared with appearance). Cloud: one translator call per rule and one verification
+call per opened alert (as every other kind); `cooldown_s` 120 bounds the alerts per zone.
+
+| Env | Default | Meaning |
+|---|---|---|
+| `VISUAL_HZ` (edge) | 2 | CLIP scorings per second while a visual rule is enabled; 0 turns visual rules off on this edge |
+| `GRACE_S` (edge) | 5 | also how long a visual or object_present condition may drop before its alert closes |
+| `VISUAL_THRESHOLD` (contracts constant) | 0.5 | default `threshold` of a visual condition |
 
 ## Known gaps
 - Login rate limit is in memory: a restart clears it, and several API processes would count separately.
