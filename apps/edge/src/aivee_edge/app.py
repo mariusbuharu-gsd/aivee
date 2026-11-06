@@ -17,9 +17,10 @@ from typing import Any
 
 from aivee_contracts.geometry import CameraConfig
 
+from aivee_edge.adapters.clip_visual import BackgroundVisualScorer, InlineVisualScorer
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_edge.domain.observation import BBox
-from aivee_edge.domain.ports import FrameSource, Image, PersonDetector
+from aivee_edge.domain.ports import FrameSource, Image, PersonDetector, VisualScorer
 from aivee_edge.domain.role import StaffWeights
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.settings import EdgeSettings
@@ -128,6 +129,7 @@ class Vision:
     pose: PoseEstimator | None
     embedder: Embedder | None
     snapshots: SnapshotMaker | None
+    visual: VisualScorer | None = None
 
 
 def build_vision(settings: EdgeSettings) -> Vision:
@@ -144,6 +146,12 @@ def build_vision(settings: EdgeSettings) -> Vision:
         embedder = (
             CropEmbedder(_adapter("clip_embedder").ClipEmbedder()) if settings.appearance else None
         )
+        visual: VisualScorer | None = None
+        if settings.visual_hz > 0:
+            # Lazy: the CLIP weights load on first use, i.e. when a visual rule arrives, so
+            # this import needs neither torch nor open_clip yet.
+            offline = settings.clip_epoch is not None
+            visual = InlineVisualScorer() if offline else BackgroundVisualScorer()
         snapshots = None
         if settings.blur:
             blur = _adapter("blur")
@@ -159,7 +167,7 @@ def build_vision(settings: EdgeSettings) -> Vision:
         source = ProgressSource(
             source, settings.progress_file, duration_s=getattr(source, "duration_s", None)
         )
-    return Vision(source, detector, pose, embedder, snapshots)
+    return Vision(source, detector, pose, embedder, snapshots, visual)
 
 
 def build_client(settings: EdgeSettings) -> MqttEdgeClient:
@@ -179,6 +187,7 @@ def build_client(settings: EdgeSettings) -> MqttEdgeClient:
 def pipeline_tuning(settings: EdgeSettings) -> dict[str, Any]:
     """Scoring knobs from the environment, passed to the EdgePipeline as keyword args."""
     return {
+        "visual_hz": settings.visual_hz,
         "appearance_low": settings.appearance_low,
         "appearance_high": settings.appearance_high,
         "staff_weights": StaffWeights(
@@ -236,6 +245,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         embedder=vision.embedder,
         profiles=client.profiles,
         snapshots=vision.snapshots,
+        visual=vision.visual,
         commands=client,
         grace_s=settings.grace_s,
         arrive_s=settings.arrive_s,

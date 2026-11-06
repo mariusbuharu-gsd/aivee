@@ -20,6 +20,14 @@ first frame after it. Durations ("neservită de 1 min") therefore count observed
 only. The cooldown is kept in wall time on purpose: it limits how often staff are paged,
 so a gap neither restarts it (swallowing a real call after a long outage) nor lets an
 alert re-open before `cooldown_s` has passed since it last opened.
+
+Open rules (`object_present`, `visual`). `object_present` reads the detector's objects in
+the zone like the other kinds. `visual` conditions are scored by a `VisualScorer` port on
+the frame image, throttled by `VisualWatch` to `visual_hz` and only while some enabled rule
+has one (see `domain/visual.py`); without a scorer they never hold. A rule tagged
+`anywhere` runs on the whole-frame pseudo-zone, which the caller adds to the zones
+(`with_whole_frame`). Both kinds open and close through the same path as every other
+kind: cooldown, snapshot, arrival, capture gaps.
 """
 
 from collections.abc import Callable
@@ -30,8 +38,10 @@ from aivee_contracts.events import AlertEvent, ObjectChange
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Condition, Rule
 
-from aivee_edge.domain.objects import object_ro
+from aivee_edge.domain.objects import object_present_ro, object_ro
 from aivee_edge.domain.observation import Frame
+from aivee_edge.domain.ports import Image, VisualScorer
+from aivee_edge.domain.visual import DEFAULT_VISUAL_HZ, VisualWatch
 from aivee_edge.domain.zone_state import ZoneState
 
 AlertKey = tuple[str, str]  # (rule_id, zone_id)
@@ -69,6 +79,11 @@ def holds(cond: Condition, state: ZoneState, now: float) -> bool:
             return _at_least(state.unattended_for(cond.objects, now), cond.min_duration_s)
         case "object_gone":
             return state.gone(cond.objects, cond.min_duration_s, now) is not None
+        case "object_present":
+            here = state.object_present(cond.objects, now)
+            return here is not None and here[1] >= cond.min_duration_s
+        case "visual":
+            return False  # needs the engine's VisualWatch (see SituationEngine._holds)
 
 
 def object_change(rule: Rule, state: ZoneState, now: float) -> ObjectChange | None:
@@ -89,6 +104,11 @@ def summary_ro(rule: Rule, state: ZoneState, now: float) -> str:
     name = state.zone.name
     if change := object_change(rule, state, now):
         return f"{name}: a dispărut {object_ro(change.objects[0])}"
+    if c := by_kind.get("visual"):
+        return f"{name}: posibil {c.label_ro or rule.name}"
+    if c := by_kind.get("object_present"):
+        here = state.object_present(c.objects, now)
+        return f"{name}: a apărut {object_present_ro(here[0] if here else c.objects[0])}"
     if "pose" in by_kind:
         return f"{name}: un client cheamă"
     if c := by_kind.get("objects_unattended"):
@@ -112,8 +132,12 @@ class SituationEngine:
         grace_s: float = 0.0,
         arrive_s: float | None = None,
         gap_s: float | None = None,
+        visual: VisualScorer | None = None,
+        visual_hz: float = DEFAULT_VISUAL_HZ,
     ) -> None:
         self._grace_s = grace_s
+        self._scorer = visual
+        self.visual = VisualWatch(visual_hz, grace_s)
         self._gap_s = gap_s
         self._last_ts: float | None = None
         self.last_gap_s: float | None = None
@@ -137,6 +161,7 @@ class SituationEngine:
     def update_rules(self, rules: list[Rule]) -> None:
         """Replace the active rule set; alerts of removed rules close on the next step."""
         self._rules = [r for r in rules if r.enabled and r.camera_id == self._camera_id]
+        self._configure_visual()
 
     def update_zones(self, zones: list[Zone]) -> None:
         """Replace the zones. Unchanged zones keep their timers; a moved or re-tagged zone
@@ -149,15 +174,23 @@ class SituationEngine:
             for z in zones
         }
         self._zone_names.update({z.id: z.name for z in zones})
+        self._configure_visual()
+
+    def _configure_visual(self) -> None:
+        prompts = self.visual.configure(self._rules, [s.zone for s in self._states.values()])
+        if self._scorer is not None and self.visual.active and prompts:
+            self._scorer.prepare(prompts)
 
     def zone_states(self) -> dict[str, ZoneState]:
         return dict(self._states)
 
-    def step(self, frame: Frame) -> list[AlertEvent]:
+    def step(self, frame: Frame, image: Image | None = None) -> list[AlertEvent]:
+        """One frame. `image` is needed only by visual conditions (never stored)."""
         now = frame.ts
         self._bridge_gap(now)
         for state in self._states.values():
             state.update(frame)
+        self._score_visual(now, image)
 
         events: list[AlertEvent] = []
         active: set[AlertKey] = set()
@@ -171,7 +204,7 @@ class SituationEngine:
                     self._arrived.add(key)
                     name = state.zone.name
                     events.append(self._event(key, "arrived", now, f"{name}: a venit un angajat"))
-                ok = all(holds(c, state, now) for c in rule.all_of)
+                ok = all(self._holds(rule, i, c, state, now) for i, c in enumerate(rule.all_of))
                 if ok and key not in self._open:
                     last = self._last_opened.get(key)
                     if last is None or now - last >= rule.cooldown_s:
@@ -194,6 +227,22 @@ class SituationEngine:
             events.append(self._close(key, now))
         return events
 
+    def _holds(self, rule: Rule, i: int, c: Condition, state: ZoneState, now: float) -> bool:
+        if c.kind == "visual":
+            return self.visual.holds((rule.id, state.zone.id, i), c, now)
+        return holds(c, state, now)
+
+    def _score_visual(self, now: float, image: Image | None) -> None:
+        """Hand the frame to the scorer when due, then take in whatever it has finished.
+        Never touches the scorer while no enabled rule has a visual condition."""
+        if self._scorer is None or not self.visual.active:
+            return
+        due = image is not None and self.visual.due(now)
+        if due and self._scorer.submit(now, image, self.visual.jobs()):
+            self.visual.submitted(now)
+        for sample in self._scorer.collect():
+            self.visual.observe(sample)
+
     def _bridge_gap(self, now: float) -> None:
         last, self._last_ts = self._last_ts, now
         self.last_gap_s = None
@@ -203,6 +252,7 @@ class SituationEngine:
         self.last_gap_s = gap
         for state in self._states.values():
             state.shift(gap)
+        self.visual.shift(gap)
         for key in self._opened_at:
             self._opened_at[key] += gap
 

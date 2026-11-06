@@ -14,6 +14,11 @@ they change, so edits in the dashboard take effect without a restart.
 A capture gap longer than `stream_gap_s(grace_s)` (the stream stalled or reconnected)
 is bridged by the engine, so it does not count as everyone leaving (E26); each bridged
 gap is logged as `stream_gap seconds=...`.
+
+Open rules: a rule tagged `anywhere` gets the whole-frame pseudo-zone (named after the
+camera); `object_present` rules add their COCO classes to the detector (when it supports
+`set_extra_classes`); `visual` rules are scored by the optional `VisualScorer` on the
+frame image, throttled to `visual_hz` (see `domain/visual.py`).
 """
 
 import logging
@@ -23,7 +28,7 @@ from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from aivee_contracts.detections import DetectedObject, DetectedTrack, Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfiles, StaffSuggestion
@@ -42,10 +47,12 @@ from aivee_edge.domain.ports import (
     FrameSource,
     Image,
     PersonDetector,
+    VisualScorer,
 )
 from aivee_edge.domain.pose import Keypoint, is_raised_hand
 from aivee_edge.domain.role import RoleClassifier, StaffWeights
 from aivee_edge.domain.stance import is_standing
+from aivee_edge.domain.visual import DEFAULT_VISUAL_HZ, with_whole_frame
 from aivee_edge.metrics import MetricsMeter, cpu_percent
 
 log = logging.getLogger("aivee_edge.pipeline")
@@ -60,6 +67,27 @@ class PoseEstimator(Protocol):
     ) -> Mapping[int, Sequence[Keypoint]]:
         """COCO-17 keypoints (normalised x, y, confidence) per track id of `tracks`."""
         ...
+
+
+@runtime_checkable
+class ExtraClasses(Protocol):
+    """A detector that can add COCO classes asked for by `object_present` rules."""
+
+    def set_extra_classes(self, extra: Sequence[str]) -> None: ...
+
+
+def extra_classes(rules: Sequence[Rule]) -> list[str]:
+    """COCO classes of the enabled `object_present` conditions, sorted."""
+    return sorted(
+        {
+            label
+            for r in rules
+            if r.enabled
+            for c in r.all_of
+            if c.kind == "object_present"
+            for label in c.objects
+        }
+    )
 
 
 class Embedder(Protocol):
@@ -132,6 +160,8 @@ class EdgePipeline:
         id_factory: Callable[[], str] = _new_id,
         to_datetime: Callable[[float], datetime] = utc_from_timestamp,
         cpu: Callable[[], float] = cpu_percent,
+        visual: VisualScorer | None = None,
+        visual_hz: float = DEFAULT_VISUAL_HZ,
     ) -> None:
         self._source = source
         self._detector = detector
@@ -165,6 +195,8 @@ class EdgePipeline:
             grace_s=grace_s,
             arrive_s=arrive_s,
             gap_s=stream_gap_s(grace_s),
+            visual=visual,
+            visual_hz=visual_hz,
         )
         self.buffer = TrajectoryBuffer()
         weights = staff_weights or StaffWeights()
@@ -199,10 +231,16 @@ class EdgePipeline:
             self._rules = rules
             self.engine.update_rules(rules)
             log.info("rules reloaded count=%d ids=%s", len(rules), ",".join(r.id for r in rules))
+            if isinstance(self._detector, ExtraClasses):
+                mine = [r for r in rules if r.camera_id == self._camera_id]
+                self._detector.set_extra_classes(extra_classes(mine))
         try:
-            zones = list(self._config.camera().zones)
+            camera = self._config.camera()
+            zones, camera_name = list(camera.zones), camera.name
         except LookupError:
-            zones = []
+            zones, camera_name = [], self._camera_id
+        mine = [r for r in rules if r.camera_id == self._camera_id]
+        zones = with_whole_frame(zones, mine, camera_name)
         if zones != self._zones:
             self._zones = zones
             self.engine.update_zones(zones)
@@ -268,7 +306,7 @@ class EdgePipeline:
             for t in frame.tracks
         }
         frame, suggestions = self.classifier.assign(frame, features, appearance)
-        events = self.engine.step(frame)
+        events = self.engine.step(frame, image)
         if self.engine.last_gap_s is not None:
             log.info("stream_gap seconds=%.1f", self.engine.last_gap_s)
 
