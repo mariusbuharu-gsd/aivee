@@ -1,7 +1,7 @@
 """settable service target per location: sites.service_target_s
 
-Revision ID: 0011_location_service_target
-Revises: 0010_telegram_links
+Revision ID: 0012_location_service_target
+Revises: 0011_suggestion_snapshot
 Create Date: 2026-11-06
 
 The owner's goal for how long a guest may wait for staff after an alert (Metrici draws it
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0011_location_service_target"
-down_revision: str | None = "0010_telegram_links"
+revision: str = "0012_location_service_target"
+down_revision: str | None = "0011_suggestion_snapshot"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
