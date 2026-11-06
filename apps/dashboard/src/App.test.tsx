@@ -147,11 +147,13 @@ describe('App with the mock API', () => {
     const user = userEvent.setup();
     renderApp('/dispozitive');
     await screen.findByRole('heading', { name: 'Sala principală' });
+    await user.click(screen.getByRole('button', { name: 'Adaugă cameră' }));
     expect(screen.getByLabelText('Id cameră')).toHaveValue('cam-01');
     await user.type(screen.getByLabelText('Nume'), 'Bar');
     await user.type(screen.getByLabelText(/Adresa sursei/), 'rtsp://bar/1');
     await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
     expect(await screen.findByRole('heading', { name: /Zone · Bar/ })).toBeInTheDocument();
+    expect(screen.getByText('Camera „Bar” a fost adăugată')).toBeInTheDocument();
     expect(screen.getByLabelText('Încarcă o imagine din cameră')).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: 'Reguli' }));
@@ -163,7 +165,7 @@ describe('App with the mock API', () => {
     const panel = await screen.findByRole('region', { name: 'Ce am înțeles' });
     const before = screen.getAllByRole('heading', { level: 3 }).length;
     await user.click(within(panel).getByRole('button', { name: /Confirmă și salvează/ }));
-    expect(await screen.findByText(/a fost salvată și trimisă/)).toBeInTheDocument();
+    expect(await screen.findByText(/a fost salvată și pornită/)).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 3 }).length).toBe(before);
   });
 });

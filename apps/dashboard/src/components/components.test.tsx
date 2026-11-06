@@ -125,6 +125,17 @@ describe('AddCameraForm', () => {
     expect(api.createCamera).toHaveBeenCalledWith(sent);
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining(sent)));
   });
+
+  it('says next to the field what is wrong, before calling the API', async () => {
+    const user = userEvent.setup();
+    const { api } = renderWithApi(<AddCameraForm />);
+    await user.clear(screen.getByLabelText('Id cameră'));
+    await user.type(screen.getByLabelText('Id cameră'), 'cam 01');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    expect(api.createCamera).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Nume')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Id cameră')).toHaveAccessibleDescription(/Fără spații/);
+  });
 });
 
 describe('AlertFeed', () => {

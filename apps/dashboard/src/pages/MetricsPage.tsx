@@ -1,47 +1,25 @@
-import { MetricsStrip } from '../components/MetricsStrip';
+import { Link } from 'react-router';
+import { useAuth } from '../auth/context';
 import { ServiceStats } from '../components/ServiceStats';
-import { useLiveData } from '../state/context';
 
+/** How fast guests are served. Device numbers (FPS, CPU) live on Dispozitive. */
 export function MetricsPage() {
-  const { metrics } = useLiveData();
+  const { can } = useAuth();
   return (
     <div className="page">
       <header className="page-head">
         <h1>Metrici</h1>
       </header>
       <ServiceStats />
-      <MetricsStrip metrics={metrics} />
-      <section aria-labelledby="per-device-h">
-        <h2 id="per-device-h">Pe dispozitiv</h2>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th scope="col">Dispozitiv</th>
-                <th scope="col">FPS</th>
-                <th scope="col">Cadre verificate</th>
-                <th scope="col">CPU</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(metrics?.devices ?? []).map((d) => (
-                <tr key={d.device}>
-                  <th scope="row" className="mono">
-                    {d.device}
-                  </th>
-                  <td className="mono">{d.fps.toFixed(1)}</td>
-                  <td className="mono">{(d.verified_ratio * 100).toFixed(1)}%</td>
-                  <td className="mono">{Math.round(d.cpu_percent)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {can('devices.manage') && (
         <p className="muted small">
-          Cadre verificate = procentul de cadre trimise modelului greu. Restul rulează doar detecția
-          rapidă, pe dispozitiv.
+          Cifrele camerelor și ale dispozitivelor (FPS, procesor) sunt pe{' '}
+          <Link to="/dispozitive" className="link">
+            Dispozitive
+          </Link>
+          .
         </p>
-      </section>
+      )}
     </div>
   );
 }

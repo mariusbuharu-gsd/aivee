@@ -20,7 +20,7 @@ export function Dialog({
   tone?: 'neutral' | 'danger';
   onClose: () => void;
   children?: ReactNode;
-  actions: ReactNode;
+  actions?: ReactNode;
   /** `dialog-sheet` docks it to the bottom on phones. */
   className?: string;
 }) {
@@ -72,7 +72,7 @@ export function Dialog({
           {title}
         </h2>
         {children}
-        <div className="dialog-actions">{actions}</div>
+        {actions && <div className="dialog-actions">{actions}</div>}
       </div>
     </dialog>
   );
