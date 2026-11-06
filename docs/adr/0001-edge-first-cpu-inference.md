@@ -1,6 +1,6 @@
 # 1. Edge-first CPU inference with OpenVINO
 
-Date: 2026-11-06 · Status: accepted · Decision log: D6
+Date: 2026-11-06 · Status: accepted, partly superseded by [ADR 0011](0011-cloud-or-edge-analysis.md) · Decision log: D6
 
 ## Context
 
