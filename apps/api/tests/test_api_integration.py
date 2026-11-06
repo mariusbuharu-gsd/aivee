@@ -188,6 +188,24 @@ async def test_zone_errors(api: httpx.AsyncClient) -> None:
     assert r.json()["detail"]["message_ro"]
 
 
+async def test_overlapping_zones_are_saved_with_a_warning(api: httpx.AsyncClient) -> None:
+    await _camera(api)
+    redrawn = {**TABLE, "id": "t2", "name": "Masa 2", "polygon": [[0.1, 0], [0.4, 0], [0.4, 0.3]]}
+
+    r = await api.put("/api/cameras/cam1/zones", params={"warnings": "true"}, json=[TABLE, redrawn])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [z["id"] for z in body["zones"]] == ["t1", "t2"]
+    assert body["warnings_ro"] == ["Zonele «Masa 1» și «Masa 2» se suprapun"]
+    assert [z["id"] for z in (await api.get("/api/cameras/cam1/zones")).json()] == ["t1", "t2"]
+
+    r = await api.put("/api/cameras/cam1/zones", params={"warnings": "true"}, json=[TABLE, DOOR])
+    assert r.json()["warnings_ro"] == []
+    # Without the flag the body stays the plain list the dashboard reads.
+    r = await api.put("/api/cameras/cam1/zones", json=[TABLE, redrawn])
+    assert [z["id"] for z in r.json()] == ["t1", "t2"]
+
+
 async def test_camera_online_follows_device_status(api: httpx.AsyncClient, sessions: Any) -> None:
     await _camera(api)
     async with sessions() as s:
