@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from aivee_edge import app
 from aivee_edge.__main__ import parse
+from aivee_edge.domain.role import StaffWeights
 from aivee_edge.settings import EdgeSettings
 
 
@@ -35,6 +36,39 @@ def test_rotate_flag_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_rotate_setting_accepts_only_right_angles() -> None:
     with pytest.raises(ValueError):
         EdgeSettings(rotate=45, _env_file=None)  # type: ignore[call-arg]
+
+
+def test_appearance_thresholds_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    defaults = EdgeSettings(_env_file=None)  # type: ignore[call-arg]
+    assert (defaults.appearance_low, defaults.appearance_high) == (0.70, 0.82)
+    monkeypatch.setenv("APPEARANCE_LOW", "0.65")
+    monkeypatch.setenv("APPEARANCE_HIGH", "0.8")
+    s = EdgeSettings(_env_file=None)  # type: ignore[call-arg]
+    assert (s.appearance_low, s.appearance_high) == (0.65, 0.8)
+    assert app.pipeline_tuning(s)["appearance_low"] == 0.65
+    assert app.pipeline_tuning(s)["appearance_high"] == 0.8
+
+
+def test_staff_weights_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    defaults = app.pipeline_tuning(EdgeSettings(_env_file=None))  # type: ignore[call-arg]
+    assert defaults["staff_weights"] == StaffWeights(0.60, 0.25, 0.15)
+    monkeypatch.setenv("STAFF_W_APPEARANCE", "0.5")
+    monkeypatch.setenv("STAFF_W_STANDING", "0.3")
+    monkeypatch.setenv("STAFF_W_BEHAVIOUR", "0.2")
+    tuned = app.pipeline_tuning(EdgeSettings(_env_file=None))  # type: ignore[call-arg]
+    assert tuned["staff_weights"] == StaffWeights(0.5, 0.3, 0.2)
+
+
+def test_staff_weights_must_be_non_negative_and_not_all_zero() -> None:
+    with pytest.raises(ValueError):
+        EdgeSettings(staff_w_standing=-0.1, _env_file=None)  # type: ignore[call-arg]
+    with pytest.raises(ValueError):
+        EdgeSettings(staff_w_appearance=0, staff_w_standing=0, staff_w_behaviour=0, _env_file=None)  # type: ignore[call-arg]
+
+
+def test_appearance_high_must_exceed_low() -> None:
+    with pytest.raises(ValueError):
+        EdgeSettings(appearance_low=0.8, appearance_high=0.8, _env_file=None)  # type: ignore[call-arg]
 
 
 def test_build_vision_passes_rotation_to_the_capture_adapter(

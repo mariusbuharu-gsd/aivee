@@ -1,6 +1,7 @@
 """The edge application loop: one `step` per frame, every stage behind a port.
 
-source.read → detector.detect → (pose → raised hand, table zones only) → trajectory →
+source.read → detector.detect → (pose → raised hand at tables; stance from pose or box
+shape) → trajectory + stance ratio →
 behaviour features → (appearance vs staff profiles) → roles → situation engine →
 publish alerts (with snapshot on open), staff suggestions (with a person crop), live
 detections (<= 5 Hz) and periodic metrics. Owner commands (confirm/reject staff) are
@@ -24,7 +25,7 @@ from aivee_contracts.events import AlertEvent, Metrics, StaffProfiles, StaffSugg
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Rule
 
-from aivee_edge.domain.appearance import appearance_score
+from aivee_edge.domain.appearance import HIGH_SIMILARITY, LOW_SIMILARITY, appearance_score
 from aivee_edge.domain.behaviour import BehaviourFeatures, TrajectoryBuffer
 from aivee_edge.domain.engine import SituationEngine, utc_from_timestamp
 from aivee_edge.domain.geometry import foot_point, point_in_polygon
@@ -38,7 +39,8 @@ from aivee_edge.domain.ports import (
     PersonDetector,
 )
 from aivee_edge.domain.pose import Keypoint, is_raised_hand
-from aivee_edge.domain.role import RoleClassifier
+from aivee_edge.domain.role import RoleClassifier, StaffWeights
+from aivee_edge.domain.stance import is_standing
 from aivee_edge.metrics import MetricsMeter, cpu_percent
 
 log = logging.getLogger("aivee_edge.pipeline")
@@ -116,6 +118,9 @@ class EdgePipeline:
         grace_s: float = 1.5,
         arrive_s: float | None = 5.0,
         embed_interval_s: float = 2.0,
+        appearance_low: float = LOW_SIMILARITY,
+        appearance_high: float = HIGH_SIMILARITY,
+        staff_weights: StaffWeights | None = None,
         forget_after_s: float = 5.0,
         metrics_interval_s: float = 5.0,
         detections_interval_s: float = 0.2,
@@ -138,6 +143,8 @@ class EdgePipeline:
         self._detections_interval_s = detections_interval_s
         self._detections_at = -float("inf")
         self._embed_interval_s = embed_interval_s
+        self._appearance_low = appearance_low
+        self._appearance_high = appearance_high
         self._forget_after_s = forget_after_s
 
         self._rules: list[Rule] = []
@@ -154,7 +161,14 @@ class EdgePipeline:
             arrive_s=arrive_s,
         )
         self.buffer = TrajectoryBuffer()
-        self.classifier = RoleClassifier(camera_id, id_factory)
+        weights = staff_weights or StaffWeights()
+        self.classifier = RoleClassifier(
+            camera_id,
+            id_factory,
+            w_appearance=weights.appearance,
+            w_standing=weights.standing,
+            w_behaviour=weights.behaviour,
+        )
         self.meter = MetricsMeter(device, metrics_interval_s, cpu)
         self._last_seen: dict[int, float] = {}
         self._appearance: dict[int, float | None] = {}
@@ -236,8 +250,9 @@ class EdgePipeline:
         self.apply_commands()
 
         frame = self._detector.detect(image, ts)
-        frame, posed = self._raised_hands(image, frame)
-        appearance, embedded = self._appearance_scores(image, frame)
+        centroids = self._centroids()
+        frame, posed = self._poses(image, frame, everyone=bool(centroids))
+        appearance, embedded = self._appearance_scores(image, frame, centroids)
 
         self.buffer.observe(frame)
         features: dict[int, BehaviourFeatures] = {
@@ -304,14 +319,20 @@ class EdgePipeline:
         p = foot_point(track.bbox)
         return any(point_in_polygon(p, poly) for poly in self._tables.values())
 
-    def _raised_hands(self, image: Image, frame: Frame) -> tuple[Frame, bool]:
-        """Raised hand counts only for people at a table; pose runs only if someone is."""
+    def _poses(self, image: Image, frame: Frame, *, everyone: bool) -> tuple[Frame, bool]:
+        """Raised hands (table zones only) and per-frame stance.
+
+        Pose runs for people at a table (raised hand), and for everyone while appearance
+        scoring is active, because the standing signal only counts next to appearance.
+        Without keypoints the stance falls back to the box shape.
+        """
         seated = [t for t in frame.tracks if self._in_table(t)]
         at_table = {t.track_id for t in seated}
+        targets = list(frame.tracks) if everyone else seated
         keypoints: Mapping[int, Sequence[Keypoint]] = {}
         posed = False
-        if self._pose is not None and seated:
-            keypoints = self._pose.estimate(image, seated)
+        if self._pose is not None and targets:
+            keypoints = self._pose.estimate(image, targets)
             posed = True
         tracks = tuple(
             replace(
@@ -319,17 +340,23 @@ class EdgePipeline:
                 raised_hand=t.track_id in at_table
                 and t.track_id in keypoints
                 and is_raised_hand(keypoints[t.track_id]),
+                standing=is_standing(keypoints.get(t.track_id), t.bbox, frame.aspect),
             )
             for t in frame.tracks
         )
         return replace(frame, tracks=tracks), posed
 
+    def _centroids(self) -> list[list[float]]:
+        """Staff profile centroids when appearance scoring is possible, else []."""
+        if self._embedder is None or self._profiles is None:
+            return []
+        profiles = self._profiles()
+        return [list(p.centroid) for p in profiles.profiles] if profiles else []
+
     def _appearance_scores(
-        self, image: Image, frame: Frame
+        self, image: Image, frame: Frame, centroids: Sequence[Sequence[float]]
     ) -> tuple[dict[int, float | None], bool]:
         """Appearance score per track, re-embedding each track at most every interval."""
-        profiles = self._profiles() if self._profiles is not None else None
-        centroids = [p.centroid for p in profiles.profiles] if profiles else []
         if self._embedder is None or not centroids:
             return {}, False
         embedded = False
@@ -341,7 +368,9 @@ class EdgePipeline:
             embedded = True
             self._embedded_at[t.track_id] = frame.ts
             if vector is not None:
-                self._appearance[t.track_id] = appearance_score(vector, centroids)
+                self._appearance[t.track_id] = appearance_score(
+                    vector, centroids, low=self._appearance_low, high=self._appearance_high
+                )
         return {t.track_id: self._appearance.get(t.track_id) for t in frame.tracks}, embedded
 
     def _publish_detections(self, frame: Frame) -> None:
@@ -379,6 +408,10 @@ class EdgePipeline:
             self._appearance.pop(tid, None)
             self._embedded_at.pop(tid, None)
             log.info("track_gone track=%d", tid)
+
+    def appearance_of(self, track_id: int) -> float | None:
+        """Last appearance score of a track (None: not embedded or no profiles)."""
+        return self._appearance.get(track_id)
 
     def tracked_ids(self) -> set[int]:
         return set(self._last_seen)

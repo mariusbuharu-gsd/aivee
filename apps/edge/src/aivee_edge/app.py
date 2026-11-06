@@ -19,6 +19,7 @@ from aivee_contracts.geometry import CameraConfig
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_edge.domain.observation import BBox
 from aivee_edge.domain.ports import FrameSource, Image, PersonDetector
+from aivee_edge.domain.role import StaffWeights
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.settings import EdgeSettings
 
@@ -151,6 +152,19 @@ def build_client(settings: EdgeSettings) -> MqttEdgeClient:
     )
 
 
+def pipeline_tuning(settings: EdgeSettings) -> dict[str, Any]:
+    """Scoring knobs from the environment, passed to the EdgePipeline as keyword args."""
+    return {
+        "appearance_low": settings.appearance_low,
+        "appearance_high": settings.appearance_high,
+        "staff_weights": StaffWeights(
+            appearance=settings.staff_w_appearance,
+            standing=settings.staff_w_standing,
+            behaviour=settings.staff_w_behaviour,
+        ),
+    }
+
+
 def install_stop_signals(stop: threading.Event) -> None:
     def handler(signum: int, _frame: FrameType | None) -> None:
         log.info("signal=%s stopping", signal.Signals(signum).name)
@@ -191,6 +205,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         arrive_s=settings.arrive_s,
         metrics_interval_s=settings.metrics_interval_s,
         to_datetime=wall_clock,
+        **pipeline_tuning(settings),
     )
     log.info(
         "edge started site=%s device=%s camera=%s source=%s",

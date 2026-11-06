@@ -55,6 +55,10 @@ def test_empty_result() -> None:
     assert frame.tracks == () and frame.objects == () and frame.ts == 2.0
 
 
+def test_frame_carries_the_image_aspect() -> None:
+    assert map_results([], [], None, [], NAMES, 640, 480).aspect == pytest.approx(4 / 3)
+
+
 def test_class_ids_for_excludes_dining_table_and_rejects_unknown() -> None:
     assert "dining table" not in DEFAULT_CLASSES
     assert class_ids_for(NAMES, ["person", "cup"]) == [0, 41]

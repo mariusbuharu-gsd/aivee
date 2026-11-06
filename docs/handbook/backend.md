@@ -28,7 +28,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` |
 | Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `VAPID_*` |
-| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE` |
+| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR` |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
 
@@ -36,7 +36,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 
 | Service | Code | Role |
 |---|---|---|
-| edge | `apps/edge` | camera → YOLO11n + ByteTrack → pose (table zones) → behaviour + CLIP → role → situation engine (opened / arrived / closed) → blurred snapshot → MQTT; live boxes on `detections` |
+| edge | `apps/edge` | camera → YOLO11n + ByteTrack → pose (table zones; everyone while appearance is scored) → stance + behaviour + CLIP → role → situation engine (opened / arrived / closed) → blurred snapshot → MQTT; live boxes on `detections` |
 | ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners |
 | api | `apps/api` | REST + WS; accounts, cookie sessions, roles per location, invites, audit; publishes retained edge state and staff commands; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
@@ -126,7 +126,19 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
 
 ## Edge pipeline facts
 - INT8 OpenVINO on the i7-1355U: ~20 FPS detection, ~12 FPS with pose; phone stream 8–11 FPS in practice.
-- Engine `grace_s=1.5`; tracks forgotten after 5 s; role hysteresis 0.7 / 0.4; behaviour 0.5 + appearance 0.5.
+- Engine `grace_s=1.5`; tracks forgotten after 5 s; role hysteresis 0.7 / 0.4 (staff at ≥ 0.7, back to guest at ≤ 0.4); owner confirm / reject overrides.
+- Staff score (`domain/role.py`): `(w_a·appearance + w_s·standing + w_b·behaviour) / Σ w of the signals available`,
+  defaults `STAFF_W_APPEARANCE=0.60`, `STAFF_W_STANDING=0.25`, `STAFF_W_BEHAVIOUR=0.15`. Standing counts only next to
+  appearance: with no appearance score (no profiles, or not embedded yet) the score is behaviour alone, so standing
+  never makes anyone staff by itself. Enrolled staff standing still ≈ 0.85; a guest who stands up but does not look
+  like staff tops out at 0.40.
+- Appearance (`domain/appearance.py`): best CLIP cosine to a profile mapped linearly from `APPEARANCE_LOW=0.70`
+  (→ 0) to `APPEARANCE_HIGH=0.82` (→ 1). Measured live (ViT-B-32 laion2b, 9-photo profile): the enrolled person
+  0.82–0.91, seated guests in other clothes 0.60–0.64; the old 0.18–0.30 band saturated everyone at 1.
+- Standing (`domain/stance.py`): per frame, the knee angle (hip–knee–ankle, pixel space) of the straightest visible
+  leg: ≥ 150° standing (also mid-stride), ≤ 120° seated. Without a decisive leg, the box's pixel height / width:
+  ≥ 2.2 standing, ≤ 1.6 seated, else unknown. The trajectory buffer keeps 3 s of known stances per track;
+  `standing_ratio` = standing share × min(1, known span / 2 s), so a guest who just stood up does not count at once.
 - `arrived`: a staff track's foot point in the alert's zone ≥ `ARRIVE_S` (default 5 s), once per alert.
 - Appearance is off by default (`APPEARANCE` / `--appearance`), ~0.6 s per crop, at most once per 2 s per person.
 - `ROTATE=90` for a sideways phone (D13). Live alert time is wall clock.

@@ -21,6 +21,10 @@ JITTER = 0.01
 """Displacements below this (normalised units) are detector noise, not movement."""
 STATIONARY_SPEED = 0.02
 """Below this speed (units/s) a sample interval counts as standing still."""
+STANDING_WINDOW_S = 3.0
+"""Stance samples kept per track: a guest must stand for a while before it counts."""
+STANDING_FULL_S = 2.0
+"""Known-stance history needed for a full standing ratio; less scales it toward 0."""
 
 # behaviour_score weights (sum to 1). Tables visited is the strongest staff signal, then
 # how far the person walks; time spent moving and entering a staff zone add the rest.
@@ -55,6 +59,9 @@ class BehaviourFeatures:
     """Share of sample intervals slower than `STATIONARY_SPEED`; 1.0 with no movement data."""
     in_staff_zone: bool
     """The foot point was inside a staff zone (kitchen, bar) at least once."""
+    standing_ratio: float | None = None
+    """Share of the last `STANDING_WINDOW_S` with a known stance spent standing, scaled by
+    coverage (known span / `STANDING_FULL_S`); None with no known stance."""
 
 
 def foot_point(bbox: BBox) -> Point:
@@ -80,6 +87,7 @@ class TrajectoryBuffer:
     def __init__(self, window_s: float = WINDOW_S) -> None:
         self._window_s = window_s
         self._tracks: dict[int, deque[Sample]] = {}
+        self._stances: dict[int, deque[tuple[float, bool]]] = {}
 
     def add(self, track_id: int, ts: float, x: float, y: float) -> None:
         samples = self._tracks.setdefault(track_id, deque())
@@ -87,13 +95,30 @@ class TrajectoryBuffer:
         while samples and samples[0].ts < ts - self._window_s:
             samples.popleft()
 
+    def add_stance(self, track_id: int, ts: float, standing: bool | None) -> None:
+        stances = self._stances.setdefault(track_id, deque())
+        if standing is not None:
+            stances.append((ts, standing))
+        while stances and stances[0][0] < ts - STANDING_WINDOW_S:
+            stances.popleft()
+
     def observe(self, frame: Frame) -> None:
         for track in frame.tracks:
             x, y = foot_point(track.bbox)
             self.add(track.track_id, frame.ts, x, y)
+            self.add_stance(track.track_id, frame.ts, track.standing)
 
     def forget(self, track_id: int) -> None:
         self._tracks.pop(track_id, None)
+        self._stances.pop(track_id, None)
+
+    def standing_ratio(self, track_id: int) -> float | None:
+        stances = self._stances.get(track_id)
+        if not stances:
+            return None
+        standing = sum(1 for _, s in stances if s) / len(stances)
+        coverage = _clamp((stances[-1][0] - stances[0][0]) / STANDING_FULL_S)
+        return standing * coverage
 
     def samples(self, track_id: int) -> list[Sample]:
         return list(self._tracks.get(track_id, ()))
@@ -106,8 +131,9 @@ class TrajectoryBuffer:
     ) -> BehaviourFeatures:
         samples = self.samples(track_id)
         staff_zones = staff_zones or {}
+        standing = self.standing_ratio(track_id)
         if not samples:
-            return BehaviourFeatures(0.0, 0.0, frozenset(), 1.0, False)
+            return BehaviourFeatures(0.0, 0.0, frozenset(), 1.0, False, standing)
 
         duration = samples[-1].ts - samples[0].ts
         points = [(s.x, s.y) for s in samples]
@@ -143,6 +169,7 @@ class TrajectoryBuffer:
             zones_visited=visited,
             stationary_ratio=still / intervals if intervals else 1.0,
             in_staff_zone=in_staff,
+            standing_ratio=standing,
         )
 
 

@@ -1,8 +1,16 @@
-"""Guest or staff? Fuses behaviour and appearance into a stable role per track.
+"""Guest or staff? Fuses appearance, stance and behaviour into a stable role per track.
 
-`staff_score = w_b·behaviour + w_a·appearance` (behaviour only when there is no
-appearance score). Hysteresis keeps roles from flickering: a track becomes staff at
->= 0.7 and turns back into a guest only at <= 0.4. The owner has the last word:
+    staff_score = (w_a·appearance + w_s·standing + w_b·behaviour) / (sum of the weights used)
+
+with defaults w_a = 0.60, w_s = 0.25, w_b = 0.15, normalised over the signals that are
+available (standing is unknown until stance has been seen; behaviour needs a track).
+Standing only counts next to appearance: with no appearance score (no profiles enrolled,
+or not embedded yet) the score is behaviour alone, as before the standing signal, so a
+standing person is never staff just for standing. A guest who stands up but looks
+nothing like staff tops out at w_s + w_b = 0.40 < 0.7.
+
+Hysteresis keeps roles from flickering: a track becomes staff at >= 0.7 and turns back
+into a guest only at <= 0.4. The owner has the last word:
 `confirm` / `reject` override the score for that track. The first time a track
 becomes staff on its own, a `StaffSuggestion` asks the owner to confirm.
 """
@@ -15,13 +23,28 @@ from aivee_contracts.events import StaffSuggestion
 from aivee_edge.domain.behaviour import BehaviourFeatures, behaviour_score
 from aivee_edge.domain.observation import Frame, PersonRole
 
-W_BEHAVIOUR = 0.5
-W_APPEARANCE = 0.5
-"""Equal weights: neither a uniform-like outfit nor walking around alone makes staff."""
+W_APPEARANCE = 0.60
+"""Appearance vs enrolled staff photos: the strongest signal once calibrated."""
+W_STANDING = 0.25
+"""Share of the last few seconds spent standing: staff stand, guests sit."""
+W_BEHAVIOUR = 0.15
+"""Walking between tables; a waiter standing at one table scores ~0 here."""
 BECOME_STAFF = 0.7
 BECOME_GUEST = 0.4
 
 FALLBACK_REASON = "se comportă ca personalul"
+STANDING_REASON = 0.3
+"""Standing ratio from which the reason mentions "stă în picioare". Low on purpose: with
+appearance 1 a track crosses 0.7 at a standing ratio of 0.4, while its window still fills."""
+
+
+@dataclass(frozen=True)
+class StaffWeights:
+    """Fusion weights (env `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`)."""
+
+    appearance: float = W_APPEARANCE
+    standing: float = W_STANDING
+    behaviour: float = W_BEHAVIOUR
 
 
 @dataclass
@@ -49,6 +72,9 @@ def reason_ro(features: BehaviourFeatures | None, appearance: float | None) -> s
             parts.append("intră în zona personalului")
     if appearance is not None and appearance >= 0.5:
         parts.append("seamănă cu personalul")
+    standing = features.standing_ratio if features is not None else None
+    if appearance is not None and standing is not None and standing >= STANDING_REASON:
+        parts.append("stă în picioare")
     return ", ".join(parts) or FALLBACK_REASON
 
 
@@ -60,27 +86,38 @@ class RoleClassifier:
         camera_id: str,
         new_id: Callable[[], str],
         *,
-        w_behaviour: float = W_BEHAVIOUR,
         w_appearance: float = W_APPEARANCE,
+        w_standing: float = W_STANDING,
+        w_behaviour: float = W_BEHAVIOUR,
         become_staff: float = BECOME_STAFF,
         become_guest: float = BECOME_GUEST,
     ) -> None:
         self._camera_id = camera_id
         self._new_id = new_id
-        self._w_b = w_behaviour
         self._w_a = w_appearance
+        self._w_s = w_standing
+        self._w_b = w_behaviour
         self._become_staff = become_staff
         self._become_guest = become_guest
         self._tracks: dict[int, _TrackState] = {}
 
     def fuse(self, features: BehaviourFeatures | None, appearance: float | None) -> float:
         """staff_score in [0, 1] from whichever signals are available."""
-        if features is None:
-            return appearance if appearance is not None else 0.0
-        behaviour = behaviour_score(features)
+        behaviour = behaviour_score(features) if features is not None else None
         if appearance is None:
-            return behaviour
-        return (self._w_b * behaviour + self._w_a * appearance) / (self._w_b + self._w_a)
+            return behaviour if behaviour is not None else 0.0
+        standing = features.standing_ratio if features is not None else None
+        terms = [
+            (w, v)
+            for w, v in (
+                (self._w_a, appearance),
+                (self._w_s, standing),
+                (self._w_b, behaviour),
+            )
+            if v is not None
+        ]
+        total = sum(w for w, _ in terms)
+        return sum(w * v for w, v in terms) / total if total > 0 else 0.0
 
     def confirm(self, track_id: int) -> None:
         self._state(track_id).decision = "staff"

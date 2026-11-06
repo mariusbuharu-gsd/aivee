@@ -21,6 +21,8 @@ class TrackObs:
     role: PersonRole = "guest"
     staff_score: float = 0.0
     raised_hand: bool = False
+    standing: bool | None = None
+    """This frame's stance (pose or box shape); None when unknown."""
 
 
 @dataclass(frozen=True)
@@ -37,3 +39,5 @@ class Frame:
     ts: float  # seconds, monotonic
     tracks: tuple[TrackObs, ...] = ()
     objects: tuple[ObjectObs, ...] = field(default_factory=tuple)
+    aspect: float | None = None
+    """Image width / height, to measure shapes in pixels; None when unknown."""
