@@ -706,7 +706,7 @@ export class MockAccounts {
         actor: { kind: 'device', id: 'edge-sala', name: 'edge-sala' },
         kind: 'alert.arrived',
         target: { type: 'alert', id: eventId, label: c.zone_name },
-        summary_ro: `${me.name} a ajuns la ${c.zone_name}`,
+        summary_ro: `Un angajat a ajuns la ${c.zone_name} · preluată de ${me.name}`,
       });
       if (now) this.onArrived(now);
     }, ARRIVE_AFTER_MS);
@@ -763,7 +763,7 @@ function seedAudit(): AuditEntry[] {
       actor: edge,
       kind: 'alert.arrived',
       target: { type: 'alert', id: 'e-1', label: 'Masa 1' },
-      summary_ro: 'Ana Dumitru a ajuns la Masa 1',
+      summary_ro: 'Un angajat a ajuns la Masa 1 · preluată de Ana Dumitru',
       before: null,
       after: null,
     },
