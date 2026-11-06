@@ -151,8 +151,9 @@ describe('App with the mock API', () => {
     const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
     expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Alerte recente' })).toBeInTheDocument();
-    // Three seeded closed alerts, one of them an object_gone checked by the AI.
-    expect(await screen.findAllByText('Închisă', { selector: '.pill' })).toHaveLength(3);
+    // The last five closed alerts as rows, the newest an object_gone checked by the AI.
+    const rows = await screen.findByRole('list', { name: 'Alerte închise' });
+    expect(rows.querySelectorAll(':scope > li')).toHaveLength(5);
     expect(screen.getByText('Confirmat de AI')).toBeInTheDocument();
     expect((await screen.findAllByText(/angajat #7/)).length).toBeGreaterThan(0);
   });

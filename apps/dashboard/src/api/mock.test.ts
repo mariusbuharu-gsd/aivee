@@ -74,6 +74,24 @@ describe('MockApi demo alerts', () => {
   });
 });
 
+describe('MockApi alert paging', () => {
+  it('serves events newest first in pages, like GET /api/events?before=', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const first = await api.listAlerts({ limit: 50 });
+    expect(first).toHaveLength(50);
+    const ats = first.map((e) => e.at);
+    expect([...ats].sort().reverse()).toEqual(ats);
+    const oldest = ats[ats.length - 1] ?? '';
+    const next = await api.listAlerts({ before: oldest, limit: 50 });
+    expect(next.length).toBeGreaterThan(0);
+    expect(next.every((e) => e.at < oldest)).toBe(true);
+    // The demo day has more closed alerts than the Alerte page shows at first (20).
+    const all = await api.listAlerts({ limit: 500 });
+    expect(all.filter((e) => e.state === 'closed').length).toBeGreaterThan(25);
+    api.dispose();
+  });
+});
+
 describe('MockApi videos', () => {
   afterEach(() => vi.useRealTimers());
 

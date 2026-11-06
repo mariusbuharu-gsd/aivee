@@ -158,12 +158,28 @@ export function HistoryPage() {
       })),
   ];
 
+  // One page at a time; a page that lands after the filters changed is dropped. foldHistory runs
+  // over every loaded entry, so an alert split across two pages folds back into one row.
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
   async function more() {
-    if (!next) return;
-    const page = await api.listAudit(query(next));
-    setResult((prev) =>
-      prev ? { ...prev, items: [...prev.items, ...page.items], next: page.next_before } : prev,
-    );
+    if (!next || moreBusy) return;
+    const asked = key;
+    setMoreBusy(true);
+    setMoreError(null);
+    try {
+      const page = await api.listAudit(query(next));
+      setResult((prev) => {
+        if (!prev || prev.key !== asked) return prev;
+        const seen = new Set(prev.items.map((e) => e.id));
+        const fresh = page.items.filter((e) => !seen.has(e.id));
+        return { ...prev, items: [...prev.items, ...fresh], next: page.next_before };
+      });
+    } catch (e) {
+      setMoreError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMoreBusy(false);
+    }
   }
 
   return (
@@ -247,10 +263,21 @@ export function HistoryPage() {
           </section>
         ))
       )}
-      {next && (
-        <button type="button" className="btn" onClick={more}>
-          Mai vechi
+      {next && !loading && (
+        <button
+          type="button"
+          className="btn"
+          disabled={moreBusy}
+          aria-busy={moreBusy}
+          onClick={more}
+        >
+          {moreBusy ? 'Se încarcă…' : 'Mai vechi'}
         </button>
+      )}
+      {moreError && (
+        <Banner tone="error" title="Nu am putut încărca intrările mai vechi.">
+          {moreError}
+        </Banner>
       )}
     </div>
   );

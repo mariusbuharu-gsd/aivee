@@ -61,7 +61,6 @@
 
 /* Night chrome: same component rules, dark tokens. */
 .sidebar,
-.suggestion,
 .on-night {
   --text: var(--night-text);
   --muted: var(--night-muted);
@@ -329,7 +328,6 @@ p {
 }
 .btn-accent,
 .sidebar .btn-primary,
-.suggestion .btn-primary,
 .on-night .btn-primary {
   background: var(--coral);
   border-color: var(--coral);
@@ -337,7 +335,6 @@ p {
 }
 .btn-accent:hover:not(:disabled),
 .sidebar .btn-primary:hover:not(:disabled),
-.suggestion .btn-primary:hover:not(:disabled),
 .on-night .btn-primary:hover:not(:disabled) {
   background: #ff7381;
   border-color: #ff7381;
@@ -691,35 +688,6 @@ details summary {
   color: var(--night-muted);
 }
 
-/* ---------- Staff suggestion ---------- */
-.suggestion {
-  display: flex;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--night);
-  border-radius: var(--radius);
-  background: var(--night);
-}
-.suggestion-crop {
-  flex: none;
-  width: 56px;
-  height: 84px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, var(--night-3), #7a1f2b);
-  border: 1px solid var(--border);
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 4px;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-.suggestion-body {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
 .upload {
   display: flex;
   flex-direction: column;

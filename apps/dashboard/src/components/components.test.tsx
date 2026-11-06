@@ -401,15 +401,18 @@ describe('SuggestionCard', () => {
     reason_ro: 'Se mișcă între mese',
   };
 
-  it('confirms through the API and reports the decision', async () => {
+  it('Live (default card): the same light question, Da/Nu, no raw score', async () => {
     const user = userEvent.setup();
     const onResolved = vi.fn();
     const { api } = renderWithApi(
-      <SuggestionCard suggestion={suggestion} onResolved={onResolved} />,
+      <SuggestionCard suggestion={suggestion} cameraName="Sala" onResolved={onResolved} />,
     );
-    expect(screen.getByRole('heading', { name: 'Pare angajat — confirmi?' })).toBeInTheDocument();
-    expect(screen.getByText(/scor 82%/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Confirmă' }));
+    const card = screen.getByRole('article', { name: '#7 pare să fie din personal?' });
+    expect(card).toHaveClass('suggestion-q', 'suggestion-q-side');
+    expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
+    expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
+    expect(screen.queryByText(/scor|82/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Da, #7 e din personal' }));
     expect(api.confirmSuggestion).toHaveBeenCalledWith('sug-1');
     expect(api.rejectSuggestion).not.toHaveBeenCalled();
     await waitFor(() => expect(onResolved).toHaveBeenCalledWith('sug-1', 'confirmed'));
@@ -418,7 +421,7 @@ describe('SuggestionCard', () => {
   it('rejects through the API', async () => {
     const user = userEvent.setup();
     const { api } = renderWithApi(<SuggestionCard suggestion={suggestion} />);
-    await user.click(screen.getByRole('button', { name: 'Respinge' }));
+    await user.click(screen.getByRole('button', { name: 'Nu, #7 e client' }));
     expect(api.rejectSuggestion).toHaveBeenCalledWith('sug-1');
   });
 

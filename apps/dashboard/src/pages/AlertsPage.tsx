@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router';
 import type { AlertItem } from '../alerts/fold';
-import { openFor, ruleLimitS, type AlertLimit } from '../alerts/limit';
+import { limitsFor } from '../alerts/limit';
 import { AlertFeed } from '../components/AlertFeed';
 import { PushToggle } from '../push/PushToggle';
 import { browserPushService } from '../push/service';
@@ -22,6 +22,11 @@ const EMPTY: Record<Filter, { title: string; text: string }> = {
   open: { title: 'Nicio alertă deschisă', text: 'Toți clienții sunt serviți.' },
   closed: { title: 'Nicio alertă închisă încă', text: 'Alertele rezolvate apar aici.' },
 };
+
+/** Closed rows per "Mai multe". */
+const CLOSED_PAGE = 20;
+/** Staff questions shown before "Încă N întrebări". */
+const QUESTIONS_SHOWN = 5;
 
 const dayKey = (iso: string) => new Date(iso).toDateString();
 
@@ -54,7 +59,8 @@ function groupByDay(items: AlertItem[]): { label: string; items: AlertItem[] }[]
 }
 
 export function AlertsPage() {
-  const { alerts, cameras, rules, suggestions, dropSuggestion, cases, ack } = useLiveData();
+  const { alerts, cameras, rules, suggestions, dropSuggestion, cases, ack, hasOlder, loadOlder } =
+    useLiveData();
   const { can, me } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
   const push = useMemo(() => browserPushService(), []);
@@ -76,18 +82,31 @@ export function AlertsPage() {
   const zone = (id: string) => zoneName(cameras, id);
   const ruleById = useMemo(() => new Map(rules.map((r) => [r.id, r])), [rules]);
 
-  // An alert carries no threshold of its own, so the bar uses its rule's longest
-  // `min_duration_s` from listRules. Staff never load rules (403) and instant rules (a raised
-  // hand) have no duration; those bars measure against the longest alert of the same day.
-  const limitFor = (dayItems: AlertItem[]) => {
-    const longest = Math.max(0, ...dayItems.map((a) => openFor(a)));
-    return (a: AlertItem): AlertLimit | null => {
-      const rule = ruleById.get(a.rule_id);
-      const s = rule ? ruleLimitS(rule) : null;
-      if (s) return { seconds: s, ofRule: true };
-      return longest > 0 ? { seconds: longest, ofRule: false } : null;
-    };
+  // Closed rows come a page at a time; when the loaded events run out, the API gives the next.
+  // Unanswered staff questions pile up on a busy day; the first few, then the rest on demand.
+  const [allQuestions, setAllQuestions] = useState(false);
+  const [shown, setShown] = useState(CLOSED_PAGE);
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  const visible = closed.slice(0, shown);
+  // A bar without a rule threshold measures against the day's longest loaded alert, shown or not.
+  const sameDay = (items: AlertItem[]) => {
+    const key = items[0] ? dayKey(items[0].opened_at) : '';
+    return closed.filter((a) => dayKey(a.opened_at) === key);
   };
+  const canShowMore = closed.length > shown || hasOlder;
+  async function showMore() {
+    setMoreBusy(true);
+    setMoreError(null);
+    try {
+      if (closed.length < shown + CLOSED_PAGE && hasOlder) await loadOlder();
+      setShown((n) => n + CLOSED_PAGE);
+    } catch (e) {
+      setMoreError(e instanceof Error ? e.message : 'Nu am putut încărca alertele mai vechi.');
+    } finally {
+      setMoreBusy(false);
+    }
+  }
 
   const showOpen = filter !== 'closed';
   const showClosed = filter !== 'open';
@@ -137,7 +156,7 @@ export function AlertsPage() {
                 </section>
               )}
               {showClosed &&
-                groupByDay(closed).map((g) => (
+                groupByDay(visible).map((g) => (
                   <section key={g.label} className="alerts-day" aria-label={`${g.label} · închise`}>
                     <h2 className="feed-group">{g.label} · închise</h2>
                     <AlertFeed
@@ -146,10 +165,28 @@ export function AlertsPage() {
                       zoneName={zone}
                       showSnapshot
                       cases={cases}
-                      limit={limitFor(g.items)}
+                      limit={limitsFor(sameDay(g.items), ruleById)}
                     />
                   </section>
                 ))}
+              {showClosed && canShowMore && (
+                <div className="alerts-more">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={moreBusy}
+                    aria-busy={moreBusy}
+                    onClick={showMore}
+                  >
+                    {moreBusy ? 'Se încarcă…' : 'Mai multe'}
+                  </button>
+                  {moreError && (
+                    <p className="error small" role="alert">
+                      {moreError}
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </section>
@@ -163,7 +200,7 @@ export function AlertsPage() {
                 </p>
               )}
               {canReview &&
-                suggestions.map((s) => (
+                (allQuestions ? suggestions : suggestions.slice(0, QUESTIONS_SHOWN)).map((s) => (
                   <SuggestionCard
                     key={s.suggestion_id}
                     variant="question"
@@ -172,6 +209,16 @@ export function AlertsPage() {
                     onResolved={dropSuggestion}
                   />
                 ))}
+              {canReview && !allQuestions && suggestions.length > QUESTIONS_SHOWN && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm alerts-more-q"
+                  onClick={() => setAllQuestions(true)}
+                >
+                  Încă {suggestions.length - QUESTIONS_SHOWN}{' '}
+                  {suggestions.length - QUESTIONS_SHOWN === 1 ? 'întrebare' : 'întrebări'}
+                </button>
+              )}
               {canEnrol && <StaffPhotoUpload />}
             </section>
           )}

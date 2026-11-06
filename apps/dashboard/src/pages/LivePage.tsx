@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router';
+import { limitsFor } from '../alerts/limit';
 import { AlertFeed } from '../components/AlertFeed';
 import { CameraTile } from '../components/CameraTile';
 import { Icon } from '../components/Icon';
@@ -11,15 +13,28 @@ import { useLiveData, zoneName } from '../state/context';
 import { openAlerts, elapsed, tick } from '../live/room';
 import { useNow } from '../live/useNow';
 import { EmptyState, Skeleton } from '../ui/controls';
+import './LivePage.css';
+
+/** Closed alerts in the side column; "Toate alertele" opens Alerte for the rest. */
+const RECENT_CLOSED = 5;
 
 /** What is happening now. Writing rules lives on Reguli, device numbers on Dispozitive. */
 export function LivePage() {
-  const { cameras, alerts, suggestions, metrics, loading, dropSuggestion, cases, ack } =
+  const { cameras, rules, alerts, suggestions, metrics, loading, dropSuggestion, cases, ack } =
     useLiveData();
   const { can } = useAuth();
-  // Open alerts lead the page as bands; the side column keeps the ones already closed.
+  // Open alerts lead the page as bands; the side column keeps the last few closed ones, in the
+  // same rows as Alerte, which has the rest.
   const open = openAlerts(alerts);
-  const recent = alerts.filter((a) => a.closed_at !== null).slice(0, 8);
+  const closed = alerts.filter((a) => a.closed_at !== null);
+  const recent = closed.slice(0, RECENT_CLOSED);
+  const ruleById = useMemo(() => new Map(rules.map((r) => [r.id, r])), [rules]);
+  // Bars without a rule threshold measure against the day's longest alert, as on Alerte.
+  const today = new Date().toDateString();
+  const limit = limitsFor(
+    closed.filter((a) => new Date(a.opened_at).toDateString() === today),
+    ruleById,
+  );
   const now = useNow(open.length > 0);
   const hotFor = (cameraId: string) =>
     Object.fromEntries(
@@ -72,12 +87,9 @@ export function LivePage() {
             <CameraTile key={c.id} camera={c} hot={hotFor(c.id)} />
           ))}
         </section>
-        <aside className="side-col" aria-labelledby="recent-h">
+        <aside className="side-col live-side" aria-labelledby="recent-h">
           <div className="side-head">
             <h2 id="recent-h">Alerte recente</h2>
-            <Link to="/alerte" className="link">
-              Toate
-            </Link>
           </div>
           {can('staff.review') &&
             suggestions
@@ -91,16 +103,22 @@ export function LivePage() {
                 />
               ))}
           <AlertFeed
+            variant="rows"
             items={recent}
             zoneName={(id) => zoneName(cameras, id)}
             cases={cases}
-            onAck={can('alerts.ack') ? ack : undefined}
+            limit={limit}
             empty={
               <EmptyState icon="alerts" title="Nicio alertă închisă încă">
                 Când cineva așteaptă prea mult, alerta apare sus și pe telefoanele echipei.
               </EmptyState>
             }
           />
+          {recent.length > 0 && (
+            <Link to="/alerte" className="link live-side-all">
+              Toate alertele
+            </Link>
+          )}
         </aside>
       </div>
     </div>

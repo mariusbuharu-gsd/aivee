@@ -40,6 +40,10 @@ export interface LiveData {
   cases: Record<string, AlertCase>;
   /** "Merg eu": acknowledge an open alert; rejects with the API's Romanian message. */
   ack: (eventId: string) => Promise<void>;
+  /** True while the API may hold events older than the ones loaded (the last page was full). */
+  hasOlder: boolean;
+  /** Load the next page of older events (and their lifecycles) into `events`. */
+  loadOlder: () => Promise<void>;
 }
 
 export const LiveDataContext = createContext<LiveData | null>(null);
