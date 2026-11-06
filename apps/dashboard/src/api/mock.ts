@@ -29,6 +29,9 @@ import {
   type Role,
   type RuleDraft,
   type Unsubscribe,
+  type NewVideoUpload,
+  type VideoAlert,
+  type VideoUpload,
 } from './client';
 import { fromContract } from '../live/detections';
 
@@ -203,6 +206,70 @@ function seedAlerts(): AlertView[] {
   ];
 }
 
+const DEMO_VIDEO = 'a1b2c3d4';
+
+/** One analysed clip so the "Analiză video" page has something to show without an API. */
+function seedVideos(): { upload: VideoUpload; alerts: VideoAlert[] }[] {
+  const alert = (
+    n: number,
+    zone: [string, string],
+    summary: string,
+    at: number,
+    arrived: number | null,
+    closed: number,
+    reason: string | null = null,
+  ): VideoAlert => ({
+    event_id: `${DEMO_VIDEO}-e${n}`,
+    zone_id: zone[0],
+    zone_name: zone[1],
+    summary_ro: summary,
+    state: 'closed',
+    at_s: at,
+    arrived_at_s: arrived,
+    closed_at_s: closed,
+    wait_s: (arrived ?? closed) - at,
+    closed_reason: reason,
+    snapshot_url: null,
+  });
+  const masa1: [string, string] = ['z-masa-1', 'Masa 1'];
+  const masa2: [string, string] = ['z-masa-2', 'Masa 2'];
+  const alerts = [
+    alert(1, masa2, 'Masa 2: neservită de 1 min', 12, 41, 43),
+    alert(2, ['z-intrare', 'Intrare'], 'Intrare: 3 clienți așteaptă', 38, null, 50),
+    alert(3, masa1, 'Masa 1: un client a ridicat mâna', 61, 70, 72),
+    alert(4, masa1, 'Masa 1: neservită de 1 min', 80, null, 95, 'video_end'),
+  ];
+  return [
+    {
+      upload: {
+        id: DEMO_VIDEO,
+        location_id: 'demo',
+        camera_id: `video-${DEMO_VIDEO}`,
+        source_camera_id: 'cam-sala',
+        filename: 'sala-1.mp4',
+        size_bytes: 48_234_496,
+        rotate: 0,
+        status: 'done',
+        progress: 1,
+        duration_s: 95,
+        events: alerts.length,
+        error_ro: null,
+        created_at: minutesAgo(90),
+        started_at: minutesAgo(90),
+        finished_at: minutesAgo(88),
+        created_by: { id: 'u-manager', name: 'Mihai Ionescu' },
+      },
+      alerts,
+    },
+  ];
+}
+
+/** A new mock upload waits this long, then "analyses" for VIDEO_RUN_MS. */
+const VIDEO_QUEUE_MS = 1_500;
+const VIDEO_RUN_MS = 6_000;
+const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+
 /** Very small Romanian keyword parser so the mock returns a plausible rule for any request. */
 export function mockRuleFromText(text: string, cameraId: string): Rule {
   const t = text.toLocaleLowerCase('ro');
@@ -297,6 +364,7 @@ export class MockApi implements ApiClient {
   private rules = seedRules();
   private alerts: AlertView[] = seedAlerts();
   private suggestions: StaffSuggestion[] = [];
+  private videos = seedVideos();
   private resolved = new Set<string>();
   private alertSubs = new Set<(e: AlertView) => void>();
   private suggestionSubs = new Set<(s: StaffSuggestion) => void>();
@@ -530,6 +598,90 @@ export class MockApi implements ApiClient {
       ).length,
       alert_latency_ms: 850 + Math.round(Math.random() * 300),
     });
+  }
+
+  // --- Video analysis: a new upload moves queued → running → done with the clock ---
+
+  async uploadVideo({ file, rotate = 0, copy_from_camera_id }: NewVideoUpload) {
+    if (!VIDEO_TYPES.includes(file.type)) {
+      throw new ApiError('Fișierul trebuie să fie un video MP4, MOV sau WebM.', 'invalid', 422);
+    }
+    if (file.size > MAX_VIDEO_BYTES) {
+      throw new ApiError('Clipul are mai mult de 200 MB.', 'too_large', 422);
+    }
+    const source = copy_from_camera_id ?? this.cameras[0]?.id ?? null;
+    if (source && !this.cameras.some((c) => c.id === source)) {
+      throw new ApiError(`Camera ${source} nu există.`, 'not_found', 404);
+    }
+    const id = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+    const demo = this.videos.find((v) => v.upload.id === DEMO_VIDEO)?.alerts ?? [];
+    const upload: VideoUpload = {
+      id,
+      location_id: this.location ?? 'demo',
+      camera_id: `video-${id}`,
+      source_camera_id: source,
+      filename: file.name,
+      size_bytes: file.size,
+      rotate,
+      status: 'queued',
+      progress: 0,
+      duration_s: null,
+      events: 0,
+      error_ro: null,
+      created_at: new Date().toISOString(),
+      started_at: null,
+      finished_at: null,
+      created_by: null,
+    };
+    const alerts = demo
+      .slice(0, 2)
+      .map((a, i) => ({ ...a, event_id: `${id}-e${i + 1}`, closed_reason: null }));
+    this.videos.unshift({ upload, alerts });
+    return this.delay(upload);
+  }
+
+  /** The upload as it would be now, given how long ago it was created. */
+  private videoNow(id: string): { upload: VideoUpload; alerts: VideoAlert[] } {
+    const v = this.videos.find((x) => x.upload.id === id);
+    if (!v) throw new ApiError('Clipul nu există.', 'not_found', 404);
+    const u = v.upload;
+    if (u.status === 'done' || u.status === 'failed') return v;
+    const elapsed = Date.now() - Date.parse(u.created_at) - VIDEO_QUEUE_MS;
+    if (elapsed < 0) return v;
+    const start = new Date(Date.parse(u.created_at) + VIDEO_QUEUE_MS).toISOString();
+    if (elapsed < VIDEO_RUN_MS) {
+      const progress = elapsed / VIDEO_RUN_MS;
+      const found = v.alerts.filter((a) => a.at_s / 60 <= progress).length;
+      return {
+        ...v,
+        upload: { ...u, status: 'running', started_at: start, progress, events: found },
+      };
+    }
+    v.upload = {
+      ...u,
+      status: 'done',
+      progress: 1,
+      duration_s: 60,
+      events: v.alerts.length,
+      started_at: start,
+      finished_at: new Date().toISOString(),
+    };
+    return v;
+  }
+
+  async listVideos() {
+    const here = this.location ?? 'demo';
+    const all = this.videos.map((v) => this.videoNow(v.upload.id).upload);
+    return this.delay(all.filter((u) => u.location_id === here));
+  }
+
+  async getVideo(id: string) {
+    return this.delay(this.videoNow(id).upload);
+  }
+
+  async videoEvents(id: string) {
+    const { upload, alerts } = this.videoNow(id);
+    return this.delay(alerts.slice(0, upload.events));
   }
 
   // --- Accounts, locations, audit, alert lifecycle (see ./mockAccounts.ts) ---

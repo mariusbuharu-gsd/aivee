@@ -27,6 +27,9 @@ import {
   type RulePatch,
   type RuleDraft,
   type Unsubscribe,
+  type NewVideoUpload,
+  type VideoAlert,
+  type VideoUpload,
 } from './client';
 import { parseDetections } from '../live/detections';
 
@@ -115,14 +118,14 @@ export class HttpApi implements ApiClient {
   }
 
   /** Snapshot paths are relative to the API (`/api/snapshots/<id>`). */
+  private absolute = (path: string | null | undefined): string | null =>
+    path ? new URL(path, `${this.base}/`).toString() : null;
+
   private withSnapshot = (e: AlertView): AlertView => ({
     ...e,
     snapshot_url: this.absolute(e.snapshot_url),
     before_snapshot_url: this.absolute(e.before_snapshot_url),
   });
-
-  private absolute = (path: string | null | undefined) =>
-    path ? new URL(path, `${this.base}/`).toString() : null;
 
   listCameras() {
     return this.request<CameraView[]>('/api/cameras');
@@ -216,6 +219,28 @@ export class HttpApi implements ApiClient {
 
   getMetrics() {
     return this.request<DashboardMetrics>('/api/metrics');
+  }
+
+  uploadVideo({ file, rotate, copy_from_camera_id }: NewVideoUpload) {
+    const body = new FormData();
+    body.append('file', file);
+    if (this.location) body.append('location_id', this.location);
+    if (rotate !== undefined) body.append('rotate', String(rotate));
+    if (copy_from_camera_id) body.append('copy_from_camera_id', copy_from_camera_id);
+    return this.request<VideoUpload>('/api/videos', { method: 'POST', body });
+  }
+
+  listVideos() {
+    return this.request<VideoUpload[]>('/api/videos');
+  }
+
+  getVideo(id: string) {
+    return this.request<VideoUpload>(`/api/videos/${encodeURIComponent(id)}`);
+  }
+
+  async videoEvents(id: string) {
+    const alerts = await this.request<VideoAlert[]>(`/api/videos/${encodeURIComponent(id)}/events`);
+    return alerts.map((a) => ({ ...a, snapshot_url: this.absolute(a.snapshot_url) }));
   }
 
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe {
