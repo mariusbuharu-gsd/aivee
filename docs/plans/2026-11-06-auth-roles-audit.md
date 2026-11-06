@@ -115,6 +115,12 @@ opened (edge) ──► acknowledged (user, "Merg eu") ──► arrived (edge: 
   - wait = arrived (or closed) − opened; reaction = acknowledged − opened; travel = arrived − acknowledged.
 - Telegram message for an opened alert links to the dashboard alert; a second message on `arrived`
   ("Ana a ajuns la Masa 4 după 2 min 10 s").
+- Closed by the system: when ingest sees the device go `offline` (LWT or graceful), or come back
+  `online` after being offline (fresh engine), it closes the device's open alerts with
+  `closed_reason` `device_offline` | `device_restarted` (`AlertView.closed_by = "system"`), stores a
+  `closed` event row for the live feed, audits `alert.closed` (actor system, "Alerta de la Masa 1
+  s-a închis: dispozitivul s-a deconectat") and sends one note per device ("edge-01 s-a deconectat —
+  2 alerte închise"), never an "a ajuns". Serialised per device, so the two ingest replicas do it once.
 
 ## Dashboard (stream C)
 

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import ColumnElement, false, or_, select
+from sqlalchemy import ColumnElement, and_, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.audit.models import AuditRow
@@ -84,6 +84,8 @@ class AuditRepository:
         visibility: Visibility,
         *,
         location_id: str | None = None,
+        with_unlocated: bool = False,
+        unlocated_actor_ids: Collection[str] | None = None,
         actor_id: str | None = None,
         kind: str | None = None,
         before: int | None = None,
@@ -91,7 +93,10 @@ class AuditRepository:
         until: datetime | None = None,
         limit: int = 50,
     ) -> Sequence[AuditRow]:
-        """Newest first. `kind` without a dot ("rule") matches the whole family ("rule.*")."""
+        """Newest first. `kind` without a dot ("rule") matches the whole family ("rule.*").
+
+        With `location_id` and `with_unlocated`, entries without a location (auth.*) come
+        along: all of them, or only those whose actor is in `unlocated_actor_ids`."""
         stmt = select(AuditRow).where(AuditRow.org_id == visibility.org_id)
         if not visibility.all_rows:
             scope: list[ColumnElement[bool]] = []
@@ -101,7 +106,13 @@ class AuditRepository:
                 scope.append(AuditRow.actor_id == visibility.actor_id)
             stmt = stmt.where(or_(*scope) if scope else false())
         if location_id is not None:
-            stmt = stmt.where(AuditRow.location_id == location_id)
+            here: ColumnElement[bool] = AuditRow.location_id == location_id
+            if with_unlocated:
+                unlocated: ColumnElement[bool] = AuditRow.location_id.is_(None)
+                if unlocated_actor_ids is not None:
+                    unlocated = and_(unlocated, AuditRow.actor_id.in_(list(unlocated_actor_ids)))
+                here = or_(here, unlocated)
+            stmt = stmt.where(here)
         if actor_id is not None:
             stmt = stmt.where(AuditRow.actor_id == actor_id)
         if kind:
