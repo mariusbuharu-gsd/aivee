@@ -1,7 +1,7 @@
 // In-browser stand-in for the backend: realistic demo data plus a scripted timeline in which
 // alerts open and close, and a "looks like staff" suggestion appears. Used when VITE_API_URL
 // is unset, so the dashboard can be built and demoed before the API exists.
-import type { AlertEvent, Condition, Detections, DeviceStatus, Rule, Zone } from '../contracts';
+import type { AlertEvent, Condition, Detections, Rule, Zone } from '../contracts';
 import { MockAccounts } from './mockAccounts';
 import {
   ApiError,
@@ -9,7 +9,9 @@ import {
   VIDEO_TYPES,
   type AlertView,
   type ApiClient,
+  type CameraFrame,
   type CameraView,
+  type DeviceView,
   type SuggestionView,
   type DashboardMetrics,
   type Detection,
@@ -174,6 +176,39 @@ function personSketch(): string {
     '<rect width="60" height="80" fill="#1b1d22"/>' +
     '<path d="M8 80 C10 52 18 44 30 44 C42 44 50 52 52 80 Z" fill="#7a1f2b"/>' +
     '<circle cx="30" cy="27" r="12" fill="#a3a9b4" filter="url(#b)"/>' +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Stand-in camera still for the mock (the real one is the camera's latest face-blurred JPEG):
+ * the room in 16:9, each table drawn where its zone is, so zones line up when drawn over it.
+ */
+export function roomSketch(zones: Zone[]): string {
+  const W = 320;
+  const H = 180;
+  const shapes = zones.map((z) => {
+    const xs = z.polygon.map((p) => p[0] * W);
+    const ys = z.polygon.map((p) => p[1] * H);
+    const [x, y] = [Math.min(...xs), Math.min(...ys)];
+    const [w, h] = [Math.max(...xs) - x, Math.max(...ys) - y];
+    const r = (v: number) => v.toFixed(1);
+    if (z.tag === 'entrance') {
+      return `<rect x="${r(x + w * 0.2)}" y="${r(y)}" width="${r(w * 0.6)}" height="${r(h)}" fill="#2b2f37" stroke="#4a505c" stroke-width="2"/>`;
+    }
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    return (
+      `<ellipse cx="${r(cx)}" cy="${r(cy)}" rx="${r(w * 0.36)}" ry="${r(h * 0.3)}" fill="#2a2d34" stroke="#8a909c" stroke-width="1.5"/>` +
+      `<circle cx="${r(cx - w * 0.45)}" cy="${r(cy)}" r="${r(h * 0.12)}" fill="#33363e"/>` +
+      `<circle cx="${r(cx + w * 0.45)}" cy="${r(cy)}" r="${r(h * 0.12)}" fill="#33363e"/>`
+    );
+  });
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">` +
+    `<rect width="${W}" height="${H}" fill="#1b1d22"/>` +
+    `<path d="M0 ${H * 0.36} L${W} ${H * 0.3}" stroke="#262930" stroke-width="2"/>` +
+    shapes.join('') +
     '</svg>';
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
@@ -380,6 +415,8 @@ export class MockApi implements ApiClient {
   private suggestionSubs = new Set<(s: SuggestionView) => void>();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private readonly latency: number;
+  /** When each offline device went away (as the API's `last_seen`): 14 min before startup. */
+  private readonly offlineSince = minutesAgo(14);
 
   /** `latencyMs` simulates network delay; `autoplay` starts the demo timeline. */
   constructor(opts: { latencyMs?: number; autoplay?: boolean } = {}) {
@@ -439,15 +476,29 @@ export class MockApi implements ApiClient {
     return this.delay(this.cameras);
   }
 
-  listDevices(): Promise<DeviceStatus[]> {
+  listDevices(): Promise<DeviceView[]> {
     return this.delay(
       this.cameras.map((c) => ({
         device: c.device,
         state: c.online ? 'online' : 'offline',
         version: '0.1.0',
         cameras: [c.id],
+        site: 'demo',
+        // Online edges send metrics every ~5 s, so the last one is a couple of seconds old.
+        last_seen: c.online ? new Date(Date.now() - 2_000).toISOString() : this.offlineSince,
       })),
     );
+  }
+
+  async captureFrame(cameraId: string): Promise<CameraFrame> {
+    await wait(this.latency);
+    const cam = this.cameras.find((c) => c.id === cameraId);
+    if (!cam) throw new ApiError('Camera nu există.', 'not_found', 404);
+    return {
+      url: roomSketch(cam.zones ?? []),
+      at: cam.online ? new Date(Date.now() - 20_000).toISOString() : this.offlineSince,
+      release: () => undefined,
+    };
   }
 
   async saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones> {

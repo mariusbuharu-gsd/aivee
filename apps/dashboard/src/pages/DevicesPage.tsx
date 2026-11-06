@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { CameraPatch, CameraView, DashboardMetrics } from '../api/client';
+import type { CameraPatch, CameraView, DashboardMetrics, DeviceView } from '../api/client';
 import { useApi } from '../api/context';
 import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
 import { Icon } from '../components/Icon';
 import type { Metrics } from '../contracts';
+import { CameraThumb } from '../devices/CameraThumb';
+import { lastSeenRo } from '../devices/lastSeen';
 import { maskSource } from '../devices/maskSource';
+import { useDevices } from '../devices/useDevices';
+import { useNow } from '../live/useNow';
 import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
@@ -29,6 +33,7 @@ export function DevicesPage() {
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<CameraView | null>(null);
+  const devices = useDevices();
   // Prefill the edge default only while it is free; otherwise suggest the next id.
   const taken = new Set(cameras.map((c) => c.id));
   let next = DEFAULT_CAMERA_ID;
@@ -63,6 +68,7 @@ export function DevicesPage() {
           <CameraCard
             key={c.id}
             camera={c}
+            device={devices[c.device] ?? null}
             health={metrics?.devices.find((d) => d.device === c.device) ?? null}
             onEdit={() => setEditing(c)}
             onZones={() => navigate(zonesPath(c.id))}
@@ -122,21 +128,29 @@ export function DevicesPage() {
 }
 
 function CameraCard({
-  camera: c,
+  camera,
+  device,
   health,
   onEdit,
   onZones,
   onRemove,
 }: {
   camera: CameraView;
+  /** This camera's device in the devices poll (state, last_seen); null until it answers. */
+  device: DeviceView | null;
   /** This camera's device in the metrics poll; null when it reports nothing. */
   health: Metrics | null;
   onEdit: () => void;
   onZones: () => void;
   onRemove: () => void;
 }) {
+  // The devices poll is fresher than the camera list, which loads once.
+  const c = device ? { ...camera, online: device.state === 'online' } : camera;
+  const now = useNow(device?.last_seen != null);
+  const seen = lastSeenRo(c.online, device?.last_seen, now);
   return (
     <li className="card device-card" aria-label={`Camera ${c.name}`}>
+      <CameraThumb cameraId={c.id} name={c.name} online={c.online} />
       <div className="side-head">
         <h2 className="h3">{c.name}</h2>
         <div className="rule-tools">
@@ -153,7 +167,15 @@ function CameraCard({
           />
         </div>
       </div>
-      <p className="device-sub mono">{c.device}</p>
+      <p className="device-sub">
+        <span className="mono">{c.device}</span>
+        {seen && (
+          <>
+            {' · '}
+            <span className={c.online ? undefined : 'device-gone'}>{seen}</span>
+          </>
+        )}
+      </p>
       {c.online ? (
         <dl className="device-health">
           <div>
