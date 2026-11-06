@@ -38,6 +38,7 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică |
 | `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră" |
 | `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` |
+| `/video` | Analiză video | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
 | `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
 | `/echipa` | Echipă | `users.manage` | members, roles, invite link |
 | `/locatii` | Locații | `locations.manage` | the organization's locations (owner) |
@@ -74,6 +75,10 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | POST | `/api/alerts/{event_id}/ack` | "Merg eu"; 409 when someone already took it |
 | GET | `/api/metrics/service?from&to` | `{alerts, unacknowledged_arrivals, wait, reaction, travel}`, each `{count, median_s, p90_s}` |
 | GET | `/api/events?limit=` · `/api/snapshots/{id}` | raw events · blurred JPEG |
+| POST | `/api/videos` | multipart `file` (mp4/mov/webm, ≤ 200 MB, ≤ 2 min), `location_id`, optional `rotate` (0/90/180/270), `copy_from_camera_id` → 201 `VideoUpload`; 422 bad type/size/length |
+| GET | `/api/videos?location_id=` | `VideoUpload[]`, newest first; the page polls every 2 s while one is queued or running |
+| GET | `/api/videos/{id}` | `VideoUpload` (`status`, `progress` 0..1, `duration_s`, `events`, `error_ro`) |
+| GET | `/api/videos/{id}/events` | `VideoAlert[]` by `at_s`; positions in the clip, `closed_reason: video_end`, `snapshot_url` |
 | GET | `/api/devices` · `/api/metrics` | status, `last_seen` · `DashboardMetrics` (`alert_latency_ms` may be `null`) |
 | GET | `/api/staff/suggestions` · POST `.../{id}/confirm` · `.../{id}/reject` | |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | multipart field `photo` (images or a short video) |

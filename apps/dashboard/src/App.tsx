@@ -13,6 +13,7 @@ import { MetricsPage } from './pages/MetricsPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RulesPage } from './pages/RulesPage';
 import { TeamPage } from './pages/TeamPage';
+import { VideoPage } from './pages/VideoPage';
 import { ZonesPage } from './pages/ZonesPage';
 import { LiveDataProvider } from './state/LiveData';
 
@@ -46,6 +47,7 @@ export function App() {
             <Route element={<RequirePermission any={['devices.manage']} />}>
               <Route path="dispozitive" element={<DevicesPage />} />
               <Route path="camere/:cameraId/zone" element={<ZonesPage />} />
+              <Route path="video" element={<VideoPage />} />
             </Route>
             <Route element={<RequirePermission any={['audit.view', 'audit.view.own']} />}>
               <Route path="istoric" element={<HistoryPage />} />

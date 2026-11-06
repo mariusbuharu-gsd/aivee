@@ -22,6 +22,7 @@ from aivee_api.alerts.schemas import AlertView
 from aivee_api.audit.repository import Actor, AuditRepository, Target
 from aivee_api.db.models import Device, Site
 from aivee_api.db.repositories import DeviceRepository, EventRepository, SuggestionRepository
+from aivee_api.videos.kind import is_upload, is_upload_device
 from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion, before_snapshot_id
 from aivee_contracts.topics import ROOT, Topics
 from pydantic import ValidationError
@@ -82,6 +83,9 @@ class IngestHandler:
 
     async def _on_event(self, t: Topics, event: AlertEvent) -> None:
         self.handled_events.append(event.event_id)
+        # An uploaded clip is stored and folded like any alert, but it must never ring the
+        # staff's phones, and its alerts stay out of the history.
+        upload = is_upload(t.device, event.camera_id)
         path = snapshot_name(event.event_id) if event.snapshot else None
         change = event.object_change
         before = (
@@ -99,12 +103,20 @@ class IngestHandler:
                 if event.state == "opened" and self._verification is None:
                     await alerts.save_verification(event.event_id, UNAVAILABLE, datetime.now(UTC))
                 view = await alerts.view(alert_id) if alert_id and folded else None
-                entry = device_entry(view, event.state) if view else None
+                entry = device_entry(view, event.state) if view and not upload else None
                 if entry is not None:
                     await self._audit.append(s, entry)
             await s.commit()
         if not inserted:
             log.info("duplicate event %s ignored", event.event_id)
+            return
+        if upload:
+            log.info(
+                "clip event %s %s camera=%s (uploaded clip: nobody notified)",
+                event.event_id,
+                event.state,
+                event.camera_id,
+            )
             return
         log.info(
             "event %s %s rule=%s camera=%s zone=%s",
@@ -149,6 +161,13 @@ class IngestHandler:
     async def _on_status(self, t: Topics, status: DeviceStatus) -> None:
         # The topic (enforced by the broker ACL) is the source of truth for the device id.
         status = status.model_copy(update={"device": t.device})
+        if is_upload_device(t.device):
+            # The clip runner goes offline at the end of every clip: no history entry, no
+            # note to the staff, and the API closes the clip's alerts itself (video_end).
+            async with self._sessions() as s:
+                await DeviceRepository(s).apply_status(t.site, status)
+                await s.commit()
+            return
         closed: list[AlertView] = []
         async with self._sessions() as s:
             # Every replica gets every status: serialise per device so a change is audited

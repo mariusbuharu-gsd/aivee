@@ -37,6 +37,9 @@ TEMPLATES: dict[str, str] = {
     "alert.closed": "Alerta de la {target} s-a închis",
     "device.online": "Dispozitivul {actor} este online",
     "device.offline": "Dispozitivul {actor} s-a deconectat",
+    "video.uploaded": "{actor} a încărcat clipul {target} pentru analiză",
+    "video.analysed": "Analiza clipului {target} s-a încheiat: {count} alerte",
+    "video.failed": "Analiza clipului {target} a eșuat: {error}",
 }
 KINDS: tuple[str, ...] = tuple(TEMPLATES)
 

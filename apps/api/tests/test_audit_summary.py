@@ -44,6 +44,21 @@ CASES = [
     ("camera.deleted", {"actor": "Ana", "target": "Sala"}, "Ana a șters camera Sala"),
     ("zones.updated", {"actor": "Ana", "target": "Sala"}, "Ana a modificat zonele camerei Sala"),
     (
+        "video.uploaded",
+        {"actor": "Ana", "target": "sala-1.mp4"},
+        "Ana a încărcat clipul sala-1.mp4 pentru analiză",
+    ),
+    (
+        "video.analysed",
+        {"target": "sala-1.mp4", "count": "4"},
+        "Analiza clipului sala-1.mp4 s-a încheiat: 4 alerte",
+    ),
+    (
+        "video.failed",
+        {"target": "sala-1.mp4", "error": "Serverul MQTT nu răspunde."},
+        "Analiza clipului sala-1.mp4 a eșuat: Serverul MQTT nu răspunde.",
+    ),
+    (
         "rule.created",
         {"actor": "Ana", "target": "Masă neservită"},
         "Ana a creat regula „Masă neservită”",

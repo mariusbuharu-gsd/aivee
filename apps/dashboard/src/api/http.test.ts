@@ -132,6 +132,97 @@ describe('HttpApi', () => {
   });
 });
 
+describe('HttpApi videos', () => {
+  const upload = {
+    id: '3f9a2c1d',
+    location_id: 'centru',
+    camera_id: 'video-3f9a2c1d',
+    source_camera_id: 'cam-01',
+    filename: 'sala-1.mp4',
+    size_bytes: 1024,
+    rotate: 90,
+    status: 'queued',
+    progress: 0,
+    duration_s: null,
+    events: 0,
+    error_ro: null,
+    created_at: '2026-11-06T10:00:00Z',
+    started_at: null,
+    finished_at: null,
+    created_by: null,
+  };
+
+  it('uploads the clip as multipart with the location, rotation and source camera', async () => {
+    const api = new HttpApi('http://api:8000');
+    api.setLocation('centru');
+    const fetch = mockFetch(json(upload, 201));
+    const file = new File(['x'], 'sala-1.mp4', { type: 'video/mp4' });
+    expect(await api.uploadVideo({ file, rotate: 90, copy_from_camera_id: 'cam-01' })).toEqual(
+      upload,
+    );
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(/^http:\/\/api:8000\/api\/videos/);
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    const form = init?.body as FormData;
+    expect(form.get('file')).toBeInstanceOf(File);
+    expect(form.get('location_id')).toBe('centru');
+    expect(form.get('rotate')).toBe('90');
+    expect(form.get('copy_from_camera_id')).toBe('cam-01');
+    // The browser sets the multipart boundary itself.
+    expect(new Headers(init?.headers).get('Content-Type')).toBeNull();
+  });
+
+  it('leaves out the optional fields and shows the API message on 422', async () => {
+    const api = new HttpApi('http://api:8000');
+    api.setLocation('centru');
+    const fetch = mockFetch(
+      json({ detail: { code: 'too_long', message_ro: 'Clipul are mai mult de 2 minute.' } }, 422),
+    );
+    const file = new File(['x'], 'lung.mp4', { type: 'video/mp4' });
+    await expect(api.uploadVideo({ file })).rejects.toMatchObject({
+      message: 'Clipul are mai mult de 2 minute.',
+      status: 422,
+    });
+    const form = fetch.mock.calls[0]?.[1]?.body as FormData;
+    expect(form.has('rotate')).toBe(false);
+    expect(form.has('copy_from_camera_id')).toBe(false);
+  });
+
+  it('lists, reads and fetches the alerts of an upload with absolute snapshot urls', async () => {
+    const api = new HttpApi('http://api:8000');
+    api.setLocation('centru');
+    const alert = {
+      event_id: 'e-1',
+      zone_id: 'z-1',
+      zone_name: 'Masa 2',
+      summary_ro: 'Masa 2: neservită de 1 min',
+      state: 'closed',
+      at_s: 12,
+      arrived_at_s: 40,
+      closed_at_s: 41,
+      wait_s: 29,
+      closed_reason: null,
+      snapshot_url: '/api/snapshots/e-1',
+    };
+    const fetch = mockFetch(
+      json([upload]),
+      json(upload),
+      json([alert, { ...alert, event_id: 'e-2', snapshot_url: null }]),
+    );
+    expect(await api.listVideos()).toEqual([upload]);
+    expect(await api.getVideo('3f9a2c1d')).toEqual(upload);
+    const [a, b] = await api.videoEvents('3f9a2c1d');
+    expect(fetch.mock.calls.map(([u]) => String(u))).toEqual([
+      'http://api:8000/api/videos?location_id=centru',
+      'http://api:8000/api/videos/3f9a2c1d?location_id=centru',
+      'http://api:8000/api/videos/3f9a2c1d/events?location_id=centru',
+    ]);
+    expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/e-1');
+    expect(b?.snapshot_url).toBeNull();
+  });
+});
+
 describe('HttpApi accounts (auth-roles-audit spec)', () => {
   it('sends the session cookie and scopes resources to the current location', async () => {
     const api = new HttpApi('http://api:8000');

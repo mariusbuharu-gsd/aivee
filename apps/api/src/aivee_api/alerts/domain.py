@@ -139,13 +139,14 @@ def zone_name_from_summary(summary_ro: str) -> str | None:
 
 # -- closed by the system ------------------------------------------------------------------
 
-CloseReason = Literal["device_offline", "device_restarted", "camera_deleted"]
+CloseReason = Literal["device_offline", "device_restarted", "camera_deleted", "video_end"]
 ClosedBy = Literal["edge", "system"]
 
 _REASON_RO: dict[str, str] = {
     "device_offline": "dispozitivul s-a deconectat",
     "device_restarted": "dispozitivul a repornit",
     "camera_deleted": "camera a fost ștearsă",
+    "video_end": "clipul s-a terminat",
 }
 _DEVICE_RO: dict[str, str] = {
     "device_offline": "s-a deconectat",

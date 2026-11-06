@@ -51,7 +51,7 @@ edge-usb:
 .PHONY: data-dirs
 # Create bind-mounted dirs as the current user before `make up` (Docker would create them as root).
 data-dirs:
-	mkdir -p data/snapshots recordings
+	mkdir -p data/snapshots data/videos recordings
 
 .PHONY: record
 # Backup demo clip: make record SOURCE=http://PHONE:8080/video SECONDS=60 ROTATE=90 NAME=sala-1

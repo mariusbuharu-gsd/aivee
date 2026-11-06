@@ -22,6 +22,16 @@ def parse(argv: list[str] | None = None) -> EdgeSettings:
     p.add_argument("--no-pose", action="store_true", help="disable raised-hand detection")
     p.add_argument("--appearance", action="store_true", help="enable CLIP appearance scoring")
     p.add_argument("--no-blur", action="store_true", help="publish alerts without snapshots")
+    p.add_argument(
+        "--clip-epoch",
+        help="offline clip run: ISO instant event times count from (env CLIP_EPOCH)",
+    )
+    p.add_argument("--progress-file", help="offline clip run: progress JSON (env PROGRESS_FILE)")
+    p.add_argument(
+        "--wait-config",
+        type=float,
+        help="seconds to wait for the retained config and rules (env CONFIG_WAIT_S)",
+    )
     args = p.parse_args(argv)
 
     overrides: dict[str, object] = {}
@@ -41,6 +51,12 @@ def parse(argv: list[str] | None = None) -> EdgeSettings:
         overrides["appearance"] = True
     if args.no_blur:
         overrides["blur"] = False
+    if args.clip_epoch is not None:
+        overrides["clip_epoch"] = args.clip_epoch
+    if args.progress_file is not None:
+        overrides["progress_file"] = args.progress_file
+    if args.wait_config is not None:
+        overrides["config_wait_s"] = args.wait_config
     return EdgeSettings(**overrides)  # type: ignore[arg-type]
 
 

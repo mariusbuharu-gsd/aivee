@@ -138,6 +138,10 @@ def test_system_close_texts() -> None:
         system_close_summary_ro("Masa 1", "device_restarted")
         == "Alerta de la Masa 1 s-a închis: dispozitivul a repornit"
     )
+    assert (
+        system_close_summary_ro("Masa 1", "video_end")
+        == "Alerta de la Masa 1 s-a închis: clipul s-a terminat"
+    )
     note = device_closed_note_ro
     assert note("edge-01", "device_offline", 1) == "edge-01 s-a deconectat — o alertă închisă"
     assert note("edge-01", "device_offline", 2) == "edge-01 s-a deconectat — 2 alerte închise"

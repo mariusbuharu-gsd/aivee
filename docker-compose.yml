@@ -108,10 +108,14 @@ services:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
       SNAPSHOT_DIR: /data/snapshots
+      VIDEO_DIR: /data/videos
       YOLO_WEIGHTS: /app/models/yolo11n.pt
       HF_HOME: /home/aivee/.cache/huggingface
     volumes:
       - ./data/snapshots:/data/snapshots
+      # Uploaded clips. Analysing them runs the edge inside the API, which only the image
+      # built with API_UV_EXTRAS="--extra ml" has (or run the API on the host: make api).
+      - ./data/videos:/data/videos
       - ./models:/app/models:ro
       - hf-cache:/home/aivee/.cache/huggingface
     ports: ["8000:8000"]

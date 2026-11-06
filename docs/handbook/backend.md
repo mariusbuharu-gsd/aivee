@@ -5,7 +5,7 @@
 | Command | What |
 |---|---|
 | `make dev` | install the uv workspace (Python 3.12) — run first in every new worktree |
-| `make data-dirs` | create `data/snapshots` and `recordings` as your user (run before the first `make up`, or Docker creates them as root) |
+| `make data-dirs` | create `data/snapshots`, `data/videos` and `recordings` as your user (run before the first `make up`, or Docker creates them as root) |
 | `make up` / `make down` | Mosquitto :1883, Postgres+pgvector :5433, MediaMTX :8554/:8889, `migrate`, ingest ×2, api :8000 |
 | `make seed` | demo org "AiVee Demo", location `demo` ("Terasa demo"), users `owner@` / `manager@` / `staff@aivee.demo`; password `DEMO_PASSWORD` (generated into `.env` when empty, never printed). Idempotent |
 | `make api` | API on the host with reload (reads `.env`) |
@@ -26,9 +26,9 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 
 | Who reads it | Names |
 |---|---|
-| API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` |
+| API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD` |
 | Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
-| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR` |
+| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
 
@@ -40,7 +40,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners |
 | api | `apps/api` | REST + WS; accounts, cookie sessions, roles per location, invites, audit; publishes retained edge state and staff commands; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
-| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0008` (`migrate` service) |
+| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0009` (`migrate` service) |
 | mediamtx | `infra/mediamtx` | RTSP in → WebRTC/WHEP out for the dashboard |
 
 API code map (`apps/api/src/aivee_api/`): `auth/` (passwords, tokens, sessions, rate limit, permission
@@ -88,6 +88,9 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/push/public-key` | public; 503 without VAPID keys |
 | POST / DELETE | `/api/push/subscribe` | session; the subscription belongs to the user |
 | POST | `/api/push/test` | session; test push to the caller's own devices → `{sent, removed, failed}` |
+| POST | `/api/videos` | `devices.manage`; multipart `file` (mp4/mov/webm, ≤ 200 MB, ≤ 2 min), `location_id` (form or query), `rotate` 0/90/180/270, `copy_from_camera_id` → 201 VideoOut; 422 type/size/length/unreadable, 503 without `MQTT_UPLOAD_PASSWORD`; only at the API's `SITE` |
+| GET | `/api/videos?location_id=` · `/api/videos/{id}` | `devices.manage`; `{status: queued\|running\|done\|failed, progress 0–1, duration_s, events, error_ro, …}`, newest first |
+| GET | `/api/videos/{id}/events` | `devices.manage`; the clip's alerts by `at_s` (clip position), `arrived_at_s`, `closed_at_s`, `closed_reason` (`video_end` = open when the clip ended), `snapshot_url` |
 | WS | `/ws/events` | session cookie; `alert` (AlertView on every change), `suggestion`, `detections`; only the user's locations; 1008 without a session |
 
 ## MQTT topics (always via `aivee_contracts.topics.Topics`)
@@ -124,6 +127,17 @@ The auth, locations, members, invites, audit and alert endpoints are listed in
 
 A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 410
 `{detail: {code: "gone", message_ro: "Invitația a fost anulată."}}`. Neither the token nor its hash is returned.
+
+## Video analysis (uploaded clips)
+
+Design: [plans/2026-11-06-video-upload-design.md](../plans/2026-11-06-video-upload-design.md). The API queues
+clips (one at a time) and runs `python -m aivee_edge --clip-epoch …` as the device `MQTT_UPLOAD_USER`
+(`upload-01`, `%u` ACL) on camera `video-<id>`, which carries a copy of a live camera's zones and rules.
+Event time = clip epoch + clip position. Ingest never notifies, verifies, re-alerts or audits alerts from
+an `upload-*` device or a `video-*` camera, and the device going offline closes nothing; the API closes what
+is still open as `video_end`. Upload alerts stay out of alerts, the live feed, events, metrics, devices,
+cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edge next to the API
+(`make api` on the host; the compose image only with `API_UV_EXTRAS="--extra ml"`).
 
 ## Edge pipeline facts
 - INT8 OpenVINO on the i7-1355U: ~20 FPS detection, ~12 FPS with pose; phone stream 8–11 FPS in practice.

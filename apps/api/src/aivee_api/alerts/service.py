@@ -75,7 +75,7 @@ async def list_alerts(
     session: AsyncSession, access: Access, location_id: str | None, state: str | None, limit: int
 ) -> list[AlertView]:
     return await AlertRepository(session).views(
-        location_ids=_locations(access, location_id), state=state, limit=limit
+        location_ids=_locations(access, location_id), state=state, live_only=True, limit=limit
     )
 
 
@@ -94,6 +94,7 @@ async def service_metrics(
         location_ids=_locations(access, location_id),
         opened_from=start,
         opened_to=end,
+        live_only=True,  # an uploaded clip is not service: no median / p90 from it
         limit=METRICS_MAX_ALERTS,
     )
     lives = [Lifecycle(v.opened_at, v.acknowledged_at, v.arrived_at, v.closed_at) for v in views]

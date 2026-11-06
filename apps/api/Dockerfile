@@ -39,8 +39,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # The HF cache dir must exist (owned by aivee) before compose mounts the `hf-cache` volume
 # there, or the volume is created root-owned and CLIP weights cannot be downloaded.
 RUN useradd --system --uid 10001 --create-home aivee \
-    && mkdir -p /data/snapshots /home/aivee/.cache/huggingface \
-    && chown aivee /data/snapshots && chown -R aivee /home/aivee/.cache
+    && mkdir -p /data/snapshots /data/videos /home/aivee/.cache/huggingface \
+    && chown aivee /data/snapshots /data/videos && chown -R aivee /home/aivee/.cache
 USER aivee
 ENV SNAPSHOT_DIR=/data/snapshots
 EXPOSE 8000

@@ -23,6 +23,7 @@ class Broker:
     api: tuple[str, str]
     ingest: tuple[str, str]
     edge: tuple[str, str]  # username == device id (ACL %u)
+    upload: tuple[str, str] = ("", "")  # the uploaded-clip runner, also a %u device
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +35,7 @@ def broker() -> Iterator[Broker]:
         "api": ("aivee-api", secrets.token_urlsafe(12)),
         "ingest": ("aivee-ingest", secrets.token_urlsafe(12)),
         "edge": ("edge-01", secrets.token_urlsafe(12)),
+        "upload": ("upload-01", secrets.token_urlsafe(12)),
     }
     container = (
         DockerContainer("eclipse-mosquitto:2")
@@ -50,6 +52,8 @@ def broker() -> Iterator[Broker]:
             MQTT_INGEST_PASSWORD=creds["ingest"][1],
             MQTT_EDGE_USER=creds["edge"][0],
             MQTT_EDGE_PASSWORD=creds["edge"][1],
+            MQTT_UPLOAD_USER=creds["upload"][0],
+            MQTT_UPLOAD_PASSWORD=creds["upload"][1],
         )
     )
     with container:

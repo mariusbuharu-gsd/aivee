@@ -3,6 +3,7 @@ import type { AlertItem } from '../alerts/fold';
 import type { AlertCase } from '../api/client';
 import { duration } from '../alerts/format';
 import { useToast } from '../ui/toast';
+import { Icon } from './Icon';
 
 const CLOSED_BY_SYSTEM: Record<string, string> = {
   device_offline: 'dispozitiv deconectat',
@@ -106,16 +107,27 @@ export function AlertFeed({
   );
 }
 
-/** The face-blurred JPEG; nothing at all when the edge sent none or it does not load. */
-function Snapshot({
+/**
+ * The face-blurred JPEG; nothing at all when the edge sent none or it does not load, unless
+ * `placeholder` asks for a neutral frame in its place (rows that must stay aligned).
+ */
+export function Snapshot({
   url,
   alt = 'Captură cu fețele estompate',
+  placeholder = false,
 }: {
   url: string | null;
   alt?: string;
+  placeholder?: boolean;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
-  if (!url || failed === url) return null;
+  if (!url || failed === url) {
+    return placeholder ? (
+      <span className="snapshot" aria-hidden="true">
+        <Icon name="snapshot" />
+      </span>
+    ) : null;
+  }
   return (
     <a className="snapshot snapshot-img" href={url} target="_blank" rel="noreferrer">
       <img src={url} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(url)} />

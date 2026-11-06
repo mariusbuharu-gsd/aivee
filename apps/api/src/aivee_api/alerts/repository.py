@@ -23,6 +23,7 @@ from aivee_api.alerts.domain import (
 )
 from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.models import Camera, Device, EventRow
+from aivee_api.videos.kind import not_upload
 
 STATE_FILTERS = ("opened", "acknowledged", "arrived", "closed", "open")
 
@@ -166,6 +167,7 @@ class AlertRepository:
                 EventRow.arrived_at.is_(None),
                 EventRow.closed_at.is_(None),
                 EventRow.realerted_at.is_(None),
+                not_upload(EventRow.device_id, EventRow.camera_id),  # a clip never re-alerts
             )
             .values(realerted_at=now)
             .returning(EventRow.event_id)
@@ -309,9 +311,12 @@ class AlertRepository:
         state: str | None = None,
         opened_from: datetime | None = None,
         opened_to: datetime | None = None,
+        camera_ids: Collection[str] | None = None,
+        live_only: bool = False,
         limit: int = 50,
     ) -> list[AlertView]:
-        """Folded alerts, newest first."""
+        """Folded alerts, newest first. `live_only` leaves out uploaded clips' alerts (what
+        the shift, the live feed and the service metrics see)."""
         stmt = (
             select(EventRow, Device.site_id)
             .outerjoin(Device, Device.id == EventRow.device_id)
@@ -329,6 +334,10 @@ class AlertRepository:
             stmt = stmt.where(EventRow.at >= opened_from)
         if opened_to is not None:
             stmt = stmt.where(EventRow.at < opened_to)
+        if camera_ids is not None:
+            stmt = stmt.where(EventRow.camera_id.in_(camera_ids))
+        if live_only:
+            stmt = stmt.where(not_upload(EventRow.device_id, EventRow.camera_id))
         rows = (await self.s.execute(stmt)).all()
         names = await self._zone_names({r[0].camera_id for r in rows})
         return [to_view(row, site, names.get(row.camera_id, {})) for row, site in rows]

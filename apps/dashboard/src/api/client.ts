@@ -96,6 +96,64 @@ export interface DashboardMetrics {
   alert_latency_ms: number | null;
 }
 
+/** Where an uploaded clip is in the analysis. */
+export type VideoStatus = 'queued' | 'running' | 'done' | 'failed';
+export type VideoRotation = 0 | 90 | 180 | 270;
+
+/**
+ * A clip uploaded for analysis (`/api/videos`). It runs as a virtual camera (`camera_id`) with the
+ * zones and rules copied from `source_camera_id`; its alerts never notify the staff.
+ */
+export interface VideoUpload {
+  id: string;
+  location_id: string;
+  camera_id: string;
+  source_camera_id: string | null;
+  filename: string;
+  size_bytes: number;
+  rotate: VideoRotation;
+  status: VideoStatus;
+  /** 0..1 */
+  progress: number;
+  duration_s: number | null;
+  /** Alerts found so far. */
+  events: number;
+  error_ro: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  created_by: { id: string; name: string } | null;
+}
+
+/** One alert found in a clip; every `*_s` is a position in the clip, in seconds. */
+export interface VideoAlert {
+  event_id: string;
+  zone_id: string;
+  zone_name: string;
+  summary_ro: string;
+  state: 'opened' | 'acknowledged' | 'arrived' | 'closed';
+  at_s: number;
+  arrived_at_s: number | null;
+  closed_at_s: number | null;
+  wait_s: number | null;
+  /** `video_end` when the clip ended with the alert still open. */
+  closed_reason: string | null;
+  /** Absolute (resolved against the API) or null. */
+  snapshot_url: string | null;
+}
+
+/** Same limits as `POST /api/videos`; the dashboard checks the size before uploading. */
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+
+/** What "Analizează un video" sends; the location is the current one (`setLocation`). */
+export interface NewVideoUpload {
+  file: File;
+  rotate?: VideoRotation;
+  /** Camera whose zones and rules the clip uses. */
+  copy_from_camera_id?: string | null;
+}
+
 export interface ApiClient extends AccountApi {
   readonly kind: 'mock' | 'http';
   listCameras(): Promise<CameraView[]>;
@@ -122,6 +180,13 @@ export interface ApiClient extends AccountApi {
   rejectSuggestion(id: string): Promise<void>;
   uploadStaffPhoto(file: File): Promise<void>;
   getMetrics(): Promise<DashboardMetrics>;
+  /** `POST /api/videos` (multipart). 422 for a bad type, size or length. */
+  uploadVideo(input: NewVideoUpload): Promise<VideoUpload>;
+  /** The current location's uploads, newest first. */
+  listVideos(): Promise<VideoUpload[]>;
+  getVideo(id: string): Promise<VideoUpload>;
+  /** Alerts found in the clip, by position (`at_s`) ascending. */
+  videoEvents(id: string): Promise<VideoAlert[]>;
 }
 
 export async function createApi(baseUrl = import.meta.env.VITE_API_URL): Promise<ApiClient> {

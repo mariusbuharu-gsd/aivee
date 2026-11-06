@@ -129,6 +129,9 @@ class Cv2Source:
 class FileSource:
     """Recorded clip. Samples frames at `target_fps` of video time.
 
+    Never sleeps: a clip is decoded and analysed as fast as the CPU allows, while the
+    timestamps stay in video time, so durations in rules mean seconds of the clip.
+
     Timestamps are video positions in seconds (frame index / native fps), plus an
     offset per loop so they stay monotonic when `loop=True`.
     """
@@ -153,6 +156,12 @@ class FileSource:
     @property
     def native_fps(self) -> float:
         return self._native_fps
+
+    @property
+    def duration_s(self) -> float | None:
+        """Length of one pass in seconds (frame count / native fps), None if unknown."""
+        count = self._cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        return count / self._native_fps if count and count > 0 else None
 
     def read(self) -> tuple[float, Image] | None:
         while True:

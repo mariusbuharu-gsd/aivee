@@ -36,6 +36,8 @@ from aivee_api.rules.translator import ClaudeRuleTranslator
 from aivee_api.settings import ApiSettings
 from aivee_api.staff.adapters import build_enroller
 from aivee_api.staff.router import router as staff_router
+from aivee_api.videos.router import router as videos_router
+from aivee_api.videos.runner import EdgeClipProcess, VideoQueue
 from aivee_api.zones.router import router as zones_router
 
 log = logging.getLogger(__name__)
@@ -60,6 +62,12 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
         sync = EdgeSync(sessions, RecordingPublisher(), settings.site, settings.device)
         commands = LoggingEdgeCommands()
     settings.snapshot_dir.mkdir(parents=True, exist_ok=True)
+    settings.video_dir.mkdir(parents=True, exist_ok=True)
+    videos = VideoQueue(sessions, sync, EdgeClipProcess(settings))
+    try:
+        await videos.start()
+    except Exception:  # e.g. migration 0009 not applied yet: everything else still works
+        log.exception("video analysis queue did not start; run the migrations")
     try:
         yield Services(
             settings=settings,
@@ -70,8 +78,10 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
             enroller=build_enroller(settings.yolo_weights),
             metrics=metrics,
             live=live,
+            videos=videos,
         )
     finally:
+        await videos.stop()
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -115,6 +125,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         metrics_router,
         push_router,
         alerts_router,
+        videos_router,
     ):
         app.include_router(router)
 
