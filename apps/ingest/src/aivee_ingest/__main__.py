@@ -28,7 +28,13 @@ def build_notifier(
     notifiers: list[Notifier] = []
     if settings.telegram_bot_token and settings.telegram_chat_id:
         log.info("notifier: Telegram")
-        notifiers.append(TelegramNotifier(settings.telegram_bot_token, settings.telegram_chat_id))
+        notifiers.append(
+            TelegramNotifier(
+                settings.telegram_bot_token,
+                settings.telegram_chat_id,
+                prefix=settings.telegram_prefix,
+            )
+        )
     else:
         log.info("notifier: log (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set)")
         notifiers.append(LogNotifier())
