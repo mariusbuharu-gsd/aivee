@@ -1,5 +1,5 @@
 """Folded alert updates for /ws/events: one AlertView message per alert that changed
-(a new event row for it, or an acknowledgement) since the last poll."""
+(a new event row for it, an acknowledgement or a re-alert) since the last poll."""
 
 from collections.abc import Collection
 from datetime import datetime
@@ -21,11 +21,14 @@ class AlertFeed:
         self._locations = location_ids
         self._last_row = 0
         self._last_ack: datetime | None = None
+        self._last_realert: datetime | None = None
 
     async def start(self) -> None:
         async with self._sessions() as s:
             self._last_row = await EventRepository(s).max_id()
-            self._last_ack = await AlertRepository(s).latest_ack()
+            repo = AlertRepository(s)
+            self._last_ack = await repo.latest_ack()
+            self._last_realert = await repo.latest_realert()
 
     async def poll(self) -> list[AlertViewMessage]:
         async with self._sessions() as s:
@@ -34,7 +37,11 @@ class AlertFeed:
             acked = await repo.acknowledged_after(self._last_ack)
             if acked:
                 self._last_ack = acked[-1][1]
-            ids = list(dict.fromkeys([*changed, *(a for a, _ in acked)]))
+            realerted = await repo.realerted_after(self._last_realert)
+            if realerted:
+                self._last_realert = realerted[-1][1]
+            stamped = (a for a, _ in [*acked, *realerted])
+            ids = list(dict.fromkeys([*changed, *stamped]))
             if not ids:
                 return []
             views = await repo.views(alert_ids=ids, location_ids=self._locations, limit=len(ids))
