@@ -22,6 +22,39 @@ services:
       interval: 5s
       retries: 10
 
+  # One-shot: apply Alembic migrations before ingest starts.
+  migrate:
+    build: { context: ., dockerfile: apps/ingest/Dockerfile }
+    image: aivee-ingest:dev
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    command: ["python", "-m", "aivee_api.db.migrate", "upgrade"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  # Two replicas split events through the `$share/ingest/...` shared subscription.
+  ingest:
+    build: { context: ., dockerfile: apps/ingest/Dockerfile }
+    image: aivee-ingest:dev
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SNAPSHOT_DIR: /data/snapshots
+    volumes:
+      - snapshots:/data/snapshots
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mosquitto: { condition: service_started }
+    deploy:
+      replicas: 2
+    restart: unless-stopped
+
   mediamtx:
     image: bluenviron/mediamtx:1
     volumes:
@@ -31,3 +64,4 @@ services:
 volumes:
   mosquitto-data: {}
   pg-data: {}
+  snapshots: {}
