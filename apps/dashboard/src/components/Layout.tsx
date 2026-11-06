@@ -67,7 +67,7 @@ const TABS = 4;
 export function Layout() {
   const api = useApi();
   const { me, location, setLocation, can, logout } = useAuth();
-  const { error, retry, suggestions, alerts, cameras, cases } = useLiveData();
+  const { error, retry, alerts, cameras, cases } = useLiveData();
   const toast = useToast();
   const navigate = useNavigate();
   const phone = useMedia(PHONE);
@@ -96,7 +96,6 @@ export function Layout() {
       takenBy={(key) => cases[key]?.acknowledged_by ?? null}
     />
   );
-  const badge = openCount + (can('staff.review') ? suggestions.length : 0);
   const locations = me?.locations ?? [];
   const links = NAV.filter((n) => n.any.some(can));
 
@@ -127,12 +126,8 @@ export function Layout() {
     >
       <Icon name={n.icon} />
       <span>{n.label}</span>
-      {n.to === '/alerte' && badge > 0 && (
-        <span className="nav-count" aria-label={`${badge} noi`}>
-          {badge}
-        </span>
-      )}
-      {n.to === '/' && !tab && openCount > 0 && (
+      {/* Same number as the Deschise filter on Alerte; the sidebar's "Sala acum" says which table. */}
+      {n.to === '/alerte' && openCount > 0 && (
         <span className="nav-count" aria-label={`${openCount} deschise`}>
           {openCount}
         </span>

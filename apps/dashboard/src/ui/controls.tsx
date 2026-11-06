@@ -33,6 +33,8 @@ export interface SegmentOption<V extends string> {
   label: string;
   /** CSS class for a small colour swatch (e.g. the zone colour). */
   swatch?: string;
+  /** A small count after the label ("Deschise 1"); hidden when absent or zero. */
+  count?: number;
 }
 
 /** Two to four mutually exclusive choices, all visible at once. */
@@ -66,6 +68,12 @@ export function Segmented<V extends string>({
           >
             {o.swatch && <span className={`swatch ${o.swatch}`} aria-hidden="true" />}
             {o.label}
+            {o.count ? (
+              <>
+                {' '}
+                <span className="seg-count mono">{o.count}</span>
+              </>
+            ) : null}
           </button>
         ))}
       </div>

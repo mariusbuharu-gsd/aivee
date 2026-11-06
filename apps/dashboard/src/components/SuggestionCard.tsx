@@ -4,15 +4,19 @@ import type { StaffSuggestion } from '../contracts';
 import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
+import './SuggestionCard.css';
 
 export function SuggestionCard({
   suggestion,
   cameraName,
   onResolved,
+  variant = 'card',
 }: {
   suggestion: StaffSuggestion;
   cameraName?: string;
   onResolved?: (id: string, decision: 'confirmed' | 'rejected') => void;
+  /** `card` (default, Live): night card with the score. `question`: one Da/Nu line (Alerte). */
+  variant?: 'card' | 'question';
 }) {
   const api = useApi();
   const toast = useToast();
@@ -41,6 +45,47 @@ export function SuggestionCard({
       setError(e instanceof Error ? e.message : 'Nu am putut trimite răspunsul');
       setBusy(false);
     }
+  }
+
+  if (variant === 'question') {
+    return (
+      <article className="suggestion-q" aria-labelledby={headingId}>
+        {/* The API serves no crop for a suggestion yet, so this stays a blurred stand-in. */}
+        <div
+          className="suggestion-q-crop"
+          role="img"
+          aria-label={`Persoana #${suggestion.track_id}, estompată`}
+        >
+          <span className="mono">#{suggestion.track_id}</span>
+        </div>
+        <div className="suggestion-q-body">
+          <h3 id={headingId}>#{suggestion.track_id} pare să fie din personal?</h3>
+          <p className="muted small">
+            {suggestion.reason_ro}
+            {cameraName ? ` · ${cameraName}` : ''}
+          </p>
+          {error && <Banner tone="error" title={error} />}
+        </div>
+        <div className="suggestion-q-actions">
+          <button
+            className="btn btn-primary"
+            disabled={busy}
+            aria-label={`Da, #${suggestion.track_id} e din personal`}
+            onClick={() => decide('confirmed')}
+          >
+            Da
+          </button>
+          <button
+            className="btn"
+            disabled={busy}
+            aria-label={`Nu, #${suggestion.track_id} e client`}
+            onClick={() => decide('rejected')}
+          >
+            Nu
+          </button>
+        </div>
+      </article>
+    );
   }
 
   return (

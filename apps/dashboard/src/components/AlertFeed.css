@@ -1,0 +1,171 @@
+/* AlertFeed `hero` (open alerts, large) and `rows` (closed alerts, one line each) variants.
+   The default `list` variant keeps its rules in styles.css. Colours come from the tokens. */
+
+/* ---------- hero ---------- */
+.alert-heroes {
+  gap: 12px;
+}
+.alert-hero {
+  gap: 16px;
+  padding: 14px;
+  border-width: 1.5px;
+  border-radius: var(--radius);
+  align-items: stretch;
+}
+.alert-hero-shot {
+  flex: none;
+  width: clamp(180px, 28%, 260px);
+}
+.alert-hero-shot .snapshot {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+}
+.alert-hero-shot .snapshot-pair {
+  flex-direction: column;
+}
+.alert-hero-shot .snapshot-pair .snapshot {
+  aspect-ratio: 16 / 9;
+}
+.alert-hero .feed-body {
+  gap: 6px;
+}
+.alert-hero-clock {
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.alert-hero-title {
+  margin: 2px 0 0;
+  font-family: var(--sans);
+  font-size: 1.12rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+.alert-hero .ack {
+  margin-top: auto;
+  padding-top: 8px;
+}
+.alert-hero .ack .btn {
+  min-width: 132px;
+}
+.alert-hero .ack > .muted {
+  flex: 1 1 200px;
+}
+
+/* ---------- rows ---------- */
+.alert-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+.alert-row + .alert-row {
+  border-top: 1px solid var(--border-soft);
+}
+.alert-row > details > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--tap);
+  padding: 8px 0;
+  cursor: pointer;
+}
+.alert-row > details > summary::-webkit-details-marker {
+  display: none;
+}
+.alert-row > details > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+.alert-row-what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alert-row-what b {
+  font-weight: 600;
+}
+.alert-row-meta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.alert-row-time {
+  font-size: 0.8rem;
+  color: var(--muted-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.alert-row-more {
+  display: flex;
+  gap: 12px;
+  padding: 0 0 12px;
+}
+.alert-row > details[open] > summary .alert-row-what {
+  white-space: normal;
+}
+
+/* Duration against the rule's threshold: ink while within it, coral once past it. */
+.dur-bar {
+  display: inline-block;
+  width: 72px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.dur-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  border-radius: 4px;
+}
+.dur-bar.is-over > i {
+  background: var(--coral);
+}
+
+@media (max-width: 760px) {
+  .alert-hero {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .alert-hero-shot {
+    width: 100%;
+  }
+  .alert-hero-shot .snapshot {
+    aspect-ratio: auto;
+    height: 150px;
+  }
+  .alert-hero-shot .snapshot-pair {
+    flex-direction: row;
+  }
+  .alert-hero-shot .snapshot-pair figure {
+    flex: 1;
+  }
+  .alert-hero .ack .btn {
+    flex: 1 1 100%;
+  }
+  .alert-rows {
+    padding: 0 12px;
+  }
+  .dur-bar {
+    width: 44px;
+  }
+  /* Phones: the zone and note wrap instead of cutting "preluată de …" short. */
+  .alert-row-what {
+    white-space: normal;
+  }
+  .alert-row-meta .pill-ai {
+    display: none;
+  }
+}

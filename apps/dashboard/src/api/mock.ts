@@ -395,7 +395,7 @@ export class MockApi implements ApiClient {
   }
 
   emitAlert(ruleId: string, zoneId: string, state: AlertEvent['state'], summary: string) {
-    const event: AlertEvent = {
+    const event: AlertView = {
       event_id: uid('e'),
       rule_id: ruleId,
       camera_id: 'cam-sala',
@@ -404,6 +404,8 @@ export class MockApi implements ApiClient {
       at: new Date().toISOString(),
       summary_ro: summary,
       snapshot: true,
+      // A stand-in snapshot on open, so the Alerte cards show one as with the real API.
+      ...(state === 'opened' ? { snapshot_url: tableSketch(true) } : {}),
     };
     this.alerts.push(event);
     this.alertSubs.forEach((cb) => cb(event));
