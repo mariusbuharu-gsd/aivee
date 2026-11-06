@@ -91,12 +91,31 @@ describe('App with the mock API', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Merg eu la Masa 2' })).toBeNull(),
     );
-    // Taken now by Ana (timeline), plus the seeded alert she took earlier (summary + timeline).
-    expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(3);
-    expect(screen.getByText(/a durat .* · Ana Dumitru/)).toBeInTheDocument();
+    // Taken now by Ana (timeline), plus the seeded alert she took earlier (row + timeline).
+    expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(2);
+    expect(screen.getByText('preluată de Ana Dumitru')).toBeInTheDocument();
     // The seeded closed alert shows its full lifecycle with durations.
     expect(screen.getAllByText(/reacție 30 s/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/drum 1 min 18 s/).length).toBeGreaterThan(0);
+  });
+
+  it('puts open alerts on top, closed ones as rows, and asks about staff with Da/Nu', async () => {
+    const user = userEvent.setup();
+    const api = renderApp('/alerte');
+    expect(await screen.findByRole('list', { name: 'Alerte închise' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Deschise' })).toBeInTheDocument();
+    api.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut');
+    api.emitSuggestion();
+    const open = await screen.findByRole('list', { name: 'Alerte deschise' });
+    expect(within(open).getByText(/regula „Masă neservită”/)).toBeInTheDocument();
+    expect(within(open).getByRole('img', { name: 'Captură cu fețele estompate' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Deschise 1' })).toBeInTheDocument();
+    // "Masă neservită" waits 60 s; the seeded Masa 1 alert stayed open 2 min, past it.
+    expect(document.querySelector('.alerts-day .dur-bar.is-over')).not.toBeNull();
+    await user.click(await screen.findByRole('button', { name: 'Da, #7 e din personal' }));
+    expect(await screen.findByText('#7 e din personal')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Închise' }));
+    expect(screen.queryByRole('list', { name: 'Alerte deschise' })).toBeNull();
   });
 
   it('filters the history by kind', async () => {

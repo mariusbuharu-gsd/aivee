@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { PushToggle } from './PushToggle';
 import type { PushService, PushState } from './service';
@@ -53,5 +54,38 @@ describe('PushToggle', () => {
     render(<PushToggle service={service} />);
     await userEvent.click(await screen.findByRole('switch'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Serverul nu răspunde');
+  });
+});
+
+describe('PushToggle placements', () => {
+  const page = (state: PushState) => {
+    const service = fakeService(state);
+    return render(
+      <MemoryRouter>
+        <PushToggle service={service} variant="banner" />
+        <PushToggle service={service} variant="actionable" />
+        <PushToggle service={service} variant="note" />
+      </MemoryRouter>,
+    );
+  };
+
+  it('turns "indisponibil" into a banner that says what to do, and hides the card', async () => {
+    const { container } = page('unavailable');
+    expect(await screen.findByText('Notificări pe telefon: indisponibile')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Mergi la Locații' })).toHaveAttribute(
+      'href',
+      '/locatii',
+    );
+    expect(screen.queryByRole('heading', { name: 'Notificări pe telefon' })).toBeNull();
+    // The note (non-owners) shows too here; on the page only one of banner/note is mounted.
+    expect(container.querySelectorAll('#notificari')).toHaveLength(2);
+  });
+
+  it('keeps the card, alone and with the #notificari anchor, when there is a switch', async () => {
+    const { container } = page('off');
+    expect(await screen.findByRole('switch', { name: 'Activează notificările' })).toBeVisible();
+    expect(screen.queryByText(/indisponibile/)).toBeNull();
+    expect(screen.queryByText(/nu merg aici/)).toBeNull();
+    expect(container.querySelectorAll('#notificari')).toHaveLength(1);
   });
 });

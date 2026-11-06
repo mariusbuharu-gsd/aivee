@@ -6,6 +6,7 @@ import type { Rule, StaffSuggestion } from '../contracts';
 import { fakeApi, renderWithApi } from '../test/fakeApi';
 import { ApiError } from '../api/client';
 import { AddCameraForm } from './AddCameraForm';
+import { ruleLimitS } from '../alerts/limit';
 import { AlertFeed } from './AlertFeed';
 import { RuleComposer } from './RuleComposer';
 import { StaffPhotoUpload } from './StaffPhotoUpload';
@@ -249,6 +250,82 @@ describe('AlertFeed', () => {
     render(<AlertFeed items={[]} zoneName={(id) => id} />);
     expect(screen.getByText('Nicio alertă încă.')).toBeInTheDocument();
   });
+
+  it('hero: an open alert large, with snapshot, running clock, rule and optional "Merg eu"', async () => {
+    const onAck = vi.fn(async () => undefined);
+    renderWithApi(
+      <AlertFeed
+        variant="hero"
+        items={[items[0] as AlertItem]}
+        zoneName={(id) => names[id] ?? id}
+        showSnapshot
+        ruleName={(id) => (id === 'r' ? 'Masă neservită' : undefined)}
+        onAck={onAck}
+      />,
+    );
+    const card = screen.getByRole('list', { name: 'Alerte deschise' });
+    expect(
+      within(card).getByRole('heading', { name: 'Masa 2: nimeni de la personal' }),
+    ).toBeVisible();
+    expect(within(card).getByText(/regula „Masă neservită”/)).toBeInTheDocument();
+    expect(within(card).getByText(/^00:\d\d$/)).toBeInTheDocument();
+    expect(within(card).getByRole('img', { name: 'Captură cu fețele estompate' })).toHaveAttribute(
+      'src',
+      'http://api/api/snapshots/e-2',
+    );
+    expect(within(card).getByText(/Opțional: colegii văd că vii/)).toBeInTheDocument();
+    await userEvent.click(within(card).getByRole('button', { name: 'Merg eu la Masa 2' }));
+    expect(onAck).toHaveBeenCalledWith('e-2');
+  });
+
+  it('rows: one line per closed alert with a bar against the rule threshold', () => {
+    const closed = items[1] as AlertItem; // open 90 s
+    const { container } = render(
+      <AlertFeed
+        variant="rows"
+        items={[closed, { ...closed, key: 'e-3', closed_at: '2026-11-06T10:00:30Z' }]}
+        zoneName={(id) => names[id] ?? id}
+        limit={(a) => (a.key === 'e-1' ? { seconds: 60, ofRule: true } : null)}
+      />,
+    );
+    const rows = within(screen.getByRole('list', { name: 'Alerte închise' })).getAllByRole(
+      'listitem',
+    );
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0] as HTMLElement).getByText('Masa 1')).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText('ospătarul a ajuns')).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText('01:30 ·')).toBeInTheDocument();
+    const bars = container.querySelectorAll('.dur-bar');
+    // Past the 60 s limit: full and coral. No scale for the second row: no bar.
+    expect(bars).toHaveLength(1);
+    expect(bars[0]).toHaveClass('is-over');
+    expect(bars[0]).toHaveAttribute('title', '1 min 30 s din limita regulii de 1 min 0 s');
+    expect((bars[0]?.firstChild as HTMLElement).style.width).toBe('100%');
+  });
+
+  it('rows: a fallback scale never reads as over the limit', () => {
+    const closed = items[1] as AlertItem;
+    const { container } = render(
+      <AlertFeed
+        variant="rows"
+        items={[closed]}
+        zoneName={(id) => names[id] ?? id}
+        limit={() => ({ seconds: 180, ofRule: false })}
+      />,
+    );
+    const bar = container.querySelector('.dur-bar');
+    expect(bar).not.toHaveClass('is-over');
+    expect((bar?.firstChild as HTMLElement).style.width).toBe('50%');
+  });
+});
+
+describe('ruleLimitS', () => {
+  it('takes the longest condition duration, null for instant rules', () => {
+    expect(ruleLimitS(rule)).toBe(60);
+    expect(ruleLimitS({ all_of: [{ min_duration_s: 30 }, { min_duration_s: 180 }] })).toBe(180);
+    expect(ruleLimitS({ all_of: [{}] })).toBeNull();
+    expect(ruleLimitS({ all_of: [{ kind: 'object_gone', min_duration_s: 60 }] })).toBeNull();
+  });
 });
 
 describe('SuggestionCard', () => {
@@ -279,6 +356,29 @@ describe('SuggestionCard', () => {
     const { api } = renderWithApi(<SuggestionCard suggestion={suggestion} />);
     await user.click(screen.getByRole('button', { name: 'Respinge' }));
     expect(api.rejectSuggestion).toHaveBeenCalledWith('sug-1');
+  });
+
+  it('asks a Da/Nu question with the blurred person and the reason', async () => {
+    const user = userEvent.setup();
+    const onResolved = vi.fn();
+    const { api } = renderWithApi(
+      <SuggestionCard
+        variant="question"
+        suggestion={suggestion}
+        cameraName="Sala"
+        onResolved={onResolved}
+      />,
+    );
+    expect(
+      screen.getByRole('heading', { name: '#7 pare să fie din personal?' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
+    expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
+    expect(screen.queryByText(/scor/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Nu, #7 e client' }));
+    expect(api.rejectSuggestion).toHaveBeenCalledWith('sug-1');
+    await waitFor(() => expect(onResolved).toHaveBeenCalledWith('sug-1', 'rejected'));
+    expect(screen.getByRole('button', { name: 'Da, #7 e din personal' })).toBeDisabled();
   });
 });
 
