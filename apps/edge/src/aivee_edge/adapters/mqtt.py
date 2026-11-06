@@ -12,6 +12,7 @@
 
 import logging
 import threading
+import time
 from collections import deque
 from typing import Any
 
@@ -158,6 +159,21 @@ class MqttEdgeClient:
         if self._camera_id is None:
             return cameras[0]
         return next((c for c in cameras if c.id == self._camera_id), None)
+
+    def wait_for_state(self, timeout: float) -> bool:
+        """Wait until the retained `config` names this device's camera and a `rules` set
+        arrived. An offline clip run uses it: it must not analyse frames without its zones
+        and rules, and a clip has no "later" to pick them up in."""
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                ready = self._rules is not None and (
+                    self._config is not None
+                    and any(c.id == self._camera_id for c in self._config.cameras)
+                )
+            if ready or time.monotonic() >= deadline:
+                return ready
+            time.sleep(0.05)
 
     def set_camera(self, camera: CameraConfig) -> None:
         with self._lock:

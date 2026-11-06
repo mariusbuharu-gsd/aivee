@@ -8,8 +8,9 @@ import importlib
 import logging
 import signal
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import FrameType, ModuleType
 from typing import Any
@@ -38,6 +39,23 @@ def configure_logging(level: int = logging.INFO) -> None:
 def wall_clock(_ts: float) -> datetime:
     """Event time for live runs: source timestamps are monotonic or video time."""
     return datetime.now(UTC)
+
+
+def clip_clock(epoch: datetime) -> Callable[[float], datetime]:
+    """Event time for an offline clip run: the clip position counted from `epoch`."""
+
+    def to_datetime(ts: float) -> datetime:
+        return epoch + timedelta(seconds=ts)
+
+    return to_datetime
+
+
+EXIT_NO_STATE = 4
+"""Offline clip run: the retained config or rules did not arrive in time."""
+
+OFFLINE_DETECTIONS_INTERVAL_S = 1e9
+"""An offline clip run publishes no live boxes: nobody watches it, and at many times real
+speed they would flood the broker."""
 
 
 def _adapter(name: str) -> ModuleType:
@@ -135,6 +153,12 @@ def build_vision(settings: EdgeSettings) -> Vision:
         raise
     except (OSError, ValueError) as e:  # missing model files, bad source
         raise VisionUnavailable(f"could not load vision adapters: {e}") from e
+    if settings.progress_file:
+        from aivee_edge.progress import ProgressSource
+
+        source = ProgressSource(
+            source, settings.progress_file, duration_s=getattr(source, "duration_s", None)
+        )
     return Vision(source, detector, pose, embedder, snapshots)
 
 
@@ -189,6 +213,18 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
     except TimeoutError as e:
         log.error("mqtt_unavailable host=%s port=%d: %s", settings.mqtt_host, settings.mqtt_port, e)
         return 3
+    offline = settings.clip_epoch is not None
+    if settings.config_wait_s > 0 and not client.wait_for_state(settings.config_wait_s):
+        log.error(
+            "no_state camera=%s: retained config or rules missing after %.0fs",
+            settings.camera_id,
+            settings.config_wait_s,
+        )
+        client.stop()
+        return EXIT_NO_STATE
+    extra: dict[str, Any] = (
+        {"detections_interval_s": OFFLINE_DETECTIONS_INTERVAL_S} if offline else {}
+    )
     pipeline = EdgePipeline(
         vision.source,
         vision.detector,
@@ -204,8 +240,9 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         grace_s=settings.grace_s,
         arrive_s=settings.arrive_s,
         metrics_interval_s=settings.metrics_interval_s,
-        to_datetime=wall_clock,
+        to_datetime=clip_clock(settings.clip_epoch) if settings.clip_epoch else wall_clock,
         **pipeline_tuning(settings),
+        **extra,
     )
     log.info(
         "edge started site=%s device=%s camera=%s source=%s",

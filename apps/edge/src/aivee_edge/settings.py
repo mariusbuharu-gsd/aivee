@@ -1,5 +1,7 @@
 """Edge configuration from the environment (and `.env` when run from the repo root)."""
 
+from datetime import datetime
+
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,7 +12,7 @@ class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_EDGE_USER, MQTT_EDGE_PASSWORD, SITE, DEVICE,
     CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, GRACE_S, DETECTOR_MODEL, POSE_MODEL,
     APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH, STAFF_W_APPEARANCE,
-    STAFF_W_STANDING, STAFF_W_BEHAVIOUR."""
+    STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE, CONFIG_WAIT_S."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
@@ -53,6 +55,15 @@ class EdgeSettings(BaseSettings):
     arrive_s: float = 5.0
     """Seconds a staff member must stay in an open alert's zone to count as arrived."""
     metrics_interval_s: float = 5.0
+
+    clip_epoch: datetime | None = None
+    """Offline clip analysis: event time = this instant + position in the clip, so the API
+    can show each alert at its mm:ss. None (live): wall clock."""
+    progress_file: str = ""
+    """Offline clip analysis: JSON file the run keeps updated with how far it got."""
+    config_wait_s: float = 0.0
+    """Wait up to this long at start for the retained config (this camera) and rules; a run
+    that gets neither exits with code 4. 0: start at once (live)."""
 
     @field_validator("rotate")
     @classmethod
