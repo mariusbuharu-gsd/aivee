@@ -47,11 +47,14 @@ class Site(Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(Text)
     telegram_chat_title: Mapped[str | None] = mapped_column(Text)
     """The chat's title when it was linked through the bot (None after a manual chat id)."""
+    service_target_s: Mapped[int | None] = mapped_column(Integer)
+    """The owner's goal for the wait after an alert, in seconds (None: not set)."""
 
     __table_args__ = (
         CheckConstraint(
             "type IN ('restaurant', 'terrace', 'event', 'shop', 'other')", name="location_type"
         ),
+        CheckConstraint("service_target_s BETWEEN 1 AND 3600", name="service_target_range"),
     )
 
 

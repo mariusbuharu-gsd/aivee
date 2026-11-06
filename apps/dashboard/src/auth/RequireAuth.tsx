@@ -1,17 +1,14 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 import type { Permission } from '../api/client';
 import { useAuth } from './context';
+import { Loading } from '../ui/Eyes';
 
 /** Nested routes for a signed-in user; otherwise /intra, and back to this URL afterwards. */
 export function RequireAuth() {
   const { status, me } = useAuth();
   const location = useLocation();
   if (status === 'loading') {
-    return (
-      <p className="boot muted" role="status">
-        Se încarcă…
-      </p>
-    );
+    return <Loading page>Se încarcă…</Loading>;
   }
   if (status === 'anon' || !me) {
     const next = location.pathname + location.search;

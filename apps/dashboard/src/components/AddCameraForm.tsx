@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { CameraView } from '../api/client';
 import { useApi } from '../api/context';
 import { Banner } from '../ui/Banner';
+import { BusyLabel } from '../ui/Eyes';
 
 /** The edge's CAMERA_ID default: the id here must match it or the edge ignores the config. */
 export const DEFAULT_CAMERA_ID = 'cam-01';
@@ -140,7 +141,9 @@ export function AddCameraForm({
       )}
       <div className="row-actions">
         <button className="btn btn-primary" type="submit" disabled={busy}>
-          {busy ? 'Se adaugă…' : 'Adaugă camera'}
+          <BusyLabel busy={busy} idle="Adaugă camera">
+            Se adaugă…
+          </BusyLabel>
         </button>
         {onCancel && (
           <button className="btn btn-ghost" type="button" onClick={onCancel} disabled={busy}>

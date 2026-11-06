@@ -363,7 +363,7 @@ describe('AlertFeed', () => {
     // Past the 60 s limit: full and coral. No scale for the second row: no bar.
     expect(bars).toHaveLength(1);
     expect(bars[0]).toHaveClass('is-over');
-    expect(bars[0]).toHaveAttribute('title', '1 min 30 s din limita regulii de 1 min 0 s');
+    expect(bars[0]).toHaveAttribute('title', '1 min 30 s din limita regulii de 1 min');
     expect((bars[0]?.firstChild as HTMLElement).style.width).toBe('100%');
   });
 

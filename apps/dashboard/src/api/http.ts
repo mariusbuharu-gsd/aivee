@@ -18,6 +18,7 @@ import {
   type Member,
   type RegisterInput,
   type Role,
+  type ServiceHeatmap,
   type ServiceMetrics,
   type ApiClient,
   type CameraFrame,
@@ -461,6 +462,10 @@ export class HttpApi implements ApiClient {
 
   getServiceMetrics(q: { location_id: string; from?: string; to?: string }) {
     return this.request<ServiceMetrics>(`/api/metrics/service?${query(q)}`);
+  }
+
+  getServiceHeatmap(q: { location_id: string; from?: string; to?: string }) {
+    return this.request<ServiceHeatmap>(`/api/metrics/service/heatmap?${query(q)}`);
   }
 }
 
