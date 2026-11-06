@@ -251,12 +251,12 @@
         </div>
       </section>
 
-      <!-- Privacy: what is kept and what never is, then the two modes, each with its own honest claim (D25, docs/adr/0011-cloud-or-edge-analysis.md) -->
+      <!-- Privacy: what is kept and what never is, then where the analysis runs, each mode with its own honest claim (D25, docs/adr/0011-cloud-or-edge-analysis.md) -->
       <section id="confidentialitate" class="section" aria-labelledby="conf-titlu">
         <div class="wrap">
           <p class="eyebrow">Confidențialitate</p>
           <h2 id="conf-titlu">Se uită la sală. Închide ochii la oameni.</h2>
-          <p class="lead">AiVee recunoaște rolul, nu persoana. Iar ce nu-i trebuie, nu păstrează.</p>
+          <p class="lead">AiVee recunoaște rolul după uniformă și comportament, fără recunoaștere facială. Iar ce nu-i trebuie, nu păstrează.</p>
           <!-- Two columns: what AiVee keeps (eyes open) and what it never keeps (eyes shut, each line
                struck out in turn by privacy.js). The HTML is the finished state. -->
           <div class="ledger">
@@ -290,24 +290,10 @@
               <p class="ledger__foot">Nici în cloud, nici pe calculatorul din locație.</p>
             </div>
           </div>
-          <div class="ledger__modes">
-            <p><span class="mode__tag">Cloud · standard</span> Video-ul e analizat și aruncat, nu e salvat niciodată. Servere în UE. Nu instalezi nimic în afară de camere.</p>
-            <p><span class="mode__tag">Edge · opțional</span> Video-ul nu pleacă din locație. Analiza rulează în local, pe calculatorul tău sau pe cutia noastră edge; pleacă doar alerta, cu poza blurată.</p>
-            <p><span class="mode__tag">Verificare AI · opțional</span> Dacă o pornești, poza blurată a alertei e verificată de un model AI înainte să sune telefonul. Pleacă doar cadrele alertei, blurate, niciodată video-ul.</p>
-          </div>
-          <ul class="points">
-            <li>
-              <h3>Fețe blurate în orice poză</h3>
-              <p>În ambele variante, fiecare poză e blurată înainte să fie trimisă sau păstrată. Alerta arată situația, nu oamenii.</p>
-            </li>
-            <li>
-              <h3>Fără recunoaștere facială</h3>
-              <p>AiVee știe doar dacă cineva e client sau angajat, după uniformă și comportament. Dacă îi ceri să recunoască pe cineva anume, refuză.</p>
-            </li>
-            <li>
-              <h3>Decizia e a ta</h3>
-              <p>Regula e o ciornă până o confirmi. Un angajat e angajat doar după ce confirmi tu.</p>
-            </li>
+          <ul class="where" aria-label="Unde se analizează imaginile">
+            <li><span class="mode__tag">Cloud · standard</span><b>Analizat în UE și aruncat.</b><span>Nu instalezi nimic în afară de camere.</span></li>
+            <li><span class="mode__tag">Edge · opțional</span><b>Video-ul nu pleacă din locație.</b><span>Analiza rulează pe calculatorul tău sau pe cutia noastră edge.</span></li>
+            <li><span class="mode__tag">Verificare AI · opțional</span><b>Doar cadrul blurat al alertei.</b><span>E verificat de un model AI înainte să sune telefonul.</span></li>
           </ul>
         </div>
       </section>
