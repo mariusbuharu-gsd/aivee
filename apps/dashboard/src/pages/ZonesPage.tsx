@@ -24,8 +24,20 @@ import {
   updateZone,
   type Draft,
 } from '../zones/geometry';
+import './ZonesPage.css';
 
 const newId = () => `z-${Date.now().toString(36)}`;
+
+const BASE_NAME: Record<string, string> = { table: 'Masa', entrance: 'Intrare' };
+/** Short labels for the toolbar on the image; the kinds come from ZONE_TAGS. */
+const TOOL_LABEL: Record<string, string> = { staff: 'Personal' };
+
+/** "Masa 3", "Intrare 2", "Zonă personal": the next free name for a zone of this kind. */
+function defaultName(zones: Zone[], tag: string): string {
+  const base = BASE_NAME[tag] ?? tagLabel(tag);
+  const n = zones.filter((z) => z.tag === tag).length;
+  return tag === 'table' || n > 0 ? `${base} ${n + 1}` : base;
+}
 
 export function ZonesPage() {
   const { cameraId = '' } = useParams();
@@ -98,14 +110,17 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
     setSelected(hitTest(p, zones));
   }
 
-  function startDrawing(replace: string | null = null) {
-    setDraft(emptyDraft());
+  function startDrawing(replace: string | null = null, kind = 'table') {
     setRedrawId(replace);
-    if (!replace) {
-      setSelected(null);
-      setName(`Masa ${zones.filter((z) => z.tag === 'table').length + 1}`);
-      setTag('table');
+    if (replace) {
+      setDraft(emptyDraft());
+      return;
     }
+    // Switching the tool mid-draw keeps the points; a name the user typed stays too.
+    if (!draft || redrawId) setDraft(emptyDraft());
+    setSelected(null);
+    if (!draft || redrawId || name === defaultName(zones, tag)) setName(defaultName(zones, kind));
+    setTag(kind);
   }
 
   function finishDraft() {
@@ -171,6 +186,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   }
 
   const canFinish = draft?.closed && (redrawId !== null || name.trim() !== '');
+  const drawTag = redrawId ? (current?.tag ?? 'table') : tag;
   const editorStyle: CSSProperties | undefined = frame
     ? { aspectRatio: `${frame[0]} / ${frame[1]}` }
     : undefined;
@@ -198,24 +214,31 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   );
 
   return (
-    <div className="page">
+    <div className="page zones-page">
       <header className="page-head">
         <h1>
           Zone · <span className="muted">{camera.name}</span>
         </h1>
-        <div className="actions">
-          {dirty ? (
-            <span className="pill pill-alert">modificări nesalvate</span>
+        <div className="actions zones-save">
+          {dirty || saving ? (
+            <>
+              <span className="zones-state is-dirty" role="status">
+                {saving ? 'se salvează…' : 'modificări nesalvate'}
+              </span>
+              <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>
+                {saving ? 'Se salvează…' : 'Salvează zonele'}
+              </button>
+            </>
           ) : (
-            <span className="muted small">Totul e salvat</span>
+            <>
+              <span className="zones-state is-saved" role="status">
+                <Icon name="check" /> salvat
+              </span>
+              <Link to="/dispozitive" className="btn">
+                Gata
+              </Link>
+            </>
           )}
-          <button
-            className="btn btn-primary"
-            onClick={() => void save()}
-            disabled={!dirty || saving}
-          >
-            {saving ? 'Se salvează…' : 'Salvează zonele'}
-          </button>
         </div>
       </header>
       {saveError && (
@@ -238,112 +261,137 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
       )}
       <div className="two-col">
         <section aria-label="Imagine cameră">
-          <div className={`editor ${draft ? 'is-drawing' : ''}`} style={editorStyle}>
-            {still ? (
-              <img
-                className="editor-still"
-                src={still}
-                alt={`Imagine încărcată pentru ${camera.name}`}
-                onLoad={(e) =>
-                  setFrame([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])
-                }
-              />
-            ) : (
-              // Try MediaMTX even if the device has not reported online yet: the stream may be up.
-              <LivePlayer
-                cameraId={camera.id}
-                label={camera.name}
-                onStatus={setLive}
-                onFrameSize={(w, h) => w > 0 && h > 0 && setFrame([w, h])}
-              />
-            )}
-            <svg
-              className="overlay overlay-edit"
-              viewBox="0 0 1 1"
-              preserveAspectRatio="none"
-              onClick={onSurfaceClick}
-              aria-label={
-                draft ? 'Click pentru a adăuga un punct' : 'Click pe o zonă pentru a o selecta'
-              }
-              role="application"
-            >
-              {zones.map((z) => (
-                <polygon
-                  key={z.id}
-                  points={toSvgPoints(z.polygon)}
-                  className={`zone-shape zone-${z.tag} ${z.id === selected ? 'is-selected' : ''}`}
+          <div className={`editor-wrap draw-${drawTag}`}>
+            <div className={`editor ${draft ? 'is-drawing' : ''}`} style={editorStyle}>
+              {still ? (
+                <img
+                  className="editor-still"
+                  src={still}
+                  alt={`Imagine încărcată pentru ${camera.name}`}
+                  onLoad={(e) =>
+                    setFrame([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])
+                  }
                 />
+              ) : (
+                // Try MediaMTX even if the device has not reported online yet: the stream may be up.
+                <LivePlayer
+                  cameraId={camera.id}
+                  label={camera.name}
+                  onStatus={setLive}
+                  onFrameSize={(w, h) => w > 0 && h > 0 && setFrame([w, h])}
+                />
+              )}
+              <svg
+                className="overlay overlay-edit"
+                viewBox="0 0 1 1"
+                preserveAspectRatio="none"
+                onClick={onSurfaceClick}
+                aria-label={
+                  draft ? 'Click pentru a adăuga un punct' : 'Click pe o zonă pentru a o selecta'
+                }
+                role="application"
+              >
+                {zones.map((z) => (
+                  <polygon
+                    key={z.id}
+                    points={toSvgPoints(z.polygon)}
+                    className={`zone-shape zone-${z.tag} ${z.id === selected ? 'is-selected' : ''}`}
+                  />
+                ))}
+                {draft && draft.points.length > 0 && (
+                  <>
+                    {draft.closed ? (
+                      <polygon
+                        points={toSvgPoints(draft.points)}
+                        className={`zone-draft zone-${drawTag}`}
+                      />
+                    ) : (
+                      <polyline
+                        points={toSvgPoints(draft.points)}
+                        className={`zone-draft zone-${drawTag}`}
+                      />
+                    )}
+                    {draft.points.map(([x, y], i) => (
+                      <circle
+                        key={i}
+                        cx={x}
+                        cy={y}
+                        r={i === 0 ? 0.014 : 0.009}
+                        className={i === 0 ? 'vertex vertex-first' : 'vertex'}
+                      />
+                    ))}
+                  </>
+                )}
+              </svg>
+              {zones.map((z) => {
+                const [x, y] = z.polygon[0];
+                return (
+                  <span
+                    key={z.id}
+                    className="zone-tagline mono"
+                    style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
+                  >
+                    {z.name}
+                  </span>
+                );
+              })}
+            </div>
+            <div className="zone-tools" role="toolbar" aria-label="Unelte de desen">
+              {ZONE_TAGS.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  className={`zone-tool zone-${t.value}`}
+                  aria-pressed={!!draft && !redrawId && tag === t.value}
+                  disabled={!!redrawId}
+                  onClick={() => startDrawing(null, t.value)}
+                >
+                  <span className={`swatch zone-${t.value}`} aria-hidden="true" />
+                  {TOOL_LABEL[t.value] ?? t.label}
+                </button>
               ))}
-              {draft && draft.points.length > 0 && (
+              {draft && (
                 <>
-                  {draft.closed ? (
-                    <polygon points={toSvgPoints(draft.points)} className="zone-draft" />
-                  ) : (
-                    <polyline points={toSvgPoints(draft.points)} className="zone-draft" />
-                  )}
-                  {draft.points.map(([x, y], i) => (
-                    <circle
-                      key={i}
-                      cx={x}
-                      cy={y}
-                      r={i === 0 ? 0.014 : 0.009}
-                      className={i === 0 ? 'vertex vertex-first' : 'vertex'}
-                    />
-                  ))}
+                  <span className="zone-tools-sep" aria-hidden="true" />
+                  <button
+                    type="button"
+                    className="zone-tool"
+                    aria-label="Anulează punctul"
+                    title="Anulează punctul"
+                    onClick={() => setDraft(undoPoint(draft))}
+                    disabled={draft.points.length === 0}
+                  >
+                    <Icon name="undo" />
+                  </button>
+                  <button
+                    type="button"
+                    className="zone-tool"
+                    onClick={() => setDraft(closeDraft(draft))}
+                    disabled={draft.closed || draft.points.length < 3}
+                  >
+                    Închide
+                  </button>
+                  <button
+                    type="button"
+                    className="zone-tool"
+                    onClick={() => {
+                      setDraft(null);
+                      setRedrawId(null);
+                    }}
+                  >
+                    Renunță
+                  </button>
                 </>
               )}
-            </svg>
-            {zones.map((z) => {
-              const [x, y] = z.polygon[0];
-              return (
-                <span
-                  key={z.id}
-                  className="zone-tagline mono"
-                  style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-                >
-                  {z.name}
-                </span>
-              );
-            })}
+            </div>
           </div>
-          <div className="toolbar">
-            {draft ? (
-              <>
-                <span className="muted small" aria-live="polite">
-                  {draft.closed
-                    ? 'Poligon închis.'
-                    : `${draft.points.length} puncte · click pe primul punct sau „Închide” pentru a termina`}
-                </span>
-                <button
-                  className="btn"
-                  onClick={() => setDraft(undoPoint(draft))}
-                  disabled={draft.points.length === 0}
-                >
-                  <Icon name="undo" /> Anulează punctul
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => setDraft(closeDraft(draft))}
-                  disabled={draft.closed || draft.points.length < 3}
-                >
-                  <Icon name="close" /> Închide poligonul
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setDraft(null);
-                    setRedrawId(null);
-                  }}
-                >
-                  Renunță
-                </button>
-              </>
-            ) : (
-              <button className="btn btn-primary" onClick={() => startDrawing()}>
-                <Icon name="zones" /> Desenează o zonă
-              </button>
-            )}
-          </div>
+          <p className="zones-hint muted small" aria-live="polite">
+            {!draft
+              ? 'Alege Masă, Intrare sau Personal, apoi dă click pe colțurile zonei.'
+              : draft.closed
+                ? 'Poligon închis. Pune-i un nume în dreapta și adaug-o.'
+                : `${draft.points.length} puncte · click pe primul punct sau „Închide” pentru a termina`}
+          </p>
         </section>
 
         <aside className="side-col">

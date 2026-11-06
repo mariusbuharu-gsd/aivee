@@ -1,0 +1,226 @@
+/* Zone editor. One colour per zone kind; coral stays reserved for alerts. */
+.zones-page {
+  /* Kind colours on camera media (night) and as swatches on the light ground. */
+  --zone-table: var(--guest-on-night);
+  --zone-entrance: #f5c451;
+  --zone-staff: var(--live-on-night);
+  --swatch-table: var(--muted-2);
+  --swatch-entrance: #a86a12;
+  --swatch-staff: var(--live);
+}
+
+.editor-wrap {
+  position: relative;
+  --draw: var(--zone-table);
+}
+.editor-wrap.draw-entrance {
+  --draw: var(--zone-entrance);
+}
+.editor-wrap.draw-staff {
+  --draw: var(--zone-staff);
+}
+.editor {
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+}
+.overlay-edit {
+  cursor: pointer;
+}
+.is-drawing .overlay-edit {
+  cursor: crosshair;
+}
+
+.zone-shape {
+  fill: rgba(230, 232, 236, 0.1);
+  stroke: var(--zone-table);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.zone-shape.zone-entrance {
+  fill: rgba(245, 196, 81, 0.14);
+  stroke: var(--zone-entrance);
+}
+.zone-shape.zone-staff {
+  fill: rgba(125, 211, 252, 0.12);
+  stroke: var(--zone-staff);
+}
+.zone-shape.is-selected {
+  stroke-width: 3;
+  fill-opacity: 0.3;
+}
+.zone-draft {
+  fill: rgba(255, 255, 255, 0.12);
+  stroke: var(--draw);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+.vertex {
+  fill: var(--draw);
+}
+.vertex-first {
+  fill: var(--night-2);
+  stroke: var(--draw);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.zone-tagline {
+  position: absolute;
+  transform: translate(4px, 4px);
+  font-size: 0.72rem;
+  background: rgba(20, 22, 27, 0.85);
+  color: var(--night-text);
+  padding: 1px 6px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+/* Drawing tools sit on the image, top-left, where the hand already is. */
+.zone-tools {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(20, 22, 27, 0.86);
+  border: 1px solid var(--night-border);
+  border-radius: var(--radius-sm);
+  z-index: 2;
+}
+.zone-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 10px;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--night-text);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.zone-tool:hover:not(:disabled) {
+  background: var(--night-3);
+}
+.zone-tool[aria-pressed='true'] {
+  background: var(--night-3);
+  border-color: var(--night-muted);
+}
+.zone-tool:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.zone-tool:focus-visible {
+  outline: 2px solid var(--night-text);
+  outline-offset: 1px;
+}
+.zone-tool .swatch.zone-table {
+  background: var(--zone-table);
+}
+.zone-tool .swatch.zone-entrance {
+  background: var(--zone-entrance);
+}
+.zone-tool .swatch.zone-staff {
+  background: var(--zone-staff);
+}
+.zone-tools-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--night-border);
+}
+.zones-hint {
+  margin: 8px 0 0;
+}
+
+/* Save state: "modificări nesalvate" + Salvează, or "salvat" + Gata. */
+.zones-save {
+  align-items: center;
+}
+.zones-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.zones-state.is-dirty {
+  color: var(--text);
+}
+.zones-state.is-dirty::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--swatch-entrance);
+}
+.zones-state.is-saved {
+  color: var(--live);
+}
+.zones-state svg {
+  width: 16px;
+  height: 16px;
+}
+
+.zone-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.zone-row {
+  width: 100%;
+  min-height: var(--tap);
+  display: grid;
+  grid-template-columns: 12px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.zone-row.is-selected {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--swatch-table);
+}
+.swatch.zone-entrance {
+  background: var(--swatch-entrance);
+}
+.swatch.zone-staff {
+  background: var(--swatch-staff);
+}
+
+/* Phones: the image is small, so the tools move under it instead of covering it. */
+@media (max-width: 640px) {
+  .zone-tools {
+    position: static;
+    width: auto;
+    max-width: none;
+    margin-top: 8px;
+  }
+}
