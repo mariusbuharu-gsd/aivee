@@ -2,7 +2,16 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import type { RuleDraft } from '../api/client';
 import { useApi } from '../api/context';
 import type { Condition, Rule } from '../contracts';
-import { type ChipKey, type Phrase, type RuleChip, ruleChips, rulePhrases } from '../rules/chips';
+import {
+  ANYWHERE,
+  ANYWHERE_LABEL,
+  type ChipKey,
+  type Phrase,
+  type RuleChip,
+  isOpenKind,
+  ruleChips,
+  rulePhrases,
+} from '../rules/chips';
 import { describeRule, ZONE_TAGS } from '../rules/describe';
 import { RuleReader } from '../rules/RuleReader';
 import { Select } from '../ui/Select';
@@ -355,6 +364,12 @@ function ChipEditor({
     onChange({ ...rule, all_of });
   };
   const many = chip.fields.filter((f) => f.kind === 'duration').length > 1;
+  // Open rules ("dacă e foc") may watch the whole image; their times are a few seconds.
+  const open = rule.all_of.every((c) => isOpenKind(c.kind));
+  const zoneOptions = [
+    ...(open || rule.zone_tag === ANYWHERE ? [{ value: ANYWHERE, label: ANYWHERE_LABEL }] : []),
+    ...ZONE_TAGS.map((t) => ({ value: t.value, label: t.label })),
+  ];
   return (
     <fieldset className="chip-editor" id={id}>
       <legend>Corectezi: {chip.label}</legend>
@@ -372,27 +387,37 @@ function ChipEditor({
                 key="zone"
                 label="Zona"
                 value={rule.zone_tag}
-                options={ZONE_TAGS.map((t) => ({ value: t.value, label: t.label }))}
+                options={zoneOptions}
                 onChange={(zone_tag) => onChange({ ...rule, zone_tag })}
               />
             );
-          case 'duration':
+          case 'duration': {
+            const c = rule.all_of[f.index];
+            const inSeconds = c !== undefined && isOpenKind(c.kind);
             return (
               <label className="field" key={`d${f.index}`}>
-                <span>{many ? `Cât timp, condiția ${f.index + 1}` : 'Cât timp'} (minute)</span>
+                <span>
+                  {many ? `Cât timp, condiția ${f.index + 1}` : 'Cât timp'} (
+                  {inSeconds ? 'secunde' : 'minute'})
+                </span>
                 <input
                   className="input"
                   type="number"
                   min={0}
-                  step={0.5}
+                  step={inSeconds ? 1 : 0.5}
                   autoFocus={autoFocus}
-                  value={minutes(rule.all_of[f.index]?.min_duration_s)}
+                  value={inSeconds ? (c.min_duration_s ?? 0) : minutes(c?.min_duration_s)}
                   onChange={(e) =>
-                    setCondition(f.index, { min_duration_s: fromMinutes(e.target.value) })
+                    setCondition(f.index, {
+                      min_duration_s: inSeconds
+                        ? Math.max(0, Math.round(Number(e.target.value) || 0))
+                        : fromMinutes(e.target.value),
+                    })
                   }
                 />
               </label>
             );
+          }
           case 'count':
             return (
               <label className="field" key={`c${f.index}`}>

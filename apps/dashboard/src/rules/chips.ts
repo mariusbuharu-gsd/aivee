@@ -43,8 +43,47 @@ const OBJECT_RO: Record<string, string> = {
   knife: 'un cuțit',
   spoon: 'o lingură',
 };
+// Classes an open rule ("dacă vine un urs") asks for; used only for object_present, so the
+// wording of the older object kinds stays as it was.
+const PRESENT_RO: Record<string, string> = {
+  ...OBJECT_RO,
+  bear: 'un urs',
+  dog: 'un câine',
+  cat: 'o pisică',
+  bird: 'o pasăre',
+  horse: 'un cal',
+  scissors: 'o foarfecă',
+  backpack: 'un rucsac',
+  suitcase: 'o valiză',
+  handbag: 'o geantă',
+  umbrella: 'o umbrelă',
+  laptop: 'un laptop',
+  'cell phone': 'un telefon',
+  bicycle: 'o bicicletă',
+};
 const OBJECT_KINDS = new Set<Condition['kind']>(['objects_unattended', 'object_gone']);
+
+/** The whole-frame pseudo-zone of rules that name no place (`ANYWHERE_TAG` in contracts). */
+export const ANYWHERE = 'anywhere';
+export const ANYWHERE_LABEL = 'oriunde în imagine';
+
+/** Open rules: a COCO object appears, or a visual check of the image ("e foc"). */
+export const isOpenKind = (k: Condition['kind']) => k === 'object_present' || k === 'visual';
+const isOpenRule = (rule: Rule) =>
+  rule.all_of.length > 0 && rule.all_of.every((c) => isOpenKind(c.kind));
+
+/** What an open condition looks for: "un urs", "foc". */
+export function lookedFor(c: Condition): string {
+  if (c.kind === 'object_present') return presentNames(c);
+  return c.label_ro?.trim() || c.positive?.[0] || 'o situație';
+}
 const DISHES = new Set(['cup', 'bottle', 'wine glass', 'bowl', 'fork', 'knife', 'spoon']);
+
+/** "un urs sau un câine" for an object_present condition. */
+export function presentNames(c: Condition): string {
+  const names = [...new Set((c.objects ?? []).map((o) => PRESENT_RO[o] ?? o))];
+  return names.length ? names.join(' sau ') : 'un obiect';
+}
 
 /** "un pahar de vin sau o ceașcă"; COCO labels without a Romanian name are kept as they are. */
 export function objectNames(c: Condition, join = ' sau '): string {
@@ -82,6 +121,9 @@ function guestPart(c: Condition): string {
       return withTime('vase lăsate', c.min_duration_s);
     case 'object_gone':
       return `dispare ${objectNames(c)}`;
+    case 'object_present':
+    case 'visual':
+      return lookedFor(c);
   }
 }
 
@@ -114,6 +156,7 @@ const isStaff = (c: Condition) => c.role === 'staff';
 
 /** The four chips for a rule, in reading order. */
 export function ruleChips(rule: Rule): [RuleChip, RuleChip, RuleChip, RuleChip] {
+  if (isOpenRule(rule)) return openChips(rule);
   const guest = conditionsWhere(rule, (c) => !isStaff(c));
   const staff = conditionsWhere(rule, isStaff);
   const zone = ZONE_TAGS.find((t) => t.value === rule.zone_tag);
@@ -135,6 +178,40 @@ export function ruleChips(rule: Rule): [RuleChip, RuleChip, RuleChip, RuleChip] 
       label: CHIP_LABEL.staff,
       value: staff.map(({ c }) => staffPart(c)).join(', ') || 'nu contează',
       fields: fieldsOf(staff),
+    },
+    {
+      key: 'then',
+      label: CHIP_LABEL.then,
+      value: ACTION_RO[rule.action.type],
+      fields: [{ kind: 'cooldown' }],
+    },
+  ];
+}
+
+/** Unde / Ce caută / Cât timp / Atunci, for a rule made only of open conditions. */
+function openChips(rule: Rule): [RuleChip, RuleChip, RuleChip, RuleChip] {
+  const all = conditionsWhere(rule, () => true);
+  const zone = ZONE_TAGS.find((t) => t.value === rule.zone_tag);
+  const where =
+    rule.zone_tag === ANYWHERE
+      ? ANYWHERE_LABEL
+      : rule.zone_tag === 'table'
+        ? 'orice masă'
+        : (zone?.plural ?? rule.zone_tag);
+  const times = all.map(({ c }) => shortDuration(c.min_duration_s) || 'imediat');
+  return [
+    { key: 'where', label: CHIP_LABEL.where, value: where, fields: [{ kind: 'zone' }] },
+    {
+      key: 'guest',
+      label: 'Ce caută',
+      value: all.map(({ c }) => lookedFor(c)).join(', '),
+      fields: [],
+    },
+    {
+      key: 'staff',
+      label: 'Cât timp',
+      value: [...new Set(times)].join(', '),
+      fields: all.map(({ index }) => ({ kind: 'duration', index })),
     },
     {
       key: 'then',
@@ -180,13 +257,18 @@ export function conditionClause(c: Condition, zoneTag: string): string {
       return `rămâne ${objectNames(c)} fără nimeni lângă${forTime(c.min_duration_s)}`;
     case 'object_gone':
       return `dispare ${objectNames(c)}${time ? ` (după ${time} ${onTable ? 'pe masă' : 'în zonă'})` : ''}`;
+    case 'object_present':
+      return `apare ${presentNames(c)}${time ? ` (cel puțin ${time})` : ''}`;
+    case 'visual':
+      return `se vede ${lookedFor(c)}${time ? ` (cel puțin ${time})` : ''}`;
   }
 }
 
 /**
  * One line for a rule card, worded per condition kind, e.g.
  * "orice masă · un client așteaptă 2 min și nu vine nimeni de la personal → mesaj pe Telegram"
- * or "orice masă · dispare un pahar de vin (după 1 min pe masă) → notificare pe telefon".
+ * or "orice masă · dispare un pahar de vin (după 1 min pe masă) → notificare pe telefon"
+ * or "oriunde în imagine · se vede foc (cel puțin 3 s) → mesaj pe Telegram".
  */
 export function shortRule(rule: Rule): string {
   const [where, , , then] = ruleChips(rule);
@@ -225,6 +307,7 @@ const WHERE: Record<string, string[]> = {
   ],
   entrance: [`(?:(?:la|de la)\\s+)?(?:intrare${L}|u[sș][aă]${L})`],
   staff: [`(?:(?:în|in|la)\\s+)?zon${L}\\s+(?:de\\s+)?personal${L}`, `bucătări${L}`],
+  [ANYWHERE]: [`oriunde`, `(?:în|in)\\s+(?:local|restaurant|sal[aă])`],
 };
 
 const GUEST_WHO = `(?:client${L}|invitat${L}|cineva|oaspe${L})`;
@@ -249,6 +332,12 @@ const GUEST: Record<Condition['kind'], string[]> = {
     `(?:vase${L}|pahare${L}|farfuri${L}|sticl${L})`,
   ],
   object_gone: [`dispare\\s+(?:(?:un|o)\\s+)?\\p{L}+`],
+  object_present: [`(?:vine|vin|intr[aă]|apare|apar|are|e|este)\\s+(?:un|o|vreun|vreo)\\s+\\p{L}+`],
+  visual: [
+    `(?:e|este|iese|ies|apare|izbucne${L}|începe|incepe)\\s+(?:un\\s+|o\\s+)?(?:foc${L}|fum${L}|incendi${L}|flăcăr${L}|ap[aă]${L}(?:\\s+pe\\s+jos)?)`,
+    `u[sș][aă]${L}\\s+r[aă]m[aâ]ne\\s+deschis${L}`,
+    `(?:foc${L}|fum${L}|incendi${L}|flăcăr${L})`,
+  ],
 };
 
 const STAFF_WHO = `(?:nimeni|niciun${L}|vreun${L}|ospătar${L}|ospatar${L}|chelner${L})`;

@@ -145,8 +145,64 @@ function seedRules(): Rule[] {
       cooldown_s: 300,
       enabled: true,
     },
+    {
+      id: 'r-foc',
+      camera_id: 'cam-sala',
+      name: 'Foc în imagine',
+      prompt_ro: 'dacă e foc',
+      zone_tag: 'anywhere',
+      all_of: [VISUAL_FIRE],
+      action: { type: 'telegram', target: null },
+      cooldown_s: 120,
+      enabled: true,
+    },
+    {
+      id: 'r-caine',
+      camera_id: 'cam-sala',
+      name: 'Câine în local',
+      prompt_ro: 'dacă intră un câine',
+      zone_tag: 'anywhere',
+      all_of: [
+        {
+          kind: 'object_present',
+          role: 'any',
+          objects: ['dog'],
+          min_duration_s: 2,
+          label_ro: 'câine',
+        },
+      ],
+      action: { type: 'telegram', target: null },
+      cooldown_s: 120,
+      enabled: true,
+    },
   ];
 }
+
+/** The translator's usual visual condition for "dacă e foc" (see evals/nl_to_rule). */
+const VISUAL_FIRE: Condition = {
+  kind: 'visual',
+  role: 'any',
+  min_duration_s: 3,
+  positive: ['a photo of fire', 'flames', 'a burning fire'],
+  negative: [
+    'a photo of a person',
+    'a photo of a room',
+    'a blurry photo',
+    'a photo of a normal restaurant room',
+    'people sitting at tables',
+  ],
+  threshold: 0.5,
+  crop: 'frame',
+  label_ro: 'foc',
+};
+
+const PRESENT_RO: [RegExp, string, string][] = [
+  [/(^|[^a-zăâîșț])urs/, 'bear', 'urs'],
+  [/c[aâ]ine/, 'dog', 'câine'],
+  [/pisic/, 'cat', 'pisică'],
+  [/cu[tț]it/, 'knife', 'cuțit'],
+  [/rucsac/, 'backpack', 'rucsac'],
+];
 
 /**
  * Stand-in snapshots for the mock (the real ones are face-blurred JPEGs from the API): a table
@@ -340,7 +396,19 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     { kind: 'present', role: 'guest', min_duration_s: seconds },
     { kind: 'absent', role: 'staff', min_duration_s: seconds },
   ];
-  if (/m[aâ]n[aă]|ridic/.test(t)) {
+  const present = PRESENT_RO.find(([re]) => re.test(t));
+  if (present) {
+    const [, coco, ro] = present;
+    name = `${ro.charAt(0).toLocaleUpperCase('ro')}${ro.slice(1)} în imagine`;
+    zoneTag = 'anywhere';
+    allOf = [
+      { kind: 'object_present', role: 'any', objects: [coco], min_duration_s: 2, label_ro: ro },
+    ];
+  } else if (/(^|[^a-zăâîșț])foc|incendi|fl[aă]c[aă]r/.test(t)) {
+    name = 'Foc în imagine';
+    zoneTag = 'anywhere';
+    allOf = [VISUAL_FIRE];
+  } else if (/m[aâ]n[aă]|ridic/.test(t)) {
     name = 'Clientul cheamă';
     allOf = [{ kind: 'pose', role: 'guest', pose: 'raised_hand' }];
   } else if (/coad|intrare|u[sș]/.test(t)) {
@@ -370,7 +438,7 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     zone_tag: zoneTag,
     all_of: allOf,
     action: { type: 'telegram', target: null },
-    cooldown_s: 300,
+    cooldown_s: zoneTag === 'anywhere' ? 120 : 300,
     enabled: true,
   };
 }
@@ -378,6 +446,12 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
 /** Stand-in for the translator's `explanation_ro`: what the rule watches, in one sentence. */
 function mockExplanation(rule: Rule): string {
   const c = rule.all_of[0];
+  if (c.kind === 'visual') {
+    return `Vă anunț dacă se vede ${c.label_ro || 'situația'} oriunde în imagine cel puțin ${c.min_duration_s ?? 0} secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă.`;
+  }
+  if (c.kind === 'object_present') {
+    return `Vă anunț dacă apare un ${c.label_ro || 'obiect'} oriunde în imagine cel puțin ${c.min_duration_s ?? 0} secunde.`;
+  }
   if (c.kind === 'pose') return 'Vă anunț când un client ridică mâna la o masă.';
   if (c.kind === 'count') {
     return `Vă anunț când la intrare sunt cel puțin ${c.min_count ?? 1} clienți și nu e nimeni de la personal.`;
