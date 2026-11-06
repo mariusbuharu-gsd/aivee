@@ -133,7 +133,18 @@ class Vision:
 def build_vision(settings: EdgeSettings) -> Vision:
     try:
         capture = _adapter("capture")
-        if Path(settings.source).is_file():
+        if settings.source.startswith("mqtt-frames://"):  # cloud mode over HTTPS
+            source = _adapter("mqtt_frames").open_frames_source(
+                settings.source,
+                host=settings.mqtt_host,
+                port=settings.mqtt_port,
+                user=settings.mqtt_edge_user,
+                password=settings.mqtt_edge_password,
+                site=settings.site,
+                device=settings.device,
+                rotate=settings.rotate,
+            )
+        elif Path(settings.source).is_file():
             source = capture.FileSource(
                 settings.source, settings.target_fps, settings.loop_file, rotate=settings.rotate
             )
