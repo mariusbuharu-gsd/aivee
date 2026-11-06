@@ -22,6 +22,28 @@ jobs:
       - name: Contracts schema is up to date
         run: uv run python -m aivee_contracts.export && git diff --exit-code packages/contracts/schema
 
+  dashboard:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+      - run: npm ci
+      - name: Contract types are up to date
+        run: npm run contracts && git diff --exit-code src/contracts
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test -- --run
+      - name: Build
+        run: npm run build
+
   secrets:
     runs-on: ubuntu-24.04
     steps:
