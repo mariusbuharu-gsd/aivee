@@ -88,15 +88,15 @@ function PlaceholderScene() {
     <svg viewBox="0 0 160 90" preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-          <path d="M10 0H0V10" fill="none" stroke="#232A31" strokeWidth="0.4" />
+          <path d="M10 0H0V10" fill="none" stroke="#23262D" strokeWidth="0.4" />
         </pattern>
       </defs>
-      <rect width="160" height="90" fill="#13181D" />
+      <rect width="160" height="90" fill="#1B1D22" />
       <rect width="160" height="90" fill="url(#grid)" />
-      <path d="M0 40 L160 34" stroke="#2A333B" strokeWidth="0.6" />
-      <rect x="14" y="52" width="38" height="16" rx="3" fill="#1C232A" stroke="#2A333B" />
-      <rect x="74" y="52" width="38" height="16" rx="3" fill="#1C232A" stroke="#2A333B" />
-      <rect x="128" y="18" width="24" height="38" fill="#1C232A" stroke="#2A333B" />
+      <path d="M0 40 L160 34" stroke="#30343C" strokeWidth="0.6" />
+      <rect x="14" y="52" width="38" height="16" rx="3" fill="#262A31" stroke="#3A3F49" />
+      <rect x="74" y="52" width="38" height="16" rx="3" fill="#262A31" stroke="#3A3F49" />
+      <rect x="128" y="18" width="24" height="38" fill="#262A31" stroke="#3A3F49" />
     </svg>
   );
 }

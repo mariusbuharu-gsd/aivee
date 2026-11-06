@@ -47,11 +47,17 @@ Contract types: `packages/contracts` → `make schema` → `npm run contracts`. 
 
 ## Design system
 
-- Tokens live at the top of `src/styles.css` (dark "night watch": ground `#0f1317`, accent amber `#f5a524`,
-  live cyan `#4cc2e0`, danger `#f08a7e`, IBM Plex Sans / Mono, 44 px tap targets).
-- Brand files: `docs/brand/` (logo, white logo, mark, app icon, favicon). The logo uses ink `#14161B` and coral
-  `#FF5C6C` — **not yet reconciled** with the dashboard accent; the design session decides one palette and
-  updates the tokens.
+- One palette, from the logo. The source of truth is `docs/brand/tokens.css`, and the rules are in `docs/brand/README.md`.
+  Its `:root` block is copied to the top of `src/styles.css`. Use only the variables, never raw hex values.
+- The look is a light working surface (`--ground` `#F6F7F9`, `--surface` white, `--ink` `#14161B` text) with night
+  chrome: the sidebar, camera media and the suggestion card are ink. Add `.on-night` to any dark container;
+  it remaps `--text`, `--surface*`, `--border*` and `--focus`.
+- Coral `#FF5C6C` means "needs attention" (open alerts, the one alert action). Use it for fills only. As text on
+  light, use `--coral-strong` `#C8283E`. On camera media, light blue (`--live-on-night`) marks staff and live,
+  and white/grey marks guests and tables.
+- Fonts: Fredoka 600 for the logo and h1, Figtree for the UI, JetBrains Mono for ids, timers and metrics.
+  Tap targets are at least 44 px.
+- Brand files are in `docs/brand/` (logo, white logo, mark, app icon, favicon).
 - Must work at 390 px (waiters use phones) and 1440 px (owner at a laptop). Alerts are glanceable: zone name,
   how long, one action.
 - Privacy is visible: faces are blurred, staff confirmation is explicit ("Pare angajat — confirmi?").
