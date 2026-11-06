@@ -37,6 +37,22 @@ def test_rotate_setting_accepts_only_right_angles() -> None:
         EdgeSettings(rotate=45, _env_file=None)  # type: ignore[call-arg]
 
 
+def test_appearance_thresholds_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    defaults = EdgeSettings(_env_file=None)  # type: ignore[call-arg]
+    assert (defaults.appearance_low, defaults.appearance_high) == (0.70, 0.82)
+    monkeypatch.setenv("APPEARANCE_LOW", "0.65")
+    monkeypatch.setenv("APPEARANCE_HIGH", "0.8")
+    s = EdgeSettings(_env_file=None)  # type: ignore[call-arg]
+    assert (s.appearance_low, s.appearance_high) == (0.65, 0.8)
+    assert app.pipeline_tuning(s)["appearance_low"] == 0.65
+    assert app.pipeline_tuning(s)["appearance_high"] == 0.8
+
+
+def test_appearance_high_must_exceed_low() -> None:
+    with pytest.raises(ValueError):
+        EdgeSettings(appearance_low=0.8, appearance_high=0.8, _env_file=None)  # type: ignore[call-arg]
+
+
 def test_build_vision_passes_rotation_to_the_capture_adapter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

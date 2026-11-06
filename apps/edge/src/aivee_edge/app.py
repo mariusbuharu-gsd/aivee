@@ -151,6 +151,14 @@ def build_client(settings: EdgeSettings) -> MqttEdgeClient:
     )
 
 
+def pipeline_tuning(settings: EdgeSettings) -> dict[str, Any]:
+    """Scoring knobs from the environment, passed to the EdgePipeline as keyword args."""
+    return {
+        "appearance_low": settings.appearance_low,
+        "appearance_high": settings.appearance_high,
+    }
+
+
 def install_stop_signals(stop: threading.Event) -> None:
     def handler(signum: int, _frame: FrameType | None) -> None:
         log.info("signal=%s stopping", signal.Signals(signum).name)
@@ -191,6 +199,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         arrive_s=settings.arrive_s,
         metrics_interval_s=settings.metrics_interval_s,
         to_datetime=wall_clock,
+        **pipeline_tuning(settings),
     )
     log.info(
         "edge started site=%s device=%s camera=%s source=%s",

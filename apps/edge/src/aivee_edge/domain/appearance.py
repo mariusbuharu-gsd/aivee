@@ -2,8 +2,11 @@
 
 Embeddings come from an image model (CLIP ViT-B-32 person crops) in the adapters;
 here they are plain lists of floats. Profiles are L2-normalised centroids of the
-owner's staff examples. Raw CLIP cosines between crops are small, so the best cosine
-is mapped onto [0, 1] between two thresholds.
+owner's staff examples. The best cosine is mapped onto [0, 1] between two thresholds.
+
+Measured live (CLIP ViT-B-32 laion2b, profile from 9 photos of one staff member): the
+enrolled person scores 0.82-0.91 (leave-one-out), seated guests in other clothes 0.60-0.64.
+Any person crop is fairly similar to any other, so the thresholds sit high.
 """
 
 import math
@@ -11,10 +14,10 @@ from collections.abc import Sequence
 
 Vector = Sequence[float]
 
-LOW_SIMILARITY = 0.18
-"""Best cosine at or below this → appearance score 0."""
-HIGH_SIMILARITY = 0.30
-"""Best cosine at or above this → appearance score 1."""
+LOW_SIMILARITY = 0.70
+"""Best cosine at or below this → appearance score 0 (env `APPEARANCE_LOW`)."""
+HIGH_SIMILARITY = 0.82
+"""Best cosine at or above this → appearance score 1 (env `APPEARANCE_HIGH`)."""
 
 
 def _check_same_dim(a: Vector, b: Vector) -> None:

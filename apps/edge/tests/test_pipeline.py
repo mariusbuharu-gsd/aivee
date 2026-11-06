@@ -3,6 +3,7 @@
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import count
 
+import pytest
 from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfile, StaffProfiles, StaffSuggestion
@@ -293,6 +294,36 @@ def test_appearance_runs_only_with_profiles_and_at_most_every_interval() -> None
     assert result.frame.tracks[0].staff_score == 0.5  # appearance 1.0, behaviour 0.0
     p.run()  # ts 1.0 .. 4.5: embeds again at 2.5 and 4.5
     assert embedder.calls == 3
+
+
+def test_appearance_thresholds_are_passed_to_the_score() -> None:
+    frames = [Frame(ts=0.0, tracks=(TrackObs(1, at(T1)),))]
+    profiles = StaffProfiles(
+        device="edge-01", profiles=[StaffProfile(id="p", name="Ospătar", centroid=[0.5, 0.0])]
+    )
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        embedder=CountingEmbedder(),
+        profiles=lambda: profiles,
+        appearance_low=0.9,
+        appearance_high=0.95,
+    )
+    p.run()
+    assert p.appearance_of(1) == 1.0  # cosine 1.0 >= high
+    lower = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        embedder=CountingEmbedder(),
+        profiles=lambda: StaffProfiles(
+            device="edge-01",
+            profiles=[StaffProfile(id="p", name="Ospătar", centroid=[0.76, 0.6499230723708769])],
+        ),
+    )
+    lower.run()
+    assert lower.appearance_of(1) == pytest.approx(0.5)  # cosine 0.76 with defaults 0.70-0.82
 
 
 class FakeSnapshots:

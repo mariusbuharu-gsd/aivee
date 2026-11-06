@@ -24,7 +24,7 @@ from aivee_contracts.events import AlertEvent, Metrics, StaffProfiles, StaffSugg
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Rule
 
-from aivee_edge.domain.appearance import appearance_score
+from aivee_edge.domain.appearance import HIGH_SIMILARITY, LOW_SIMILARITY, appearance_score
 from aivee_edge.domain.behaviour import BehaviourFeatures, TrajectoryBuffer
 from aivee_edge.domain.engine import SituationEngine, utc_from_timestamp
 from aivee_edge.domain.geometry import foot_point, point_in_polygon
@@ -116,6 +116,8 @@ class EdgePipeline:
         grace_s: float = 1.5,
         arrive_s: float | None = 5.0,
         embed_interval_s: float = 2.0,
+        appearance_low: float = LOW_SIMILARITY,
+        appearance_high: float = HIGH_SIMILARITY,
         forget_after_s: float = 5.0,
         metrics_interval_s: float = 5.0,
         detections_interval_s: float = 0.2,
@@ -138,6 +140,8 @@ class EdgePipeline:
         self._detections_interval_s = detections_interval_s
         self._detections_at = -float("inf")
         self._embed_interval_s = embed_interval_s
+        self._appearance_low = appearance_low
+        self._appearance_high = appearance_high
         self._forget_after_s = forget_after_s
 
         self._rules: list[Rule] = []
@@ -341,7 +345,9 @@ class EdgePipeline:
             embedded = True
             self._embedded_at[t.track_id] = frame.ts
             if vector is not None:
-                self._appearance[t.track_id] = appearance_score(vector, centroids)
+                self._appearance[t.track_id] = appearance_score(
+                    vector, centroids, low=self._appearance_low, high=self._appearance_high
+                )
         return {t.track_id: self._appearance.get(t.track_id) for t in frame.tracks}, embedded
 
     def _publish_detections(self, frame: Frame) -> None:
@@ -379,6 +385,10 @@ class EdgePipeline:
             self._appearance.pop(tid, None)
             self._embedded_at.pop(tid, None)
             log.info("track_gone track=%d", tid)
+
+    def appearance_of(self, track_id: int) -> float | None:
+        """Last appearance score of a track (None: not embedded or no profiles)."""
+        return self._appearance.get(track_id)
 
     def tracked_ids(self) -> set[int]:
         return set(self._last_seen)

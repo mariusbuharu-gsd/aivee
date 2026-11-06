@@ -9,7 +9,7 @@ ROTATIONS = (0, 90, 180, 270)
 class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_EDGE_USER, MQTT_EDGE_PASSWORD, SITE, DEVICE,
     CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE,
-    YUNET_MODEL."""
+    YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
@@ -35,6 +35,10 @@ class EdgeSettings(BaseSettings):
     """Empty disables pose (no raised-hand detection)."""
     appearance: bool = False
     """CLIP appearance scoring (~0.6 s per crop on CPU, rate-limited per track)."""
+    appearance_low: float = 0.70
+    """Best CLIP cosine to a staff profile mapped to appearance 0 (at or below)."""
+    appearance_high: float = 0.82
+    """Best CLIP cosine mapped to appearance 1 (at or above)."""
     blur: bool = True
     yunet_model: str = "models/face_detection_yunet_2023mar.onnx"
 
@@ -49,6 +53,12 @@ class EdgeSettings(BaseSettings):
         if degrees not in ROTATIONS:
             raise ValueError(f"ROTATE must be one of {ROTATIONS}")
         return degrees
+
+    @model_validator(mode="after")
+    def _appearance_band(self) -> "EdgeSettings":
+        if self.appearance_high <= self.appearance_low:
+            raise ValueError("APPEARANCE_HIGH must be greater than APPEARANCE_LOW")
+        return self
 
     @model_validator(mode="after")
     def _device_from_user(self) -> "EdgeSettings":

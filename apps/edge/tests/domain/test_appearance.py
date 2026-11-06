@@ -48,7 +48,7 @@ def test_no_profiles_gives_none() -> None:
 
 @pytest.mark.parametrize(
     ("similarity", "expected"),
-    [(0.05, 0.0), (0.18, 0.0), (0.24, 0.5), (0.30, 1.0), (0.9, 1.0)],
+    [(0.30, 0.0), (0.70, 0.0), (0.76, 0.5), (0.82, 1.0), (0.95, 1.0)],
 )
 def test_similarity_maps_linearly_between_thresholds(similarity: float, expected: float) -> None:
     assert appearance_score(_unit_at(similarity), [[1, 0]]) == pytest.approx(expected)
@@ -56,7 +56,16 @@ def test_similarity_maps_linearly_between_thresholds(similarity: float, expected
 
 def test_best_profile_wins() -> None:
     profiles = [[0, 1], [1, 0]]
-    assert appearance_score(_unit_at(0.30), profiles) == pytest.approx(1.0)
+    assert appearance_score(_unit_at(0.82), profiles) == pytest.approx(1.0)
+
+
+def test_defaults_separate_the_measured_live_crops() -> None:
+    """CLIP ViT-B-32 crops vs a 9-photo profile: staff 0.82-0.91, seated guests 0.60-0.64."""
+    profile = [[1, 0]]
+    assert appearance_score(_unit_at(0.82), profile) == pytest.approx(1.0)
+    assert appearance_score(_unit_at(0.91), profile) == pytest.approx(1.0)
+    assert appearance_score(_unit_at(0.64), profile) == 0.0
+    assert appearance_score(_unit_at(0.60), profile) == 0.0
 
 
 def test_thresholds_are_configurable() -> None:
