@@ -35,6 +35,7 @@ def test_alert_text_is_romanian_and_mentions_zone() -> None:
     text = alert_text(EVENT)
     assert "Masa 1 așteaptă de 5 minute" in text
     assert "Zona: masa-1" in text and "Camera: cam1" in text
+    assert "Ora: 14:30" in text  # 12:30 UTC in Bucharest (EET)
 
 
 async def test_sends_photo_when_snapshot_exists(tmp_path: Path) -> None:
