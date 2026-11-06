@@ -224,3 +224,52 @@ def test_commands_are_queued_until_the_pipeline_takes_them() -> None:
     edge._on_message(edge._client, None, _command_msg(edge, b"{bad"))  # ignored
     assert edge.take_commands() == [cmd]
     assert edge.take_commands() == []
+
+
+# -- transport (remote edge over wss) ---------------------------------------------------------
+
+
+def test_default_transport_is_plain_tcp_without_tls() -> None:
+    edge = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    assert edge._client._transport == "tcp"
+    assert edge._client._ssl_context is None
+
+
+def test_websockets_transport_uses_the_given_path() -> None:
+    edge = MqttEdgeClient(
+        "mqtt.example.com",
+        80,
+        "edge-coleg-1",
+        "pw",
+        "s1",
+        "edge-coleg-1",
+        transport="websockets",
+        ws_path="/broker",
+    )
+    assert edge._client._transport == "websockets"
+    assert edge._client._websocket_path == "/broker"
+    assert edge._client._ssl_context is None
+
+
+def test_tls_sets_a_verifying_ssl_context() -> None:
+    import ssl
+
+    edge = MqttEdgeClient(
+        "mqtt.example.com",
+        443,
+        "edge-coleg-1",
+        "pw",
+        "s1",
+        "edge-coleg-1",
+        transport="websockets",
+        tls=True,
+    )
+    ctx = edge._client._ssl_context
+    assert ctx is not None
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+
+
+def test_unknown_transport_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        MqttEdgeClient("h", 1, "u", "p", "s", "d", transport="carrier-pigeon")
