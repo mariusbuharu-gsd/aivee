@@ -113,6 +113,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Frame-At"],  # the time of /api/cameras/{id}/frame
     )
     install_handlers(app)
     for router in (

@@ -7,6 +7,51 @@
   color: var(--muted-2);
   font-size: 0.8rem;
 }
+.device-gone {
+  color: var(--danger);
+}
+
+/* The camera's latest blurred still, edge to edge at the top of the card. */
+.device-thumb {
+  position: relative;
+  margin: -14px -16px 0;
+  aspect-ratio: 16 / 9;
+  max-width: none;
+  overflow: hidden;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.device-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.device-thumb.is-offline img {
+  filter: grayscale(1) brightness(0.8);
+}
+.device-thumb-age {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.72rem;
+}
+.device-thumb-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+}
 .device-card > .btn {
   align-self: flex-start;
   margin-top: auto;

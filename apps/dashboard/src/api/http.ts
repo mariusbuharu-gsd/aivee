@@ -1,6 +1,6 @@
 // Thin client for the FastAPI service (apps/api). Shapes follow its routers and schemas;
 // adjust here only, the rest of the dashboard depends on ApiClient.
-import type { DeviceStatus, Rule, Zone } from '../contracts';
+import type { Rule, Zone } from '../contracts';
 import {
   ApiError,
   UNAUTHORIZED_EVENT,
@@ -19,7 +19,9 @@ import {
   type Role,
   type ServiceMetrics,
   type ApiClient,
+  type CameraFrame,
   type CameraView,
+  type DeviceView,
   type DashboardMetrics,
   type Detection,
   type CameraPatch,
@@ -160,7 +162,26 @@ export class HttpApi implements ApiClient {
   }
 
   listDevices() {
-    return this.request<DeviceStatus[]>('/api/devices');
+    return this.request<DeviceView[]>('/api/devices');
+  }
+
+  /** Fetched (not a bare `<img src>`) to read `X-Frame-At` and to fail into a placeholder. */
+  async captureFrame(cameraId: string): Promise<CameraFrame> {
+    const path = this.scoped(`/api/cameras/${encodeURIComponent(cameraId)}/frame`);
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}${path}`, { credentials: 'include', cache: 'no-store' });
+    } catch {
+      throw new ApiError('Serverul nu răspunde. Verificați conexiunea.', 'network');
+    }
+    if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    if (!res.ok) throw await toApiError(res);
+    const url = URL.createObjectURL(await res.blob());
+    return {
+      url,
+      at: res.headers.get('X-Frame-At'),
+      release: () => URL.revokeObjectURL(url),
+    };
   }
 
   saveZones(cameraId: string, zones: Zone[]) {

@@ -136,3 +136,23 @@ describe('MockApi setup data', () => {
     expect((await api.listRules()).some((r) => r.enabled !== false)).toBe(true);
   });
 });
+
+describe('MockApi devices and frames', () => {
+  it('has a fresh last_seen online and an old one offline', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const devices = await api.listDevices();
+    const age = (state: string) =>
+      Date.now() - Date.parse(devices.find((d) => d.state === state)?.last_seen ?? '');
+    expect(age('online')).toBeLessThan(10_000);
+    expect(age('offline')).toBeGreaterThan(10 * 60_000);
+  });
+
+  it('serves a placeholder still for a known camera and 404 otherwise', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const frame = await api.captureFrame('cam-sala');
+    expect(frame.url).toMatch(/^data:image\/svg\+xml,/);
+    expect(Date.parse(frame.at ?? '')).toBeLessThanOrEqual(Date.now());
+    frame.release();
+    await expect(api.captureFrame('nope')).rejects.toMatchObject({ status: 404 });
+  });
+});

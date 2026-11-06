@@ -76,6 +76,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | POST | `/api/alerts/{event_id}/ack` | "Merg eu"; 409 when someone already took it |
 | GET | `/api/metrics/service?from&to` | `{alerts, unacknowledged_arrivals, wait, reaction, travel}`, each `{count, median_s, p90_s}` |
 | GET | `/api/events?limit=` · `/api/snapshots/{id}` | raw events · blurred JPEG |
+| GET | `/api/cameras/{id}/frame` · `/api/devices` | `captureFrame()`: newest blurred still + `X-Frame-At` · devices with `last_seen` |
 | POST | `/api/videos` | multipart `file` (mp4/mov/webm, ≤ 200 MB, ≤ 2 min), `location_id`, optional `rotate` (0/90/180/270), `copy_from_camera_id` → 201 `VideoUpload`; 422 bad type/size/length |
 | GET | `/api/videos?location_id=` | `VideoUpload[]`, newest first; the page polls every 2 s while one is queued or running |
 | GET | `/api/videos/{id}` | `VideoUpload` (`status`, `progress` 0..1, `duration_s`, `events`, `error_ro`) |

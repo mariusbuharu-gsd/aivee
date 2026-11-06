@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
-import type { ApiClient, Me } from '../api/client';
+import { ApiError, type ApiClient, type Me } from '../api/client';
 import { ROLE_PERMISSIONS } from '../api/mockAccounts';
 import { ApiContext } from '../api/context';
 import { AuthContext, type AuthState } from '../auth/context';
@@ -31,6 +31,9 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     listCameras: vi.fn(async () => []),
     createCamera: vi.fn(async (c) => ({ ...c, zones: [], online: false })),
     listDevices: vi.fn(async () => []),
+    captureFrame: vi.fn(async () => {
+      throw new ApiError('Nu există încă o imagine de la această cameră.', 'not_found', 404);
+    }),
     saveZones: vi.fn(async (_id, zones) => ({ zones, warnings_ro: [] })),
     deleteCamera: vi.fn(async () => undefined),
     listRules: vi.fn(async () => []),
