@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { MANAGER_NAV, OWNER_NAV, STAFF_NAV, navLinks, signIn } from '../helpers';
 
 // Against a running API seeded with `make seed`. Run with `npm run e2e:real`.
-// Read-only on purpose except "Merg eu", which only writes the audit log (no Telegram).
+// Read-only on purpose except "Preiau", which only writes the audit log (no Telegram).
 
 const password = process.env.DEMO_PASSWORD ?? '';
 test.skip(!password, 'DEMO_PASSWORD is not set');
@@ -54,7 +54,7 @@ test('staff load alerts without forbidden calls and can take an open one', async
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(errors).toEqual([]);
 
-  const go = page.getByRole('button', { name: /Merg eu la/ }).first();
+  const go = page.getByRole('button', { name: /^Preiau / }).first();
   if (!(await go.isVisible().catch(() => false))) {
     test.info().annotations.push({ type: 'note', description: 'no open alert to take' });
     return;

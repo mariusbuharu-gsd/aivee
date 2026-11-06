@@ -33,7 +33,7 @@ export const MOCK_INVITE_TOKEN = 'demo-invite';
 
 const SESSION_KEY = 'aivee.mock.session';
 const MIN_PASSWORD = 8;
-/** How long the mock waiter takes to reach the table after "Merg eu". */
+/** How long the mock waiter takes to reach the table after "Preiau". */
 const ARRIVE_AFTER_MS = 4_000;
 /** In the mock, the group "joins" this long after "Conectează Telegram" (the bot's side). */
 export const MOCK_TELEGRAM_CONNECT_MS = 6_000;
@@ -191,7 +191,7 @@ export class MockAccounts {
   /** Users with a Web Push subscription (the API's push_subscriptions). */
   private pushUsers = new Set(['u-owner', 'u-staff']);
   private audit: AuditEntry[] = seedAudit();
-  /** event_id → who pressed "Merg eu" and when; arrival time once the waiter reached the zone. */
+  /** event_id → who pressed "Preiau" and when; arrival time once the waiter reached the zone. */
   private acks = new Map<
     string,
     { at: string; by: string; by_id: string; arrived_at: string | null }

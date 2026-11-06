@@ -92,15 +92,15 @@ describe('Live', () => {
     expect(within(first).getByRole('list', { name: 'Desfășurarea alertei' })).toBeVisible();
   });
 
-  it('"Merg eu" on the band tells colleagues who goes, the alert stays open', async () => {
+  it('"Preiau" on the band tells colleagues who goes, the alert stays open', async () => {
     const user = userEvent.setup();
     renderLive('staff@aivee.demo');
-    await user.click(await screen.findByRole('button', { name: 'Merg eu la Masa 2' }));
+    await user.click(await screen.findByRole('button', { name: 'Preiau Masa 2' }));
     const band = screen.getByRole('list', { name: 'Alerte deschise' });
     await waitFor(() =>
       expect(within(band).getByText('Ana Dumitru merge la Masa 2')).toBeInTheDocument(),
     );
-    expect(within(band).queryByRole('button', { name: /Merg eu/ })).toBeNull();
+    expect(within(band).queryByRole('button', { name: /Preiau/ })).toBeNull();
     expect(screen.getByText('Ai preluat Masa 2')).toBeInTheDocument();
   });
 });

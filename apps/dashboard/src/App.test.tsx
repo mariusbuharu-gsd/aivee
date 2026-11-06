@@ -73,7 +73,7 @@ describe('App with the mock API', () => {
     expect(within(nav).getByRole('link', { name: /Locații/ })).toBeInTheDocument();
   });
 
-  it('takes an open alert with "Merg eu" and shows the timeline', async () => {
+  it('takes an open alert with "Preiau" and shows the timeline', async () => {
     const user = userEvent.setup();
     const api = new MockApi({ latencyMs: 0, autoplay: false });
     api.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut');
@@ -87,10 +87,8 @@ describe('App with the mock API', () => {
         </AuthProvider>
       </ApiContext.Provider>,
     );
-    await user.click(await screen.findByRole('button', { name: 'Merg eu la Masa 2' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Merg eu la Masa 2' })).toBeNull(),
-    );
+    await user.click(await screen.findByRole('button', { name: 'Preiau Masa 2' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Preiau Masa 2' })).toBeNull());
     // Taken now by Ana (timeline), plus the seeded alert she took earlier (row + timeline).
     expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(2);
     expect(screen.getByText('preluată de Ana Dumitru')).toBeInTheDocument();

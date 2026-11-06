@@ -135,7 +135,7 @@ export function TeamPage() {
         text:
           role === 'manager'
             ? 'Poate schimba reguli, camere și echipa.'
-            : 'Primește alertele și poate apăsa „Merg eu”.',
+            : 'Primește alertele și poate apăsa „Preiau”.',
         action: undo ? { label: 'Anulează', run: () => setRole(m, m.role, false) } : undefined,
       });
     } catch (e) {
@@ -243,7 +243,7 @@ export function TeamPage() {
                 Reguli, camere, zone, confirmarea personalului, echipa (doar personal) și istoricul.
               </dd>
               <dt>{ROLE_LABEL.staff}</dt>
-              <dd>Alerte pe telefon, „Merg eu” și istoricul propriu.</dd>
+              <dd>Alerte pe telefon, „Preiau” și istoricul propriu.</dd>
             </dl>
           </div>
         </aside>

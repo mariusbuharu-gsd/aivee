@@ -315,7 +315,7 @@ describe('AlertFeed', () => {
     expect(screen.getByText('Nicio alertă încă.')).toBeInTheDocument();
   });
 
-  it('hero: an open alert large, with snapshot, running clock, rule and optional "Merg eu"', async () => {
+  it('hero: an open alert large, with snapshot, running clock, rule and optional "Preiau"', async () => {
     const onAck = vi.fn(async () => undefined);
     renderWithApi(
       <AlertFeed
@@ -338,7 +338,7 @@ describe('AlertFeed', () => {
       'http://api/api/snapshots/e-2',
     );
     expect(within(card).getByText(/Opțional: colegii văd că vii/)).toBeInTheDocument();
-    await userEvent.click(within(card).getByRole('button', { name: 'Merg eu la Masa 2' }));
+    await userEvent.click(within(card).getByRole('button', { name: 'Preiau Masa 2' }));
     expect(onAck).toHaveBeenCalledWith('e-2');
   });
 

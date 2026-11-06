@@ -309,7 +309,7 @@ function seedAlerts(): AlertView[] {
     ev('e-3', 'r-mana', 'z-masa-2', 'opened', 21, 'Masa 2: un client a ridicat mâna'),
     ev('e-4', 'r-mana', 'z-masa-2', 'closed', 20, 'Masa 2: clientul a fost servit'),
     // An object disappeared from a table, confirmed by the AI check (before/after snapshots).
-    // Closed, so the open alerts of the demo timeline stay the first "Merg eu" on the page.
+    // Closed, so the open alerts of the demo timeline stay the first "Preiau" on the page.
     {
       ...ev('e-5', 'r-pahar', 'z-masa-1', 'opened', 9, 'Masa 1: a dispărut paharul de vin'),
       snapshot_url: tableSketch(false),
