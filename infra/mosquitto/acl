@@ -15,3 +15,4 @@ pattern write aivee/+/%u/suggestions
 pattern write aivee/+/%u/snapshots/#
 pattern read aivee/+/%u/rules
 pattern read aivee/+/%u/profiles
+pattern read aivee/+/%u/config

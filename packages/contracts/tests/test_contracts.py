@@ -78,3 +78,9 @@ def test_topics_are_scoped_per_device() -> None:
     assert t.rules == "aivee/demo/edge-01/rules"
     assert t.snapshot("e1") == "aivee/demo/edge-01/snapshots/e1"
     assert Topics.shared_events() == "$share/ingest/aivee/+/+/events"
+
+
+def test_wildcard_and_shared_topics() -> None:
+    assert Topics(site="demo", device="edge-01").config == "aivee/demo/edge-01/config"
+    assert Topics.any_device("status") == "aivee/+/+/status"
+    assert Topics.shared_suggestions() == "$share/ingest/aivee/+/+/suggestions"

@@ -27,3 +27,10 @@ class CameraConfig(BaseModel):
     name: str
     source: str = Field(description="RTSP/HTTP URL or device index")
     zones: list[Zone] = Field(default_factory=list)
+
+
+class DeviceConfig(BaseModel):
+    """Retained payload on the device's `config` topic: cameras and their zones."""
+
+    device: str
+    cameras: list[CameraConfig] = Field(default_factory=list)

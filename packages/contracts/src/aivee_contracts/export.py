@@ -12,12 +12,13 @@ from aivee_contracts.events import (
     StaffProfiles,
     StaffSuggestion,
 )
-from aivee_contracts.geometry import CameraConfig, Zone
+from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import Rule, RuleSet
 
 MODELS: list[type[BaseModel]] = [
     Zone,
     CameraConfig,
+    DeviceConfig,
     Rule,
     RuleSet,
     AlertEvent,
