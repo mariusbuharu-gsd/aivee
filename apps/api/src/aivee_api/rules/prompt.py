@@ -85,14 +85,18 @@ objects [], positive [], negative [], threshold 0.5, crop null, label_ro "".
 7. A visual situation that is not a COCO object (foc, flăcări, incendiu, fum, apă / lichid
    vărsat pe jos, ușa rămâne deschisă, un pahar spart pe jos, bătaie / încăierare,
    aglomerație mare): all_of = [visual role "any" with
-   - positive: 2-3 short English CLIP prompts for the situation, e.g. ["a photo of fire",
-     "flames", "a burning fire"] or ["water spilled on the floor", "a wet floor with a
-     puddle"] or ["an open door", "a door left wide open"];
-   - negative: 4-6 English prompts of the normal scene, always including the generic
-     "a photo of a person", "a photo of a room" and "a blurry photo", plus the normal look
-     of this place, e.g. "a photo of a normal restaurant room", "people sitting at
-     tables", "a dry clean floor", "a closed door". Never put in `negative` anything that
-     also matches the positive prompts;
+   - positive: 2-6 short English CLIP prompts for the situation, including the small,
+     close-up version of it, e.g. ["a photo of fire", "flames", "a burning fire",
+     "a lighter with a flame", "a small open flame", "a hand holding a lit lighter"] or
+     ["water spilled on the floor", "a wet floor with a puddle"] or ["an open door",
+     "a door left wide open"];
+   - negative: 3-5 English prompts of the normal scene, always including the generic
+     "a photo of a room" and "a blurry photo", plus the normal look of this place, e.g.
+     "a photo of a normal restaurant room", "empty tables and chairs", "a dry clean
+     floor", "a closed door". Never put a person or people in `negative` ("a photo of a
+     person", "people sitting at tables", "a hand"): people hold or stand next to what is
+     looked for (a lighter, a knife, a phone, a glass), so a person prompt hides it. Never
+     put in `negative` anything that also matches the positive prompts;
    - min_duration_s 3 unless the owner states a time; threshold 0.5;
    - crop "frame" when the rule applies to the whole image; null for a drawn zone].
    Fire, smoke and fights are visible from far away: use the whole image. For water on the

@@ -1,7 +1,8 @@
+import re
 import uuid
 
 from aivee_contracts.geometry import Zone
-from aivee_contracts.rules import ANYWHERE_TAG, Action, Rule
+from aivee_contracts.rules import ANYWHERE_TAG, Action, Condition, Rule
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -70,6 +71,32 @@ class RuleService:
         return camera_config(row).zones
 
 
+# People are in almost every restaurant frame and they hold or stand next to what a visual
+# rule looks for (a lit lighter, a knife, a phone). A person prompt in `negative` then wins
+# the comparison: live, a lighter flame scored 0.00 with it and 1.00 without, while 13 normal
+# frames stayed at or below 0.24 (threshold 0.5).
+_PERSON = re.compile(
+    r"\b(person|persons|people|man|men|woman|women|someone|somebody|crowd|guests?|"
+    r"customers?|diners?|waiters?|staff|hands?)\b",
+    re.IGNORECASE,
+)
+_FIRE = re.compile(r"\b(fire|flames?|burning)\b", re.IGNORECASE)
+# A flame at the demo is a lighter in someone's hand, not a burning room.
+SMALL_FLAME = ("a lighter with a flame", "a small open flame", "a hand holding a lit lighter")
+
+
+def clean_visual(c: Condition) -> Condition:
+    """Drop person prompts from a visual condition's negatives; add small-flame positives
+    to a fire rule. Other kinds pass unchanged."""
+    if c.kind != "visual":
+        return c
+    negative = [p for p in c.negative if not _PERSON.search(p)]
+    positive = list(c.positive)
+    if any(_FIRE.search(p) for p in positive):
+        positive += [p for p in SMALL_FLAME if p not in positive]
+    return c.model_copy(update={"positive": positive, "negative": negative})
+
+
 def draft_to_rule(draft: RuleDraft, camera_id: str, text: str, zones: list[Zone]) -> Rule:
     """Check the model's draft against the camera and turn it into a full Rule."""
     if not draft.understood:
@@ -101,7 +128,7 @@ def draft_to_rule(draft: RuleDraft, camera_id: str, text: str, zones: list[Zone]
             name=draft.name,
             prompt_ro=text,
             zone_tag=draft.zone_tag,
-            all_of=draft.all_of,
+            all_of=[clean_visual(c) for c in draft.all_of],
             action=Action(type="telegram"),
             cooldown_s=max(0, draft.cooldown_s),
         )
