@@ -22,6 +22,8 @@ import {
   type Detection,
   type CameraPatch,
   type NewCamera,
+  type PendingInvite,
+  type SavedZones,
   type RulePatch,
   type RuleDraft,
   type Unsubscribe,
@@ -137,15 +139,22 @@ export class HttpApi implements ApiClient {
     });
   }
 
+  async deleteCamera(id: string) {
+    await this.request<undefined>(`/api/cameras/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   listDevices() {
     return this.request<DeviceStatus[]>('/api/devices');
   }
 
   saveZones(cameraId: string, zones: Zone[]) {
-    return this.request<Zone[]>(`/api/cameras/${encodeURIComponent(cameraId)}/zones`, {
-      method: 'PUT',
-      body: JSON.stringify(zones),
-    });
+    return this.request<SavedZones>(
+      `/api/cameras/${encodeURIComponent(cameraId)}/zones?warnings=true`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(zones),
+      },
+    );
   }
 
   listRules() {
@@ -341,6 +350,16 @@ export class HttpApi implements ApiClient {
 
   createInvite(input: { location_id: string; role: Role; email: string }) {
     return this.post<Invite>('/api/invites', input);
+  }
+
+  listInvites(locationId: string) {
+    return this.request<PendingInvite[]>(
+      `/api/invites?location_id=${encodeURIComponent(locationId)}`,
+    );
+  }
+
+  async revokeInvite(id: string) {
+    await this.request<undefined>(`/api/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   listAudit(q: AuditQuery) {

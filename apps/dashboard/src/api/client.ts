@@ -50,6 +50,16 @@ export type RulePatch = Partial<Omit<Rule, 'id' | 'camera_id'>>;
 export interface AlertView extends AlertEvent {
   device_id?: string;
   snapshot_url?: string | null;
+  /** Who closed it: the edge (someone came) or the system (the camera stopped watching). */
+  closed_by?: 'edge' | 'system' | null;
+  closed_reason?: 'device_offline' | 'device_restarted' | 'camera_deleted' | null;
+}
+
+/** `PUT /api/cameras/{id}/zones?warnings=true`. */
+export interface SavedZones {
+  zones: Zone[];
+  /** E.g. overlapping zones; saved anyway, shown to the user. */
+  warnings_ro: string[];
 }
 
 /** A rule drafted from Romanian text; not saved until the user confirms it. */
@@ -86,8 +96,10 @@ export interface ApiClient extends AccountApi {
   listCameras(): Promise<CameraView[]>;
   createCamera(camera: NewCamera): Promise<CameraView>;
   updateCamera(id: string, patch: CameraPatch): Promise<CameraView>;
+  /** Removes the camera with its zones and rules; past alerts stay, open ones close. */
+  deleteCamera(id: string): Promise<void>;
   listDevices(): Promise<DeviceStatus[]>;
-  saveZones(cameraId: string, zones: Zone[]): Promise<Zone[]>;
+  saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones>;
   listRules(): Promise<Rule[]>;
   /** Translate a Romanian request into a draft rule; nothing is saved. */
   draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft>;
@@ -172,6 +184,17 @@ export interface Member {
 
 export interface Invite {
   invite_url: string;
+  expires_at: string;
+}
+
+/** An invite nobody accepted yet (`GET /api/invites`). */
+export interface PendingInvite {
+  id: string;
+  email: string;
+  role: Role;
+  location_id: string;
+  created_by: string;
+  created_at: string;
   expires_at: string;
 }
 
@@ -271,6 +294,10 @@ export interface AccountApi {
   updateMember(locationId: string, userId: string, role: Role): Promise<Member>;
   removeMember(locationId: string, userId: string): Promise<void>;
   createInvite(input: { location_id: string; role: Role; email: string }): Promise<Invite>;
+  /** Pending invites; a manager sees only staff invites. */
+  listInvites(locationId: string): Promise<PendingInvite[]>;
+  /** Idempotent; the link then answers 410. */
+  revokeInvite(id: string): Promise<void>;
   listAudit(query: AuditQuery): Promise<AuditPage>;
   listAlertCases(query: {
     location_id: string;

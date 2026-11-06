@@ -7,15 +7,23 @@ import { Icon } from '../components/Icon';
 import { MetricsStrip } from '../components/MetricsStrip';
 import { useLiveData } from '../state/context';
 import { Banner } from '../ui/Banner';
-import { Dialog } from '../ui/Dialog';
+import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
 import { EmptyState, Skeleton } from '../ui/controls';
 import { useToast } from '../ui/toast';
 
+/** "1 zonă se șterge" / "3 zone se șterg" / "nicio zonă". */
+function willGo(n: number, one: string, many: string, none: string): string {
+  if (n === 0) return none;
+  return n === 1 ? `1 ${one} se șterge.` : `${n} ${many} se șterg.`;
+}
+
 const zonesPath = (id: string) => `/camere/${encodeURIComponent(id)}/zone`;
 
 export function DevicesPage() {
-  const { cameras, loading, addCamera, metrics } = useLiveData();
+  const { cameras, rules, loading, addCamera, removeCamera, metrics } = useLiveData();
+  const api = useApi();
+  const [removing, setRemoving] = useState<CameraView | null>(null);
   const navigate = useNavigate();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
@@ -63,6 +71,7 @@ export function DevicesPage() {
                   items={[
                     { label: 'Redenumește', onSelect: () => setRenaming(c) },
                     { label: 'Editează zonele', onSelect: () => navigate(zonesPath(c.id)) },
+                    { label: 'Scoate camera…', danger: true, onSelect: () => setRemoving(c) },
                   ]}
                 />
               </div>
@@ -140,6 +149,31 @@ export function DevicesPage() {
             }}
           />
         </Dialog>
+      )}
+      {removing && (
+        <ConfirmDialog
+          title={`Scoți camera „${removing.name}”?`}
+          confirmLabel="Scoate camera"
+          onClose={() => setRemoving(null)}
+          onConfirm={async () => {
+            await api.deleteCamera(removing.id);
+            removeCamera(removing.id);
+            toast({ title: `Camera „${removing.name}” a fost scoasă` });
+          }}
+        >
+          <ul>
+            <li>{willGo(removing.zones?.length ?? 0, 'zonă', 'zone', 'Nu are zone desenate.')}</li>
+            <li>
+              {willGo(
+                rules.filter((r) => r.camera_id === removing.id).length,
+                'regulă',
+                'reguli',
+                'Nu are reguli.',
+              )}
+            </li>
+            <li>Alertele deschise se închid; cele vechi rămân în Istoric.</li>
+          </ul>
+        </ConfirmDialog>
       )}
       {renaming && <RenameCamera camera={renaming} onClose={() => setRenaming(null)} />}
     </div>

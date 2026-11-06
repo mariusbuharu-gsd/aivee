@@ -121,6 +121,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       ),
     [],
   );
+  const removeCamera = useCallback((id: string) => {
+    setCameras((prev) => prev.filter((c) => c.id !== id));
+    setRules((prev) => prev.filter((r) => r.camera_id !== id));
+  }, []);
   const dropSuggestion = useCallback(
     (id: string) => setSuggestions((prev) => prev.filter((s) => s.suggestion_id !== id)),
     [],
@@ -143,6 +147,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       addRule,
       removeRule,
       addCamera,
+      removeCamera,
       dropSuggestion,
       cases,
       ack,
@@ -163,6 +168,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       addRule,
       removeRule,
       addCamera,
+      removeCamera,
       dropSuggestion,
     ],
   );

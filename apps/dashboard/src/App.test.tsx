@@ -143,6 +143,30 @@ describe('App with the mock API', () => {
     expect(screen.getByRole('button', { name: 'Salvează zonele' })).toBeEnabled();
   });
 
+  it('undoes a zone delete from the toast and asks before leaving unsaved zones', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(
+      await screen.findByRole('link', { name: 'Editează zonele pentru Sala principală' }),
+    );
+    await user.click(await screen.findByRole('button', { name: /Masa 2/ }));
+    await user.click(screen.getByRole('button', { name: /Șterge/ }));
+    expect(screen.getByRole('heading', { name: /Zone \(2\)/ })).toBeInTheDocument();
+    expect(screen.getByText('modificări nesalvate')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Anulează' }));
+    expect(screen.getByRole('heading', { name: /Zone \(3\)/ })).toBeInTheDocument();
+
+    const nav = screen.getByRole('navigation', { name: 'Principal' });
+    await user.click(within(nav).getByRole('link', { name: /Alerte/ }));
+    const dialog = screen.getByRole('dialog', { name: /modificări nesalvate/ });
+    await user.click(within(dialog).getByRole('button', { name: 'Rămâi' }));
+    expect(screen.getByRole('heading', { name: /Zone · Sala principală/ })).toBeInTheDocument();
+    await user.click(within(nav).getByRole('link', { name: /Alerte/ }));
+    await user.click(screen.getByRole('button', { name: 'Salvează și pleacă' }));
+    expect(await screen.findByRole('heading', { name: 'Alerte', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('3 zone salvate')).toBeInTheDocument();
+  });
+
   it('adds a camera, then drafts and confirms a rule in mock mode', async () => {
     const user = userEvent.setup();
     renderApp('/dispozitive');

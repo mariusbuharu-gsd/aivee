@@ -27,6 +27,8 @@ export interface LiveData {
   removeRule: (id: string) => void;
   /** Add a camera or replace it in place (same id). */
   addCamera: (camera: CameraView) => void;
+  /** Drop a deleted camera and its rules. */
+  removeCamera: (id: string) => void;
   dropSuggestion: (id: string) => void;
   /** Lifecycle per alert, keyed by the opening event id (AlertItem.key). */
   cases: Record<string, AlertCase>;

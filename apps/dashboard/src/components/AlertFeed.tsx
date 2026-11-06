@@ -4,6 +4,12 @@ import type { AlertCase } from '../api/client';
 import { duration } from '../alerts/format';
 import { useToast } from '../ui/toast';
 
+const CLOSED_BY_SYSTEM: Record<string, string> = {
+  device_offline: 'dispozitiv deconectat',
+  device_restarted: 'dispozitivul a repornit',
+  camera_deleted: 'camera a fost scoasă',
+};
+
 const time = (iso: string) =>
   new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 
@@ -53,7 +59,11 @@ export function AlertFeed({
               </div>
               <p className="feed-summary">{a.summary_ro}</p>
               <p className="muted small mono">
-                {open ? `deschisă de ${waited(a)}` : `rezolvată în ${waited(a)}`}
+                {open
+                  ? `deschisă de ${waited(a)}`
+                  : a.closed_reason !== undefined
+                    ? `închisă de sistem: ${CLOSED_BY_SYSTEM[a.closed_reason ?? ''] ?? 'fără motiv'}`
+                    : `rezolvată în ${waited(a)}`}
                 {!open && lifecycle?.acknowledged_by ? ` · ${lifecycle.acknowledged_by}` : ''}
               </p>
               {lifecycle &&
