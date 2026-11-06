@@ -1071,3 +1071,13 @@ label.btn:focus-within {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+
+/* ---------- Live detections: a guest raising a hand needs attention (coral) ---------- */
+.det-hand {
+  border-color: var(--coral);
+  border-width: 3px;
+}
+.det-hand .det-label {
+  background: var(--coral);
+  color: var(--ink);
+}

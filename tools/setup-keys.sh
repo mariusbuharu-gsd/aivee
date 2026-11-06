@@ -31,6 +31,9 @@ echo "AiVee keys → $ENV_FILE"
 ask ANTHROPIC_API_KEY  "Anthropic API key (console.anthropic.com → API Keys)"
 ask TELEGRAM_BOT_TOKEN "Telegram bot token (@BotFather → /newbot)"
 
+# Web Push keys are generated, not pasted (kept if already set).
+(cd "$ROOT" && uv run python tools/gen_vapid.py) || echo "  - VAPID keys skipped (run: make vapid)"
+
 # Link the single .env into every worktree so parallel sessions share one config.
 while read -r wt; do
   [[ "$wt" == "$ROOT" ]] && continue

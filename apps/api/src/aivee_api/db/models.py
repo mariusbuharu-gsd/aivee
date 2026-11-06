@@ -128,3 +128,16 @@ class SuggestionRow(Base):
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'confirmed', 'rejected')", name="suggestion_status"),
     )
+
+
+class PushSubscriptionRow(Base):
+    """A browser's Web Push subscription (the PWA on a waiter's phone). One row per endpoint."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text)
+    auth: Mapped[str] = mapped_column(Text)
+    user_agent: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = _now()

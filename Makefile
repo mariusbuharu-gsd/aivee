@@ -1,4 +1,4 @@
-.PHONY: dev test test-all lint fmt up down schema keys telegram-id api eval
+.PHONY: dev test test-all lint fmt up down schema keys telegram-id vapid api eval
 dev:
 	uv sync --all-packages
 test:
@@ -19,6 +19,8 @@ keys:
 	./tools/setup-keys.sh
 telegram-id:
 	uv run python tools/telegram_chat_id.py
+vapid:
+	uv run python tools/gen_vapid.py
 api:
 	uv run uvicorn aivee_api.main:app --reload --port 8000 --env-file .env
 eval:

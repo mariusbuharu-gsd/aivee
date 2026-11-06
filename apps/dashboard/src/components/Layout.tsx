@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router';
 import { useApi } from '../api/context';
+import { OfflineBanner } from '../pwa/OfflineBanner';
 import { useLiveData } from '../state/context';
 import { Icon, Logo, type IconName } from './Icon';
 
@@ -47,6 +48,7 @@ export function Layout() {
         </p>
       </aside>
       <main id="main" className="main">
+        <OfflineBanner />
         {error && (
           <p className="banner-error" role="alert">
             Eroare de conectare: {error}

@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { CameraView, Detection } from '../api/client';
 import { useApi } from '../api/context';
+import { detectionLabel } from '../live/detections';
 import { LivePlayer } from '../live/LivePlayer';
 import { toSvgPoints } from '../zones/geometry';
 import { Icon } from './Icon';
-
-const ROLE_LABEL: Record<Detection['role'], string> = { staff: 'angajat', guest: 'client' };
 
 export function CameraTile({ camera }: { camera: CameraView }) {
   const api = useApi();
@@ -39,7 +38,7 @@ export function CameraTile({ camera }: { camera: CameraView }) {
         {shown.map((d) => (
           <div
             key={d.track_id}
-            className={`det det-${d.role}`}
+            className={`det det-${d.role}${d.raised_hand ? ' det-hand' : ''}`}
             style={{
               left: `${d.box[0] * 100}%`,
               top: `${d.box[1] * 100}%`,
@@ -47,9 +46,7 @@ export function CameraTile({ camera }: { camera: CameraView }) {
               height: `${d.box[3] * 100}%`,
             }}
           >
-            <span className="det-label mono">
-              {ROLE_LABEL[d.role]} #{d.track_id}
-            </span>
+            <span className="det-label mono">{detectionLabel(d)}</span>
           </div>
         ))}
         <span className={`badge ${camera.online ? 'badge-live' : 'badge-off'}`}>

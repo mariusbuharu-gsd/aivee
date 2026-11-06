@@ -13,6 +13,7 @@
 | `make schema` | regenerate JSON Schema from contracts |
 | `make eval` | Romanian request → rule eval (20 cases, real API calls) |
 | `make keys` / `make telegram-id` | paste API keys into `.env` / detect the Telegram group |
+| `make vapid` | generate the Web Push VAPID keys into `.env` (never printed; kept if already set) |
 
 `.env` holds every secret (names in `.env.example`); never print or commit values.
 Models: `uv run python tools/download_models.py` → `models/` (gitignored).
@@ -22,7 +23,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Service | Code | Role |
 |---|---|---|
 | edge | `apps/edge` | camera → YOLO11n + ByteTrack → pose (table zones) → behaviour + CLIP → role → situation engine → blurred snapshot → MQTT |
-| ingest ×2 | `apps/ingest` | shared subscription → Postgres → Telegram notifier |
+| ingest ×2 | `apps/ingest` | shared subscription → Postgres → Telegram + Web Push notifiers (composite) |
 | api | `apps/api` | REST + WS for the dashboard; publishes retained edge state; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
 | postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations (`migrate` service) |
