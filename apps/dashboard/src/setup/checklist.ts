@@ -117,11 +117,12 @@ export function setupSteps(input: SetupInput): SetupStep[] {
     step(
       'photos',
       'Poze cu uniforma',
-      '2–3 poze cu tricoul sau șorțul, ca AiVee să deosebească personalul de clienți.',
+      'Pe Camere, „Adaugă angajat” filmează un coleg 20 s, ca AiVee să deosebească personalul de clienți.',
       (input.staffProfiles ?? []).some((p) => p.examples > 0),
       'staff.enrol',
-      '/alerte#poze-personal',
-      'Încarcă poze',
+      // The 20 s capture on the camera card replaced uploading photos as the main way.
+      '/dispozitive',
+      'Adaugă angajat',
     ),
     step(
       'alerts',
@@ -154,6 +155,16 @@ export function progressLabel(steps: SetupStep[]): string {
   const { done, total } = setupProgress(steps);
   return `${done} din ${total}`;
 }
+
+/** "Mai ai 2 pași: Poze cu uniforma, Alerte pe telefon": the collapsed one-liner. */
+export function remainingLabel(steps: SetupStep[]): string {
+  const left = steps.filter((s) => !s.done);
+  const n = left.length === 1 ? '1 pas' : `${left.length} pași`;
+  return `Mai ai ${n}: ${left.map((s) => s.title).join(', ')}`;
+}
+
+/** With this many steps left or fewer, the card starts as one line. */
+export const FEW_LEFT = 2;
 
 /** Owners and managers see the checklist until every step is done; staff never do. */
 export function showSetup(role: Role | null | undefined, steps: SetupStep[]): boolean {

@@ -41,16 +41,25 @@ describe('DevicesPage', () => {
     expect(num).toHaveClass('mono');
   });
 
-  it('puts health on the card and drops the separate system table', async () => {
+  it('folds device id, source and health under "Detalii tehnice" on the card', async () => {
     renderApp();
     const sala = await screen.findByRole(
       'listitem',
       { name: 'Camera Sala principală' },
       { timeout: 5000 },
     );
-    expect(within(sala).getByText('FPS')).toBeInTheDocument();
-    expect(within(sala).getByText('CPU')).toBeInTheDocument();
-    expect(within(sala).getByText('rtsp://192.168.1.20/…')).toBeInTheDocument();
+    const tech = within(sala).getByText('Detalii tehnice').closest('details') as HTMLElement;
+    expect(tech).not.toHaveAttribute('open');
+    expect(within(tech).getByText('FPS')).toBeInTheDocument();
+    expect(within(tech).getByText('CPU')).toBeInTheDocument();
+    expect(within(tech).getByText('rtsp://192.168.1.20/…')).toBeInTheDocument();
+    expect(within(tech).getByText('edge-sala')).toBeInTheDocument();
+    // What stays in sight: freshness, zones, the two actions.
+    expect(await within(sala).findByText(/zone$/)).not.toBeNull();
+    expect(within(sala).getByRole('link', { name: 'Editează zonele' })).toBeInTheDocument();
+    const system = (await screen.findByText(/Latență alertă/)).closest('details');
+    expect(system).not.toBeNull();
+    expect(system).not.toHaveAttribute('open');
     expect(screen.queryByRole('heading', { name: 'Sistem' })).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
   });
@@ -165,5 +174,46 @@ describe('DevicesPage', () => {
     const url = `${window.location.origin}/telefon?camera=tel-01`;
     expect(within(dialog).getByRole('img', { name: /Cod QR/ })).toBeInTheDocument();
     expect(within(dialog).getByText(url)).toBeInTheDocument();
+  });
+
+  it('shows "fără imagine" when an online device has been silent for over a minute', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const real = api.listDevices.bind(api);
+    vi.spyOn(api, 'listDevices').mockImplementation(async () =>
+      (await real()).map((d) =>
+        d.state === 'online'
+          ? { ...d, last_seen: new Date(Date.now() - 5 * 60_000).toISOString() }
+          : d,
+      ),
+    );
+    renderApp('/dispozitive', 'manager@aivee.demo', api);
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    expect(await within(sala).findByText('fără imagine')).toBeInTheDocument();
+    expect(within(sala).getByText('Nu mai vin imagini. Ce verifici:')).toBeInTheDocument();
+    expect(within(sala).queryByText('FPS')).toBeNull();
+    expect(within(sala).queryByRole('button', { name: /încearcă din nou/ })).toBeNull();
+  });
+
+  it('asks about the laptop script and the phone page for an offline cloud camera', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const real = api.listCameras.bind(api);
+    vi.spyOn(api, 'listCameras').mockImplementation(async () =>
+      (await real()).map((c) => (c.online ? c : { ...c, source: `mqtt-frames://${c.id}` })),
+    );
+    renderApp('/dispozitive', 'manager@aivee.demo', api);
+    const terrace = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Terasă' },
+      { timeout: 5000 },
+    );
+    expect(
+      await within(terrace).findByText('Scriptul de pe laptop rulează? Laptopul are internet?'),
+    ).toBeInTheDocument();
+    expect(within(terrace).getByText(/e deschisă și ecranul aprins\?/)).toBeInTheDocument();
+    expect(within(terrace).queryByText(/Cablul de rețea/)).toBeNull();
   });
 });

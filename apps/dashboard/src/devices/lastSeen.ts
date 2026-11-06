@@ -25,3 +25,24 @@ export function lastSeenRo(
   const since = sinceRo(now - at);
   return online ? `ultima imagine acum ${since}` : `offline de ${since}`;
 }
+
+/** An "online" device that has sent nothing for longer than this is shown as "fără imagine". */
+export const STALE_MS = 60_000;
+
+export type CameraState = 'online' | 'stale' | 'offline';
+
+/**
+ * What the card shows. The API has no per-camera "last frame" time (the `/frame` still is the
+ * latest alert snapshot), so the device's `last_seen` stands in: for an edge box it moves with
+ * every metrics message, for a cloud camera with what its sender posts. Unknown time = trust
+ * `online`.
+ */
+export function cameraState(
+  online: boolean,
+  lastSeen: string | null | undefined,
+  now: number,
+): CameraState {
+  if (!online) return 'offline';
+  const at = lastSeen ? Date.parse(lastSeen) : NaN;
+  return !Number.isNaN(at) && now - at > STALE_MS ? 'stale' : 'online';
+}

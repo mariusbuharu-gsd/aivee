@@ -8,15 +8,17 @@ import { QrCode } from '../components/QrCode';
 import { StaffCaptureButton } from '../components/StaffCapture';
 import type { Metrics } from '../contracts';
 import { CameraThumb } from '../devices/CameraThumb';
-import { lastSeenRo } from '../devices/lastSeen';
+import { cameraState, lastSeenRo, type CameraState } from '../devices/lastSeen';
 import { maskSource } from '../devices/maskSource';
 import { useDevices } from '../devices/useDevices';
 import { useNow } from '../live/useNow';
+import { isCloudFrames } from '../live/source';
 import { isCloudCamera } from '../phone/sender';
 import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
 import { EmptyState, Skeleton } from '../ui/controls';
+import { plural } from '../ui/plural';
 import { useToast } from '../ui/toast';
 import './DevicesPage.css';
 import { BusyLabel } from '../ui/Eyes';
@@ -83,7 +85,12 @@ export function DevicesPage() {
         ))}
       </ul>
 
-      {metrics && metrics.devices.length > 0 && <SystemLine metrics={metrics} />}
+      {metrics && metrics.devices.length > 0 && (
+        <details className="tech device-system-tech">
+          <summary>Detalii tehnice</summary>
+          <SystemLine metrics={metrics} />
+        </details>
+      )}
 
       {adding && (
         <Dialog title="Adaugă o cameră" icon="devices" onClose={() => setAdding(false)}>
@@ -158,15 +165,14 @@ function CameraCard({
   const c = device ? { ...camera, online: device.state === 'online' } : camera;
   const now = useNow(device?.last_seen != null);
   const seen = lastSeenRo(c.online, device?.last_seen, now);
+  const state = cameraState(c.online, device?.last_seen, now);
   return (
     <li className="card device-card" aria-label={`Camera ${c.name}`}>
       <CameraThumb cameraId={c.id} name={c.name} online={c.online} />
       <div className="side-head">
         <h2 className="h3">{c.name}</h2>
         <div className="rule-tools">
-          <span className={`pill ${c.online ? 'pill-live' : 'pill-off'}`}>
-            {c.online ? 'online' : 'offline'}
-          </span>
+          <span className={`pill ${PILL[state].className}`}>{PILL[state].label}</span>
           <Menu
             label={`Acțiuni pentru camera ${c.name}`}
             items={[
@@ -179,46 +185,60 @@ function CameraCard({
         </div>
       </div>
       <p className="device-sub">
-        <span className="mono">{c.device}</span>
         {seen && (
           <>
+            <span className={state === 'online' ? undefined : 'device-gone'}>{seen}</span>
             {' · '}
-            <span className={c.online ? undefined : 'device-gone'}>{seen}</span>
           </>
         )}
+        {plural(c.zones?.length ?? 0, 'zonă', 'zone')}
       </p>
-      {c.online ? (
-        <dl className="device-health">
-          <div>
-            <dt>FPS</dt>
-            <dd className="mono">{health ? health.fps.toFixed(1) : '—'}</dd>
-          </div>
-          <div>
-            <dt>CPU</dt>
-            <dd className="mono">{health ? `${Math.round(health.cpu_percent)}%` : '—'}</dd>
-          </div>
-          <div>
-            <dt>Zone</dt>
-            <dd className="mono">{c.zones?.length ?? 0}</dd>
-          </div>
-        </dl>
-      ) : (
-        <OfflineChecklist camera={c} />
-      )}
-      <p className="device-source mono" title="Adresa completă apare la „Editează camera”">
-        <span className="visually-hidden">Sursă: </span>
-        {maskSource(c.source)}
-      </p>
+      {state !== 'online' && <OfflineChecklist camera={c} stale={state === 'stale'} />}
       <Link to={zonesPath(c.id)} className="btn">
         Editează zonele
       </Link>
       <StaffCaptureButton camera={c} />
+      {/* For whoever installs or debugs; the owner at the demo only needs the lines above. */}
+      <details className="tech device-tech">
+        <summary>Detalii tehnice</summary>
+        <p className="device-source mono">
+          <span className="visually-hidden">Dispozitiv: </span>
+          {c.device}
+        </p>
+        <p className="device-source mono" title="Adresa completă apare la „Editează camera”">
+          <span className="visually-hidden">Sursă: </span>
+          {maskSource(c.source)}
+        </p>
+        {state === 'online' && (
+          <dl className="device-health">
+            <div>
+              <dt>FPS</dt>
+              <dd className="mono">{health ? health.fps.toFixed(1) : '—'}</dd>
+            </div>
+            <div>
+              <dt>CPU</dt>
+              <dd className="mono">{health ? `${Math.round(health.cpu_percent)}%` : '—'}</dd>
+            </div>
+          </dl>
+        )}
+      </details>
     </li>
   );
 }
 
-/** What to check, in order, when a device stops answering; the button asks the API again. */
-function OfflineChecklist({ camera }: { camera: CameraView }) {
+const PILL: Record<CameraState, { label: string; className: string }> = {
+  online: { label: 'online', className: 'pill-live' },
+  // Connected but silent: the sender (laptop script, phone page) stopped, not the device.
+  stale: { label: 'fără imagine', className: 'pill-warn' },
+  offline: { label: 'offline', className: 'pill-off' },
+};
+
+/**
+ * What to check, in order, when a camera stops sending. Cloud cameras (`mqtt-frames://`) are fed
+ * by the laptop connector or the /telefon page, so the edge-box steps would send people to look
+ * for a box that is not there. The button asks the API again.
+ */
+function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale?: boolean }) {
   const api = useApi();
   const toast = useToast();
   const { addCamera } = useLiveData();
@@ -248,22 +268,44 @@ function OfflineChecklist({ camera }: { camera: CameraView }) {
   }
 
   return (
-    <div className="device-offline">
-      <h3 className="device-offline-title">Ce verifici, în ordine</h3>
-      <ol>
-        <li>
-          Calculatorul <span className="mono">{camera.device}</span> e pornit? Lumina de pe carcasă
-          e aprinsă.
-        </li>
-        <li>Cablul de rețea e în priză la ambele capete.</li>
-        <li>Camera are curent (LED-ul din față).</li>
-      </ol>
-      <p className="muted small">Alertele de la această cameră nu vin până revine.</p>
-      <button type="button" className="btn btn-sm" onClick={() => void retry()} disabled={checking}>
-        <BusyLabel busy={checking} idle="Am verificat, încearcă din nou">
-          Se verifică…
-        </BusyLabel>
-      </button>
+    <div className={`device-offline${stale ? ' is-stale' : ''}`}>
+      <h3 className="device-offline-title">
+        {stale ? 'Nu mai vin imagini. Ce verifici:' : 'Ce verifici, în ordine'}
+      </h3>
+      {isCloudFrames(camera.source) ? (
+        <ol>
+          <li>Scriptul de pe laptop rulează? Laptopul are internet?</li>
+          <li>
+            Pagina <span className="mono">/telefon</span> e deschisă și ecranul aprins?
+          </li>
+        </ol>
+      ) : (
+        <ol>
+          <li>
+            Calculatorul <span className="mono">{camera.device}</span> e pornit? Lumina de pe
+            carcasă e aprinsă.
+          </li>
+          <li>Cablul de rețea e în priză la ambele capete.</li>
+          <li>Camera are curent (LED-ul din față).</li>
+        </ol>
+      )}
+      <p className="muted small">
+        {stale
+          ? 'Cardul revine singur la „online” când sosesc imagini.'
+          : 'Alertele de la această cameră nu vin până revine.'}
+      </p>
+      {!stale && (
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => void retry()}
+          disabled={checking}
+        >
+          <BusyLabel busy={checking} idle="Am verificat, încearcă din nou">
+            Se verifică…
+          </BusyLabel>
+        </button>
+      )}
     </div>
   );
 }

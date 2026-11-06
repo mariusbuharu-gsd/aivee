@@ -445,6 +445,9 @@ p {
 .pill-muted {
   color: var(--muted);
 }
+.pill-warn {
+  color: var(--warn);
+}
 
 /* ---------- Rule composer ---------- */
 details summary {
@@ -2680,6 +2683,16 @@ label.btn:focus-within {
 .setup-tools {
   display: flex;
   gap: 4px;
+}
+.setup-title {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.setup-left {
+  color: var(--text);
+}
+.setup-extra {
+  margin-top: 6px;
 }
 .setup-bar {
   height: 6px;

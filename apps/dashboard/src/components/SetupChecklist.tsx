@@ -1,14 +1,16 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { StaffProfile } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
 import { browserPushService, type PushService } from '../push/service';
 import {
+  FEW_LEFT,
   isSetupHidden,
   isTestSent,
   markTestSent,
   progressLabel,
+  remainingLabel,
   setSetupHidden,
   setupProgress,
   setupSteps,
@@ -19,6 +21,7 @@ import { useLiveData } from '../state/context';
 import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
+import { TelegramConnect } from './TelegramConnect';
 import { BusyLabel } from '../ui/Eyes';
 
 interface Extra {
@@ -42,7 +45,8 @@ export function SetupChecklist({ push: pushProp }: { push?: PushService }) {
   const [extra, setExtra] = useState<Extra | null>(null);
   const [hidden, setHidden] = useState(() => isSetupHidden(userId));
   const [tested, setTested] = useState(() => isTestSent(userId));
-  const [open, setOpen] = useState(true);
+  // null: decided by how much is left (few steps → one line); a click makes it the user's.
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +84,16 @@ export function SetupChecklist({ push: pushProp }: { push?: PushService }) {
   });
   if (!showSetup(location?.role, steps)) return null;
   const { done, total } = setupProgress(steps);
+  const few = total - done <= FEW_LEFT;
+  const open = userOpen ?? !few;
+  // Owners can link the group right here (the API allows it to locations.manage only).
+  const telegram =
+    can('locations.manage') && location ? (
+      <TelegramConnect
+        locationId={location.id}
+        onConnected={() => setExtra((e) => (e ? { ...e, telegram: true } : e))}
+      />
+    ) : null;
 
   function hide() {
     setSetupHidden(userId, true);
@@ -124,6 +138,7 @@ export function SetupChecklist({ push: pushProp }: { push?: PushService }) {
           <span className="mono small muted" data-testid="setup-progress">
             {progressLabel(steps)}
           </span>
+          {!open && few && <span className="small setup-left">{remainingLabel(steps)}</span>}
         </div>
         <div className="setup-tools">
           <button
@@ -131,30 +146,38 @@ export function SetupChecklist({ push: pushProp }: { push?: PushService }) {
             className="btn btn-ghost"
             aria-expanded={open}
             aria-controls={listId}
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => setUserOpen(!open)}
           >
-            {open ? 'Restrânge' : 'Arată pașii'}
+            {open ? 'Restrânge' : few ? 'Arată' : 'Arată pașii'}
           </button>
           <button type="button" className="btn btn-ghost" onClick={hide}>
             Ascunde
           </button>
         </div>
       </div>
-      <div
-        className="setup-bar"
-        role="progressbar"
-        aria-label="Pași făcuți"
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={done}
-        aria-valuetext={progressLabel(steps)}
-      >
-        <span style={{ width: `${(done / total) * 100}%` }} />
-      </div>
+      {(open || !few) && (
+        <div
+          className="setup-bar"
+          role="progressbar"
+          aria-label="Pași făcuți"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={done}
+          aria-valuetext={progressLabel(steps)}
+        >
+          <span style={{ width: `${(done / total) * 100}%` }} />
+        </div>
+      )}
       {open && (
         <ol id={listId} className="setup-steps">
           {steps.map((s) => (
-            <StepRow key={s.id} step={s} busy={busy} onTest={() => void sendTest()} />
+            <StepRow
+              key={s.id}
+              step={s}
+              busy={busy}
+              onTest={() => void sendTest()}
+              extra={s.id === 'alerts' ? telegram : null}
+            />
           ))}
         </ol>
       )}
@@ -163,7 +186,18 @@ export function SetupChecklist({ push: pushProp }: { push?: PushService }) {
   );
 }
 
-function StepRow({ step, busy, onTest }: { step: SetupStep; busy: boolean; onTest: () => void }) {
+function StepRow({
+  step,
+  busy,
+  onTest,
+  extra,
+}: {
+  step: SetupStep;
+  busy: boolean;
+  onTest: () => void;
+  /** Shown under the text while the step is to do (Telegram on "Alerte pe telefon"). */
+  extra?: ReactNode;
+}) {
   return (
     <li className={`setup-step ${step.done ? 'is-done' : ''}`} data-step={step.id}>
       <span className="setup-mark" aria-hidden="true">
@@ -178,6 +212,7 @@ function StepRow({ step, busy, onTest }: { step: SetupStep; busy: boolean; onTes
         {!step.done && step.waitingFor && !step.blocked && (
           <span className="small setup-wait">{step.waitingFor}</span>
         )}
+        {!step.done && extra && <div className="setup-extra">{extra}</div>}
       </div>
       {!step.done && <StepAction step={step} busy={busy} onTest={onTest} />}
     </li>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lastSeenRo, sinceRo } from './lastSeen';
+import { cameraState, lastSeenRo, sinceRo } from './lastSeen';
 
 const NOW = Date.parse('2026-11-06T20:00:00Z');
 const ago = (s: number) => new Date(NOW - s * 1000).toISOString();
@@ -33,5 +33,15 @@ describe('lastSeenRo', () => {
     expect(lastSeenRo(true, null, NOW)).toBeNull();
     expect(lastSeenRo(false, undefined, NOW)).toBeNull();
     expect(lastSeenRo(true, 'not a date', NOW)).toBeNull();
+  });
+});
+
+describe('cameraState', () => {
+  it('turns an online device silent for over a minute into "stale"', () => {
+    expect(cameraState(true, ago(5), NOW)).toBe('online');
+    expect(cameraState(true, ago(60), NOW)).toBe('online');
+    expect(cameraState(true, ago(61), NOW)).toBe('stale');
+    expect(cameraState(true, null, NOW)).toBe('online');
+    expect(cameraState(false, ago(5), NOW)).toBe('offline');
   });
 });
