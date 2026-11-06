@@ -72,7 +72,7 @@ describe('CameraTile overlay', () => {
     expect(staff).toHaveClass('det', 'det-staff');
     expect(staff).not.toHaveClass('det-hand');
     expect(staff.style.left).toBe('10%');
-    const guest = screen.getByText('client #12 · mână ridicată').parentElement as HTMLElement;
+    const guest = screen.getByText('mână ridicată #12').parentElement as HTMLElement;
     expect(guest).toHaveClass('det-guest', 'det-hand');
     expect(screen.getByText(/2 persoane/)).toBeInTheDocument();
   });

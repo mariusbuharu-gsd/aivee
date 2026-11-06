@@ -51,7 +51,9 @@ export function fromContract(d: Detections): Detection[] {
   });
 }
 
+/** Short enough to fit a phone tile: a guest's raised hand replaces the role word. */
 export function detectionLabel(d: Detection): string {
+  if (d.raised_hand && d.role === 'guest') return `${RAISED_HAND_LABEL} #${d.track_id}`;
   const role = `${ROLE_LABEL[d.role]} #${d.track_id}`;
   return d.raised_hand ? `${role} · ${RAISED_HAND_LABEL}` : role;
 }

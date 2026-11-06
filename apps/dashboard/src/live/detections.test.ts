@@ -82,6 +82,6 @@ describe('detectionLabel', () => {
     expect(detectionLabel({ track_id: 7, role: 'staff', box: [0, 0, 1, 1] })).toBe('angajat #7');
     expect(
       detectionLabel({ track_id: 12, role: 'guest', box: [0, 0, 1, 1], raised_hand: true }),
-    ).toBe('client #12 · mână ridicată');
+    ).toBe('mână ridicată #12');
   });
 });
