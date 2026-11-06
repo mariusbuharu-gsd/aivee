@@ -1,0 +1,143 @@
+# Romanian request → rule. Every case runs against a camera with two tables and an entrance.
+# expect.refuse: the request must be clarified or refused (no rule).
+# expect.conditions: each listed condition must appear (same kind, and role if given);
+#   listed fields must match (a list means "any of these"); the rule must have exactly
+#   that many conditions. `objects_include`: these COCO names must be in `objects`.
+zones:
+  - { id: t1, name: "Masa 1", tag: table, polygon: [[0.05, 0.5], [0.3, 0.5], [0.3, 0.8]] }
+  - { id: t2, name: "Masa 2", tag: table, polygon: [[0.4, 0.5], [0.65, 0.5], [0.65, 0.8]] }
+  - { id: e1, name: "Intrare", tag: entrance, polygon: [[0.75, 0.1], [0.95, 0.1], [0.95, 0.4]] }
+
+cases:
+  # --- 1. unattended table -------------------------------------------------------------
+  - id: unattended-demo
+    text: "Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: present, role: guest }
+        - { kind: absent, role: staff, min_duration_s: 60 }
+  - id: unattended-words
+    text: "Dacă niciun chelner nu a trecut pe la clienții de la masă de cinci minute, trimite o alertă"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: present, role: guest }
+        - { kind: absent, role: staff, min_duration_s: 300 }
+  - id: unattended-no-diacritics
+    text: "anunta-ma daca nu vine niciun ospatar la masa in 3 minute"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: present, role: guest }
+        - { kind: absent, role: staff, min_duration_s: 180 }
+  - id: unattended-ten
+    text: "Vreau alertă când oamenii de la masă așteaptă de zece minute fără să fie serviți"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: present, role: guest }
+        - { kind: absent, role: staff, min_duration_s: 600 }
+  - id: unattended-seconds
+    text: "Masa așteaptă de 90 de secunde și n-a venit chelnerul — dă-mi de știre"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: present, role: guest }
+        - { kind: absent, role: staff, min_duration_s: 90 }
+  - id: unattended-cooldown
+    text: >-
+      Dacă la masă stau clienți de 2 minute și nu a venit ospătarul de 4 minute, anunță-mă,
+      dar nu mai des de o dată la 10 minute
+    expect:
+      zone_tag: table
+      cooldown_s: 600
+      conditions:
+        - { kind: present, role: guest, min_duration_s: 120 }
+        - { kind: absent, role: staff, min_duration_s: 240 }
+
+  # --- 2. guest calls ------------------------------------------------------------------
+  - id: hand-demo
+    text: "Dacă cineva ridică mâna la masă, cheamă ospătarul"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: pose, role: [guest, any], pose: raised_hand }
+  - id: hand-no-diacritics
+    text: "clientul face semn cu mana sa vina chelnerul"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: pose, role: [guest, any], pose: raised_hand }
+  - id: hand-bill
+    text: "Alertă când un client cere nota ridicând mâna"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: pose, role: [guest, any], pose: raised_hand }
+
+  # --- 3. queue at the entrance --------------------------------------------------------
+  - id: queue-count-digits
+    text: "Anunță-mă dacă sunt cel puțin 4 persoane la intrare și nu e nimeni de la personal acolo"
+    expect:
+      zone_tag: entrance
+      conditions:
+        - { kind: count, role: guest, min_count: 4 }
+        - { kind: absent, role: staff }
+  - id: queue-count-words
+    text: "daca se face coada de trei sau mai multi oameni la intrare, anunta un ospatar"
+    expect:
+      zone_tag: entrance
+      conditions:
+        - { kind: count, role: guest, min_count: 3 }
+        - { kind: absent, role: staff }
+  - id: queue-wait
+    text: "Dacă un client așteaptă la intrare de două minute și nu l-a întâmpinat nimeni, anunță"
+    expect:
+      zone_tag: entrance
+      conditions:
+        - { kind: present, role: guest, min_duration_s: 120 }
+        - { kind: absent, role: staff }
+  - id: queue-default
+    text: "Alertă când așteaptă cineva la ușă și nu vine nimeni să-l conducă la masă"
+    expect:
+      zone_tag: entrance
+      conditions:
+        - { kind: present, role: guest, min_duration_s: 180 }
+        - { kind: absent, role: staff }
+
+  # --- 4. table not cleared ------------------------------------------------------------
+  - id: clear-demo
+    text: "Anunță dacă o masă nu a fost debarasată la 5 minute după ce au plecat clienții"
+    expect:
+      zone_tag: table
+      conditions:
+        - kind: objects_unattended
+          min_duration_s: 300
+          objects_include: [cup, bottle, "wine glass", bowl]
+  - id: clear-glasses
+    text: "daca raman pahare si sticle pe masa mai mult de 10 minute fara nimeni, spune-mi"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: objects_unattended, min_duration_s: 600, objects_include: [bottle, "wine glass"] }
+  - id: clear-quarter-hour
+    text: "Spune-mi când rămân vase murdare pe o masă goală de un sfert de oră"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: objects_unattended, min_duration_s: 900, objects_include: [bowl] }
+
+  # --- out of scope / ambiguous: must be refused or clarified --------------------------
+  - id: refuse-face
+    text: "Recunoaște-l pe Ion când intră pe ușă și spune-mi imediat"
+    expect: { refuse: true }
+  - id: refuse-vague
+    text: "Anunță-mă dacă se întâmplă ceva ciudat"
+    expect: { refuse: true }
+  - id: refuse-fire
+    text: "Trimite alertă dacă începe un incendiu în bucătărie"
+    expect: { refuse: true }
+  - id: refuse-money
+    text: "Spune-mi câți bani a încasat ospătarul azi"
+    expect: { refuse: true }
