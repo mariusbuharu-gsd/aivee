@@ -194,19 +194,30 @@ h3 { font-size: 19px; line-height: 1.3; }
 .section--tint { background: var(--ground); }
 .section .wrap { display: flex; flex-direction: column; gap: 24px; }
 .section h2 { max-width: 22ch; }
+/* "Cum funcționează": the logo eyes read the request and pull the rule out of it (rules.js). */
+.reader { margin: 0; display: flex; flex-direction: column; gap: 22px; }
+.reader__eyes { width: 120px; height: auto; align-self: center; overflow: visible; }
+.reader__eyes .ring { fill: none; stroke: var(--ink); stroke-width: 7; }
+.reader__eyes .pupil { fill: var(--coral); }
+.reader__text { margin: 0; font: 600 clamp(22px, 2.5vw, 30px)/1.45 var(--display); color: #8d939e; text-wrap: pretty; }
+.reader__text .k { color: var(--ink); padding-bottom: 2px; background: linear-gradient(var(--coral), var(--coral)) left 100% / 0% 4px no-repeat; transition: background-size .45s cubic-bezier(.3, .7, .2, 1); }
+.reader__text .k.hit { background-size: 100% 4px; }
+.reader__cap { font: 700 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2); margin-bottom: -10px; }
+.reader__chips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.chip { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; transition: opacity .3s, transform .3s; }
+.chip small { font: 700 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2); }
+.chip span { font-weight: 700; }
+.chip--then { background: var(--night); border-color: var(--night); color: var(--night-text); }
+.chip--then small { color: var(--night-muted); }
+.chip.is-wait { opacity: 0; transform: translateY(8px); }
+@media (max-width: 480px) { .reader__chips { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .reader__text .k, .chip { transition: none; } }
 .cum__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 48px; align-items: start; margin-top: 16px; }
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 28px; }
 .step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; }
 .step__n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: #fff; font: 600 20px var(--display); }
 .step h3 { margin-bottom: 6px; font-size: 21px; }
 .step p { color: var(--muted); }
-.console { background: var(--night); color: var(--guest-on-night); border-radius: 20px; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
-.console__ask { background: var(--night-3); border-radius: var(--radius); padding: 16px 18px; min-height: 5.2em; font-size: 18px; }
-.caret { display: inline-block; width: 2px; height: 1.1em; background: var(--coral); vertical-align: -3px; margin-left: 2px; }
-.console__meta { display: flex; align-items: center; gap: 8px; font: 12px var(--mono); color: #8e95a1; }
-.console__meta::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--coral); }
-.console__rule { margin: 0; font: 13.5px/1.6 var(--mono); color: #c9cdd4; overflow-x: auto; }
-.console__rule b { color: var(--live-on-night); font-weight: 500; }
 
 .cards { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-lg); padding: 22px; display: flex; flex-direction: column; gap: 10px; }

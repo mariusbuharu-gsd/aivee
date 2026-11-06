@@ -33,6 +33,7 @@
     <script type="module" src="eyes.js"></script>
     <script type="module" src="nav.js"></script>
     <script type="module" src="story.js"></script>
+    <script type="module" src="rules.js"></script>
     <script type="module" src="contact.js"></script>
     <script type="module" src="form.js"></script>
   </head>
@@ -191,18 +192,19 @@
                 </div>
               </li>
             </ol>
-            <figure class="console" aria-label="Exemplu: o cerere în română devine regulă">
-              <p class="console__ask"><span class="ask-text">„Anunță personalul dacă la o masă nu a venit nimeni de 1 minut.”</span><span class="caret" aria-hidden="true"></span></p>
-              <p class="console__meta">regulă generată · verifică și pornește</p>
-              <pre class="console__rule">{
-  <b>"name"</b>: "Masă neservită",
-  <b>"zone"</b>: "table:*",
-  <b>"when"</b>: [
-    { <b>"present"</b>: "guest", <b>"for"</b>: "1m" },
-    { <b>"absent"</b>:  "staff", <b>"for"</b>: "1m" }
-  ],
-  <b>"notify"</b>: ["telegram", "push"]
-}</pre>
+            <figure class="reader" aria-label="Exemplu: AiVee citește o cerere în română și scoate din ea regula">
+              <svg class="reader__eyes" viewBox="4.5 25.5 91 49" aria-hidden="true">
+                <circle class="ring" cx="29" cy="50" r="19" /><circle class="pupil" cx="29" cy="50" r="8" />
+                <circle class="ring" cx="71" cy="50" r="19" /><circle class="pupil" cx="71" cy="50" r="8" />
+              </svg>
+              <blockquote class="reader__text">„Anunță-mă dacă <span class="k hit" data-i="0">la o masă</span> stă <span class="k hit" data-i="1">cineva mai mult de un minut</span> și <span class="k hit" data-i="2">nu trece niciun ospătar 5 minute</span>.”</blockquote>
+              <figcaption class="reader__cap">Ce a înțeles AiVee</figcaption>
+              <ul class="reader__chips">
+                <li class="chip" data-i="0"><small>Unde</small><span>la orice masă</span></li>
+                <li class="chip" data-i="1"><small>Client</small><span>stă peste 1 min</span></li>
+                <li class="chip" data-i="2"><small>Ospătar</small><span>lipsește 5 min</span></li>
+                <li class="chip chip--then" data-i="3"><small>Atunci</small><span>anunță echipa pe telefon</span></li>
+              </ul>
             </figure>
           </div>
           <p class="note-text">

@@ -190,29 +190,6 @@ function evening(gsap, ScrollTrigger) {
   });
 }
 
-/** "Cum funcționează": the request types itself once, when the console comes into view. */
-function typing(gsap, ScrollTrigger) {
-  const ask = $(".ask-text");
-  if (!ask) return;
-  const full = ask.textContent;
-  const state = { n: 0 };
-  ScrollTrigger.create({
-    trigger: ".console",
-    start: "top 75%",
-    once: true,
-    onEnter: () => {
-      ask.textContent = "";
-      gsap.to(state, {
-        n: full.length,
-        duration: 2.2,
-        ease: "none",
-        onUpdate: () => (ask.textContent = full.slice(0, Math.round(state.n))),
-      });
-      gsap.from(".console__rule", { opacity: 0, y: 12, duration: 0.5, delay: 2.3 });
-    },
-  });
-}
-
 async function start() {
   try {
     await load("vendor/gsap.min.js");
@@ -227,7 +204,6 @@ async function start() {
   smoothScroll(gsap, ScrollTrigger);
   dive(gsap, ScrollTrigger);
   evening(gsap, ScrollTrigger);
-  typing(gsap, ScrollTrigger);
   await document.fonts?.ready;
   ScrollTrigger.refresh();
 }
