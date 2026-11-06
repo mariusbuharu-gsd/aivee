@@ -44,7 +44,7 @@ describe('clock', () => {
 describe('VideoPage', () => {
   it('shows the demo clip and the timeline of its alerts', async () => {
     renderApp();
-    expect(await screen.findByRole('heading', { name: 'Analiză video' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Testează pe un clip' })).toBeVisible();
     expect(screen.getByText(/Nu trimite notificări personalului/)).toBeInTheDocument();
     const list = await screen.findByRole('list', { name: 'Clipuri încărcate' });
     const demo = within(list).getByRole('button', { name: /sala-1\.mp4/ });
@@ -121,7 +121,7 @@ describe('VideoPage', () => {
     const list = vi.spyOn(MockApi.prototype, 'listVideos');
     renderApp('/video', 'staff@aivee.demo');
     const nav = await screen.findByRole('navigation', { name: 'Principal' });
-    expect(within(nav).queryByRole('link', { name: /Analiză video/ })).toBeNull();
+    expect(within(nav).queryByRole('link', { name: /Testează pe un clip/ })).toBeNull();
     expect(await screen.findByRole('heading', { name: 'Live' })).toBeVisible();
     expect(list).not.toHaveBeenCalled();
   });
@@ -129,7 +129,7 @@ describe('VideoPage', () => {
   it('lists the page in the sidebar for a manager', async () => {
     renderApp('/');
     const nav = await screen.findByRole('navigation', { name: 'Principal' });
-    expect(within(nav).getByRole('link', { name: /Analiză video/ })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: /Testează pe un clip/ })).toHaveAttribute(
       'href',
       '/video',
     );

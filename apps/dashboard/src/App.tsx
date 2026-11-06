@@ -46,6 +46,8 @@ export function App() {
             </Route>
             <Route element={<RequirePermission any={['devices.manage']} />}>
               <Route path="dispozitive" element={<DevicesPage />} />
+              {/* The page is called "Camere" now; the old path stays the canonical one. */}
+              <Route path="camere" element={<Navigate to="/dispozitive" replace />} />
               <Route path="camere/:cameraId/zone" element={<ZonesPage />} />
               <Route path="video" element={<VideoPage />} />
             </Route>

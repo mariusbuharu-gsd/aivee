@@ -55,7 +55,7 @@ export function MetricsPage() {
         <p className="muted small">
           Cifrele camerelor și ale dispozitivelor (FPS, procesor) sunt pe{' '}
           <Link to="/dispozitive" className="link">
-            Dispozitive
+            Camere
           </Link>
           .
         </p>

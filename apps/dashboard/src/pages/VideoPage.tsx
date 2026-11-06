@@ -87,7 +87,7 @@ export function VideoPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Analiză video</h1>
+        <h1>Testează pe un clip</h1>
       </header>
       <p className="muted">
         Clipul trece prin aceleași zone și reguli ca o cameră live. Nu trimite notificări

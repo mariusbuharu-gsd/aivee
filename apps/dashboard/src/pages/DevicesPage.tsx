@@ -43,7 +43,7 @@ export function DevicesPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Dispozitive</h1>
+        <h1>Camere</h1>
         {cameras.length > 0 && (
           <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
             <Icon name="plus" /> Adaugă cameră

@@ -115,7 +115,7 @@ export function LocationsPage() {
       setLocation(created.id);
       toast({
         title: `„${created.name}” a fost adăugată`,
-        text: 'Acum leagă dispozitivul și camerele ei din Dispozitive.',
+        text: 'Acum leagă dispozitivul și camerele ei din Camere.',
       });
     });
   }
