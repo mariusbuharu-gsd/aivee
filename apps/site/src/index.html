@@ -36,6 +36,7 @@
     <script type="module" src="rules.js"></script>
     <script type="module" src="privacy.js"></script>
     <script type="module" src="contact.js"></script>
+    <script type="module" src="sections.js"></script>
     <script type="module" src="form.js"></script>
   </head>
   <body>
@@ -198,34 +199,63 @@
         <div class="wrap">
           <p class="eyebrow">Cum funcționează</p>
           <h2 id="cum-titlu">Cum funcționează, în 3 pași</h2>
-          <ol class="steps">
-            <li class="step">
-              <span class="step__n" aria-hidden="true">1</span>
-              <div>
-                <h3>Conectezi camera și desenezi zona</h3>
-                <p>Camera pe care o ai deja trimite imaginea către AiVee. Pe o imagine de la ea trasezi zonele care contează: mese, casa, intrarea, un raft. Durează un minut.</p>
+          <!-- Each step shows itself happening: the zone is drawn, the rule is understood, the phone rings.
+               sections.js plays them in order when the list comes into view; the HTML is the finished state. -->
+          <ol class="steps" data-play>
+            <li class="step" style="--d: 0s">
+              <div class="how how--zone" aria-hidden="true">
+                <svg viewBox="0 0 160 100">
+                  <rect class="how__table" x="18" y="16" width="30" height="20" rx="3" />
+                  <rect class="how__table" x="112" y="64" width="30" height="20" rx="3" />
+                  <rect class="how__table" x="64" y="38" width="34" height="22" rx="3" />
+                  <path class="how__zone" pathLength="1" d="M52 30 L110 26 L116 70 L56 74 Z" />
+                  <g class="how__dots"><circle cx="52" cy="30" r="2.6" /><circle cx="110" cy="26" r="2.6" /><circle cx="116" cy="70" r="2.6" /><circle cx="56" cy="74" r="2.6" /></g>
+                  <text class="how__label" x="58" y="24">Masa 2</text>
+                </svg>
               </div>
+              <div class="step__head"><span class="step__n" aria-hidden="true">1</span><span class="step__line" aria-hidden="true"></span></div>
+              <h3>Conectezi camera și desenezi zona</h3>
+              <p>Camera pe care o ai deja trimite imaginea către AiVee. Pe o imagine de la ea trasezi zonele care contează: mese, casa, intrarea, un raft. Durează un minut.</p>
             </li>
-            <li class="step">
-              <span class="step__n" aria-hidden="true">2</span>
-              <div>
-                <h3>Scrii regula în română</h3>
-                <p>AiVee îți arată ce a înțeles. Tu confirmi, modifici sau renunți. Nimic nu pornește fără acordul tău.</p>
+            <li class="step" style="--d: 2.2s">
+              <div class="how how--rule" aria-hidden="true">
+                <p class="how__said">„Anunță-mă dacă la Masa 2 nu trece nimeni 5 minute.”</p>
+                <p class="how__got">AiVee a înțeles</p>
+                <p class="how__chips"><span style="--j: 0">Masa 2</span><span style="--j: 1">fără personal</span><span style="--j: 2">5 min</span></p>
+                <p class="how__ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>Confirmat</p>
               </div>
+              <div class="step__head"><span class="step__n" aria-hidden="true">2</span><span class="step__line" aria-hidden="true"></span></div>
+              <h3>Scrii regula în română</h3>
+              <p>AiVee îți arată ce a înțeles. Tu confirmi, modifici sau renunți. Nimic nu pornește fără acordul tău.</p>
             </li>
-            <li class="step">
-              <span class="step__n" aria-hidden="true">3</span>
-              <div>
-                <h3>Primești alerta</h3>
-                <p>Pe telefon, cu o poză în care fețele sunt blurate. Alerta se închide singură când cineva din personal ajunge în zonă.</p>
+            <li class="step" style="--d: 4.4s">
+              <div class="how how--phone" aria-hidden="true">
+                <div class="how__screen">
+                  <p class="how__note how__note--alert"><span class="how__thumb"></span><span><b>Masa 2 așteaptă</b>de 5 min · fețe blurate</span></p>
+                  <p class="how__note how__note--done"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg><span><b>Închisă</b>personalul a ajuns</span></p>
+                </div>
               </div>
+              <div class="step__head"><span class="step__n" aria-hidden="true">3</span></div>
+              <h3>Primești alerta</h3>
+              <p>Pe telefon, cu o poză în care fețele sunt blurate. Alerta se închide singură când cineva din personal ajunge în zonă.</p>
             </li>
           </ol>
-          <p class="note-text">
-            Personalul îl înveți din 2–3 poze cu uniforma și o propoziție („personalul poartă tricou
-            bordo”). AiVee observă și cum se mișcă: cine trece pe la multe zone e probabil angajat. Te
-            întreabă „Pare angajat — confirmi?” și învață din răspuns.
-          </p>
+          <div class="learn" data-play>
+            <div class="learn__scene" aria-hidden="true">
+              <svg viewBox="0 0 220 90">
+                <rect class="learn__zone" x="14" y="22" width="44" height="46" rx="5" />
+                <rect class="learn__zone" x="88" y="22" width="44" height="46" rx="5" />
+                <rect class="learn__zone" x="162" y="22" width="44" height="46" rx="5" />
+                <g class="learn__who"><rect class="learn__box" x="-11" y="26" width="22" height="38" rx="3" /><circle cx="0" cy="36" r="4.5" /><path d="M-7 60v-11a7 7 0 0 1 14 0v11" /><text class="learn__tag" x="-11" y="20">personal</text></g>
+              </svg>
+              <p class="learn__ask">Pare angajat — confirmi? <span class="learn__yes">Da</span><span class="learn__no">Nu</span></p>
+            </div>
+            <p class="note-text">
+              Personalul îl înveți din 2–3 poze cu uniforma și o propoziție („personalul poartă tricou
+              bordo”). AiVee observă și cum se mișcă: cine trece pe la multe zone e probabil angajat. Te
+              întreabă „Pare angajat — confirmi?” și învață din răspuns.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -235,27 +265,70 @@
           <p class="eyebrow">Scenarii</p>
           <h2 id="scenarii-titlu">Patru situații pe care nu le mai ratezi</h2>
           <p class="lead">Toate vin din același motor: cine e prezent, cine lipsește, câți sunt, ce gest fac și de cât timp.</p>
-          <ul class="cards">
+          <!-- Each card plays its situation on a tiny camera view, ending on the alert (the HTML state). -->
+          <ul class="cards" data-play>
             <li class="card">
-              <span class="card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg></span>
+              <div class="scene" style="--b: 0s; --a: 2.6s" aria-hidden="true">
+                <svg viewBox="0 0 160 100">
+                  <rect class="sc-zone" x="20" y="16" width="120" height="68" rx="6" />
+                  <text class="sc-label" x="27" y="29">Masa 2</text>
+                  <rect class="sc-table" x="60" y="40" width="40" height="24" rx="4" />
+                  <g class="sc-guest"><rect x="34" y="36" width="20" height="32" rx="3" /><circle cx="44" cy="45" r="4.5" /><path d="M37 64v-6a7 7 0 0 1 14 0v6" /></g>
+                  <g class="sc-guest"><rect x="106" y="36" width="20" height="32" rx="3" /><circle cx="116" cy="45" r="4.5" /><path d="M109 64v-6a7 7 0 0 1 14 0v6" /></g>
+                  <text class="sc-timer" x="133" y="29" text-anchor="end" data-count="mmss" data-from="0" data-to="300" data-delay="300" data-dur="2300">5:00</text>
+                </svg>
+                <span class="scene__alert">Alertă trimisă</span>
+              </div>
               <h3>Masă neservită</h3>
               <p>Clienții stau la masă și nimeni din personal nu a trecut pe la ei de X minute.</p>
               <p class="card__rule">„Dacă nimeni din personal nu a trecut pe la clienții de la masă de cinci minute, trimite o alertă.”</p>
             </li>
             <li class="card">
-              <span class="card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 0 1 3 0v6m0-1V4a1.5 1.5 0 0 1 3 0v7m0-5a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.7L8 13" /></svg></span>
+              <div class="scene" style="--b: 0.5s; --a: 1.9s" aria-hidden="true">
+                <svg viewBox="0 0 160 100">
+                  <rect class="sc-table" x="22" y="58" width="116" height="10" rx="3" />
+                  <g class="sc-guest sc-dim"><rect x="30" y="26" width="22" height="34" rx="3" /><circle cx="41" cy="36" r="4.5" /><path d="M34 58v-7a7 7 0 0 1 14 0v7" /></g>
+                  <g class="sc-guest sc-hand"><rect class="sc-box" x="66" y="16" width="38" height="44" rx="3" /><circle cx="80" cy="34" r="5" /><path d="M72 58v-8a8 8 0 0 1 16 0v8" /><path class="sc-arm" d="M87 47 L97 26" /><circle class="sc-palm" cx="98" cy="23" r="3" /></g>
+                  <g class="sc-guest sc-dim"><rect x="112" y="26" width="22" height="34" rx="3" /><circle cx="123" cy="36" r="4.5" /><path d="M116 58v-7a7 7 0 0 1 14 0v7" /></g>
+                  <circle class="sc-ping" cx="98" cy="23" r="9" />
+                </svg>
+                <span class="scene__alert">Alertă trimisă</span>
+              </div>
               <h3>Clientul ridică mâna</h3>
               <p>Un client face semn că are nevoie de ajutor: la masă, la un raft, la un stand. Alerta pleacă imediat.</p>
               <p class="card__rule">„Dacă cineva ridică mâna, cheamă pe cineva din personal.”</p>
             </li>
             <li class="card">
-              <span class="card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="8" r="2.5" /><circle cx="12" cy="8" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M2.5 19a3.5 3.5 0 0 1 7 0M8.5 19a3.5 3.5 0 0 1 7 0M14.5 19a3.5 3.5 0 0 1 7 0" /></svg></span>
+              <div class="scene" style="--b: 1s; --a: 1.9s" aria-hidden="true">
+                <svg viewBox="0 0 160 100">
+                  <rect class="sc-zone" x="18" y="16" width="124" height="68" rx="6" />
+                  <text class="sc-label" x="25" y="29">Intrare</text>
+                  <text class="sc-timer" x="135" y="29" text-anchor="end"><tspan data-count="int" data-from="0" data-to="4" data-delay="200" data-dur="1400">4</tspan> pers.</text>
+                  <rect class="sc-door" x="146" y="34" width="6" height="40" rx="1" />
+                  <g class="sc-guest sc-q" style="--q: 0"><rect x="112" y="40" width="20" height="32" rx="3" /><circle cx="122" cy="49" r="4.5" /><path d="M115 68v-6a7 7 0 0 1 14 0v6" /></g>
+                  <g class="sc-guest sc-q" style="--q: 1"><rect x="86" y="40" width="20" height="32" rx="3" /><circle cx="96" cy="49" r="4.5" /><path d="M89 68v-6a7 7 0 0 1 14 0v6" /></g>
+                  <g class="sc-guest sc-q" style="--q: 2"><rect x="60" y="40" width="20" height="32" rx="3" /><circle cx="70" cy="49" r="4.5" /><path d="M63 68v-6a7 7 0 0 1 14 0v6" /></g>
+                  <g class="sc-guest sc-q" style="--q: 3"><rect x="34" y="40" width="20" height="32" rx="3" /><circle cx="44" cy="49" r="4.5" /><path d="M37 68v-6a7 7 0 0 1 14 0v6" /></g>
+                </svg>
+                <span class="scene__alert">Alertă trimisă</span>
+              </div>
               <h3>Coadă la intrare</h3>
               <p>Câțiva oameni așteaptă la intrare sau la casă și nu e nimeni de la personal acolo.</p>
               <p class="card__rule">„Anunță-mă dacă sunt cel puțin 4 persoane la intrare și nu e nimeni de la personal acolo.”</p>
             </li>
             <li class="card">
-              <span class="card__icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 10h10v4a5 5 0 0 1-10 0z" /><path d="M15 11h1.5a2 2 0 0 1 0 4H15" /><path d="M3 21h18" /></svg></span>
+              <div class="scene" style="--b: 1.5s; --a: 2.7s" aria-hidden="true">
+                <svg viewBox="0 0 160 100">
+                  <rect class="sc-zone" x="20" y="16" width="120" height="68" rx="6" />
+                  <text class="sc-label" x="27" y="29">Masa 5</text>
+                  <rect class="sc-table" x="54" y="38" width="52" height="30" rx="4" />
+                  <g class="sc-dish"><circle cx="66" cy="48" r="5" /><circle cx="92" cy="58" r="5" /><rect x="78" y="43" width="5" height="9" rx="1.5" /><rect x="70" y="57" width="5" height="9" rx="1.5" /></g>
+                  <g class="sc-guest sc-leave sc-leave--l"><rect x="28" y="36" width="20" height="32" rx="3" /><circle cx="38" cy="45" r="4.5" /><path d="M31 64v-6a7 7 0 0 1 14 0v6" /></g>
+                  <g class="sc-guest sc-leave sc-leave--r"><rect x="112" y="36" width="20" height="32" rx="3" /><circle cx="122" cy="45" r="4.5" /><path d="M115 64v-6a7 7 0 0 1 14 0v6" /></g>
+                  <text class="sc-timer" x="133" y="29" text-anchor="end" data-count="mmss" data-from="0" data-to="300" data-delay="1000" data-dur="1600">5:00</text>
+                </svg>
+                <span class="scene__alert">Alertă trimisă</span>
+              </div>
               <h3>Masă nedebarasată</h3>
               <p>Clienții au plecat, dar paharele și farfuriile au rămas pe masă.</p>
               <p class="card__rule">„Anunță dacă o masă nu a fost debarasată la 5 minute după ce au plecat clienții.”</p>
@@ -313,23 +386,43 @@
 
       <!-- For the staff: team-level statistics only, no ranking of waiters (Q1, M6) -->
       <section id="pentru-echipa" class="section section--tint" aria-labelledby="echipa-ta-titlu">
-        <div class="wrap">
-          <p class="eyebrow">Pentru echipa ta</p>
-          <h2 id="echipa-ta-titlu">Un coleg care se uită la sală, nu un șef care ține scorul</h2>
-          <ul class="points">
-            <li>
-              <h3>Statistici pe echipă, nu pe ospătar</h3>
-              <p>Vezi cât au așteptat clienții și cât de repede a reacționat tura. Nu există clasament al ospătarilor.</p>
-            </li>
-            <li>
-              <h3>Alerta ajută, nu pedepsește</h3>
-              <p>Îți spune unde e nevoie de tine acum. Apeși „Merg eu” și colegii știu că ai preluat.</p>
-            </li>
-            <li>
-              <h3>Sosirea o vede camera</h3>
-              <p>Nu mai apeși nimic când ajungi la masă. Alerta se închide singură.</p>
-            </li>
-          </ul>
+        <div class="wrap tt" data-play>
+          <div class="tt__copy">
+            <p class="eyebrow">Pentru echipa ta</p>
+            <h2 id="echipa-ta-titlu">Un coleg care se uită la sală, nu un șef care ține scorul</h2>
+            <ol class="tt__points">
+              <li style="--i: 0">
+                <h3>Statistici pe echipă, nu pe ospătar</h3>
+                <p>Vezi cât au așteptat clienții și cât de repede a reacționat tura. Nu există clasament al ospătarilor.</p>
+              </li>
+              <li style="--i: 1">
+                <h3>Alerta ajută, nu pedepsește</h3>
+                <p>Îți spune unde e nevoie de tine acum. Apeși „Merg eu” și colegii știu că ai preluat.</p>
+              </li>
+              <li style="--i: 2">
+                <h3>Sosirea o vede camera</h3>
+                <p>Nu mai apeși nimic când ajungi la masă. Alerta se închide singură.</p>
+              </li>
+            </ol>
+          </div>
+          <!-- What the shift sees on the phone, one card per point; sections.js plays them in turn. -->
+          <div class="tt__phone" aria-hidden="true">
+            <p class="tt__bar"><span>AiVee</span><span>Tura de seară</span></p>
+            <div class="tt__card tt__card--team" style="--i: 0">
+              <p class="tt__k">Echipa, azi</p>
+              <p class="tt__big"><b class="num">1:40</b> așteptare medie</p>
+              <p class="tt__bars"><i style="--h: 0.55"></i><i style="--h: 0.8"></i><i style="--h: 0.4"></i><i style="--h: 0.65"></i><i style="--h: 0.35"></i><i style="--h: 0.5"></i><i style="--h: 0.3"></i></p>
+              <p class="tt__none"><s>Clasament pe ospătari</s><span>nu există</span></p>
+            </div>
+            <div class="tt__card tt__card--alert" style="--i: 1">
+              <p class="tt__k tt__k--hot">Masa 4 așteaptă · <span class="num">3:12</span></p>
+              <p class="tt__act"><span class="tt__btn">Merg eu</span><span class="tt__took">Ana merge la Masa 4</span></p>
+            </div>
+            <div class="tt__card tt__card--done" style="--i: 2">
+              <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+              <p><b>Ana a ajuns la Masa 4.</b> Camera a închis alerta.</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -338,28 +431,34 @@
         <div class="wrap">
           <p class="eyebrow">Impact</p>
           <h2 id="impact-titlu">Pentru locațiile din Sibiu</h2>
-          <ul class="points points--4">
+          <!-- Each venue is drawn in, its camera (the logo's eyes) spots a problem, then sees it solved. -->
+          <ul class="points points--4 venues" data-play>
             <li>
+              <svg class="venue" viewBox="0 0 200 112" aria-hidden="true" style="--v: 0.0s"><g class="ve-cam" transform="translate(24 22)"><path class="ve-fov" d="M2 6 L150 100 L62 104 Z" /><circle class="ve-ring" cx="-7" cy="0" r="6" /><circle class="ve-ring" cx="7" cy="0" r="6" /><g class="ve-look"><circle class="ve-pupil" cx="-6" cy="1" r="2.6" /><circle class="ve-pupil" cx="8" cy="1" r="2.6" /></g></g><g class="ve-lines"><path pathLength="1" d="M8 104 H192" /><path pathLength="1" d="M42 104 V48 H158 V104" /><path pathLength="1" d="M34 48 L46 32 H154 L166 48 Z" /><path pathLength="1" d="M34 48 q8 9 16 0 q8 9 16 0 q8 9 16 0 q8 9 16 0 q8 9 16 0 q8 9 16 0 q8 9 16 0 q8 9 12 0" /><path pathLength="1" d="M90 104 V74 H110 V104" /><path pathLength="1" d="M54 66 H80 V88 H54 Z" /><path pathLength="1" d="M120 66 H146 V88 H120 Z" /></g><g class="ve-bub" transform="translate(176 22)"><g class="ve-bang"><circle r="10" /><path d="M0 -5v5.5M0 4.6v.4" /></g><g class="ve-ok"><circle r="10" /><path d="M-4.5 .5l3 3 6-6.5" /></g></g></svg>
               <h3>Restaurante mici</h3>
               <p>Doi-trei ospătari nu pot fi peste tot. AiVee le spune unde e nevoie de ei acum, ca niciun client să nu plece nemulțumit.</p>
             </li>
             <li>
+              <svg class="venue" viewBox="0 0 200 112" aria-hidden="true" style="--v: 0.45s"><g class="ve-cam" transform="translate(180 30)"><path class="ve-fov" d="M-4 6 L-150 74 L-60 76 Z" /><circle class="ve-ring" cx="-7" cy="0" r="6" /><circle class="ve-ring" cx="7" cy="0" r="6" /><g class="ve-look"><circle class="ve-pupil" cx="-6" cy="1" r="2.6" /><circle class="ve-pupil" cx="8" cy="1" r="2.6" /></g></g><g class="ve-lines"><path pathLength="1" d="M8 104 H192" /><path pathLength="1" d="M20 56 Q50 26 80 56 Z" /><path pathLength="1" d="M50 56 V104" /><path pathLength="1" d="M34 84 H66 M38 84 V104 M62 84 V104" /><path pathLength="1" d="M96 56 Q126 26 156 56 Z" /><path pathLength="1" d="M126 56 V104" /><path pathLength="1" d="M110 84 H142 M114 84 V104 M138 84 V104" /><path pathLength="1" d="M180 38 V104" /></g><g class="ve-bub" transform="translate(88 24)"><g class="ve-bang"><circle r="10" /><path d="M0 -5v5.5M0 4.6v.4" /></g><g class="ve-ok"><circle r="10" /><path d="M-4.5 .5l3 3 6-6.5" /></g></g></svg>
               <h3>Terase</h3>
               <p>Mesele de afară sunt departe de bar și ușor de uitat. O cameră pe terasă le aduce în atenția personalului.</p>
             </li>
             <li>
+              <svg class="venue" viewBox="0 0 200 112" aria-hidden="true" style="--v: 0.9s"><g class="ve-cam" transform="translate(180 48)"><path class="ve-fov" d="M-6 6 L-120 100 L-40 104 Z" /><circle class="ve-ring" cx="-7" cy="0" r="6" /><circle class="ve-ring" cx="7" cy="0" r="6" /><g class="ve-look"><circle class="ve-pupil" cx="-6" cy="1" r="2.6" /><circle class="ve-pupil" cx="8" cy="1" r="2.6" /></g></g><g class="ve-lines"><path pathLength="1" d="M8 104 H192" /><path pathLength="1" d="M28 104 V60 L62 32 L96 60 V104" /><path pathLength="1" d="M96 60 L130 32 L164 60 V104" /><path pathLength="1" d="M62 32 V22 M130 32 V22" /><path pathLength="1" d="M54 104 V82 Q62 74 70 82 V104" /><path pathLength="1" d="M8 18 L192 18" /><path pathLength="1" d="M24 18 l6 9 l6 -9 M88 18 l6 9 l6 -9 M152 18 l6 9 l6 -9" /><path pathLength="1" d="M174 104 v-14 a6 6 0 0 1 12 0 v14 M180 84 m-4 -4 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0" /></g><g class="ve-bub" transform="translate(96 40)"><g class="ve-bang"><circle r="10" /><path d="M0 -5v5.5M0 4.6v.4" /></g><g class="ve-ok"><circle r="10" /><path d="M-4.5 .5l3 3 6-6.5" /></g></g></svg>
               <h3>Evenimente</h3>
               <p>La festivaluri și evenimente, cozile și mesele nedebarasate apar repede. Alertele vin înainte să le observe clienții.</p>
             </li>
             <li>
+              <svg class="venue" viewBox="0 0 200 112" aria-hidden="true" style="--v: 1.35s"><g class="ve-cam" transform="translate(184 34)"><path class="ve-fov" d="M-6 6 L-150 104 L-70 104 Z" /><circle class="ve-ring" cx="-7" cy="0" r="6" /><circle class="ve-ring" cx="7" cy="0" r="6" /><g class="ve-look"><circle class="ve-pupil" cx="-6" cy="1" r="2.6" /><circle class="ve-pupil" cx="8" cy="1" r="2.6" /></g></g><g class="ve-lines"><path pathLength="1" d="M8 104 H192" /><path pathLength="1" d="M30 104 V44 H170 V104" /><path pathLength="1" d="M62 44 V30 H138 V44" /><path pathLength="1" d="M42 62 H98 M42 78 H98 M42 94 H98 M42 54 V104 M98 54 V104" /><path pathLength="1" d="M118 80 H162 V104" /><path pathLength="1" d="M128 80 v-10 a6 6 0 0 1 12 0 v10 M134 64 m-4 -4 a4 4 0 1 0 8 0 a4 4 0 1 0 -8 0" /></g><g class="ve-bub" transform="translate(20 26)"><g class="ve-bang"><circle r="10" /><path d="M0 -5v5.5M0 4.6v.4" /></g><g class="ve-ok"><circle r="10" /><path d="M-4.5 .5l3 3 6-6.5" /></g></g></svg>
               <h3>Magazine</h3>
               <p>Coada la casă crește sau un client caută pe cineva printre rafturi. AiVee cheamă colegul liber înainte să plece clientul.</p>
             </li>
           </ul>
-          <p class="note-text">
-            Folosește camerele care există deja. Fără hardware de cumpărat, fără programare: regulile se
-            scriu în română. Vrei ca video-ul să nu plece din locație? Alegi varianta edge.
-          </p>
+          <ul class="pledges" aria-label="Ce nu îți trebuie">
+            <li><b>Camerele care există deja</b><span>fără hardware de cumpărat</span></li>
+            <li><b>Reguli scrise în română</b><span>fără programare</span></li>
+            <li><b>Varianta edge</b><span>video-ul nu pleacă din locație</span></li>
+          </ul>
         </div>
       </section>
 
@@ -459,26 +558,30 @@
             merge pe procesor, fără GPU. Restul sunt servicii mici care comunică prin MQTT. În demo,
             laptopul ține locul serverului din cloud.
           </p>
-          <figure class="arch" aria-labelledby="arh-legenda">
-            <ol class="arch__flow">
-              <li class="arch__node"><strong>Cameră</strong><span>camera existentă, RTSP / MJPEG</span></li>
-              <li class="arch__node arch__node--accent"><strong>Analiză</strong><span>în cloud sau edge: YOLO11n INT8 (OpenVINO) + ByteTrack, poză corporală, rol, motor de situații, blur</span></li>
-              <li class="arch__node"><strong>MQTT</strong><span>Mosquitto: ACL per dispozitiv, LWT, stare reținută, abonamente partajate</span></li>
-              <li class="arch__node"><strong>Ingest ×2</strong><span>scalare pe orizontală, mesajele duplicate sunt ignorate</span></li>
-              <li class="arch__node"><strong>Postgres + pgvector</strong><span>sursa de adevăr: reguli, zone, alerte, profiluri de personal</span></li>
-              <li class="arch__node"><strong>Telegram · Dashboard</strong><span>alertă pe telefon; reguli, zone și alerte live în browser</span></li>
-            </ol>
+          <!-- An alert travels the flow: a coral packet runs along the rail and lights each node it reaches. -->
+          <figure class="arch" aria-labelledby="arh-legenda" data-play>
+            <div class="arch__track">
+              <div class="arch__rail" aria-hidden="true"><i></i></div>
+              <ol class="arch__flow">
+                <li class="arch__node" style="--n: 0"><span class="arch__step num" aria-hidden="true">01</span><strong>Cameră</strong><span>camera existentă, RTSP / MJPEG</span></li>
+                <li class="arch__node arch__node--accent" style="--n: 1"><span class="arch__step num" aria-hidden="true">02</span><strong>Analiză</strong><span>în cloud sau edge: YOLO11n INT8 (OpenVINO) + ByteTrack, poză corporală, rol, motor de situații, blur</span></li>
+                <li class="arch__node" style="--n: 2"><span class="arch__step num" aria-hidden="true">03</span><strong>MQTT</strong><span>Mosquitto: ACL per dispozitiv, LWT, stare reținută, abonamente partajate</span></li>
+                <li class="arch__node" style="--n: 3"><span class="arch__step num" aria-hidden="true">04</span><strong>Ingest ×2</strong><span>scalare pe orizontală, mesajele duplicate sunt ignorate</span></li>
+                <li class="arch__node" style="--n: 4"><span class="arch__step num" aria-hidden="true">05</span><strong>Postgres + pgvector</strong><span>sursa de adevăr: reguli, zone, alerte, profiluri de personal</span></li>
+                <li class="arch__node" style="--n: 5"><span class="arch__step num" aria-hidden="true">06</span><strong>Telegram · Dashboard</strong><span>alertă pe telefon; reguli, zone și alerte live în browser</span></li>
+              </ol>
+            </div>
             <figcaption id="arh-legenda">
               Fluxul unei alerte. API-ul (FastAPI) traduce cererea în română într-o regulă cu Claude și o
               trimite înapoi la analiză prin MQTT. Detecția folosește Ultralytics YOLO (AGPL-3.0); codul
               nostru e MIT.
             </figcaption>
           </figure>
-          <dl class="stats">
-            <div><dt class="num">~20 FPS</dt><dd>detecție pe un stream, pe un i7-1355U, fără GPU</dd></div>
-            <div><dt class="num">~12 FPS</dt><dd>pe un stream, cu detecția gesturilor (poză corporală)</dd></div>
-            <div><dt class="num">20 / 20</dt><dd>cereri în română traduse corect în reguli</dd></div>
-            <div><dt class="num">2,4 s</dt><dd>timp median de la cerere la regulă</dd></div>
+          <dl class="stats" data-play>
+            <div><dt class="num">~<span data-count="int" data-from="0" data-to="20" data-dur="1100">20</span> FPS</dt><dd>detecție pe un stream, pe un i7-1355U, fără GPU</dd></div>
+            <div><dt class="num">~<span data-count="int" data-from="0" data-to="12" data-delay="150" data-dur="1100">12</span> FPS</dt><dd>pe un stream, cu detecția gesturilor (poză corporală)</dd></div>
+            <div><dt class="num"><span data-count="int" data-from="0" data-to="20" data-delay="300" data-dur="1100">20</span> / 20</dt><dd>cereri în română traduse corect în reguli</dd></div>
+            <div><dt class="num"><span data-count="dec1" data-from="0" data-to="2.4" data-delay="450" data-dur="1100">2,4</span> s</dt><dd>timp median de la cerere la regulă</dd></div>
           </dl>
         </div>
       </section>

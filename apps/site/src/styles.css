@@ -216,16 +216,9 @@ h3 { font-size: 19px; line-height: 1.3; }
 .section .wrap.rules__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 56px; align-items: center; }
 .rules__intro { display: flex; flex-direction: column; gap: 20px; }
 .rules__intro .lead { max-width: 44ch; }
-.steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
-.step { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; }
-.step__n { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: #fff; font: 600 20px var(--display); }
-.step h3 { margin-bottom: 6px; font-size: 21px; }
-.step p { color: var(--muted); }
 
 .cards { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-lg); padding: 22px; display: flex; flex-direction: column; gap: 10px; }
-.card__icon { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--coral-tint); color: var(--coral-strong); }
-.card__icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .card p { color: var(--muted); font-size: 15px; }
 .card .card__rule { margin-top: auto; color: var(--text); font-weight: 600; border-top: 1px solid var(--border-soft); padding-top: 12px; }
 
@@ -338,10 +331,222 @@ h3 { font-size: 19px; line-height: 1.3; }
 .footer__inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; }
 .footer a { color: var(--night-text); }
 
+/* ---------- Section scenes (sections.js) ----------
+ * Every scene below is drawn in its finished state. sections.js arms a [data-play] block (class
+ * "armed") only under html.motion: armed and not playing, all animations sit paused on their first
+ * frame; "is-play" runs them. Without JS or with reduced motion nothing here moves. */
+.armed:not(.is-play) *, .armed:not(.is-play) *::before, .armed:not(.is-play) *::after { animation-play-state: paused !important; }
+/* A tall block on a phone plays card by card, so the desktop stagger is dropped. */
+.solo .scene, .solo .venue, .solo .step { --b: 0s !important; --v: 0s !important; --d: 0s !important; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes pop { from { opacity: 0; transform: scale(0.6); } 70% { transform: scale(1.06); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes draw { from { stroke-dashoffset: 1; } }
+
+/* Cum funcționează: zone drawn → rule understood → phone rings, joined by a line that fills. */
+.steps { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.step { display: flex; flex-direction: column; gap: 10px; }
+.step h3 { font-size: 21px; margin-top: 4px; }
+.step > p { color: var(--muted); }
+.step__head { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.step__n { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: #fff; font: 600 20px var(--display); }
+.step__line { flex: 1; height: 2px; background: var(--border-soft); position: relative; overflow: hidden; margin-right: -28px; }
+.step__line::after { content: ""; position: absolute; inset: 0; background: var(--coral); transform-origin: left; }
+.how { aspect-ratio: 16 / 10; border-radius: var(--radius); overflow: hidden; position: relative; display: flex; flex-direction: column; justify-content: center; }
+.how svg { display: block; width: 100%; height: 100%; }
+.how--zone { background: var(--night-2); }
+.how__table { fill: var(--night-3); }
+.how__zone { fill: rgba(230, 232, 236, 0.1); stroke: var(--guest-on-night); stroke-width: 1.6; stroke-linejoin: round; }
+.how__dots circle { fill: var(--surface); transform-box: fill-box; transform-origin: center; }
+.how__label { fill: var(--night-text); font: 600 6.5px var(--sans); }
+.how--rule { background: var(--surface); border: 1px solid var(--border-soft); padding: 16px 18px; gap: 8px; justify-content: flex-start; }
+.how__said { font-size: 14.5px; line-height: 1.4; color: var(--text); background: var(--ground); border-radius: 12px 12px 12px 4px; padding: 8px 12px; align-self: flex-start; }
+.how__got { font: 700 11px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-2); margin-top: 2px; }
+.how__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.how__chips span { font-size: 13px; font-weight: 600; padding: 3px 9px; border-radius: var(--radius-xs); background: var(--coral-tint); color: var(--coral-deep); }
+.how__ok { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; margin-top: auto; font-size: 13px; font-weight: 700; padding: 5px 12px 5px 8px; border-radius: 999px; background: var(--ink); color: #fff; }
+.how__ok svg, .how__note svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.how--phone { background: var(--ground); border: 1px solid var(--border-soft); align-items: center; }
+.how__screen { width: 74%; height: 100%; margin-top: 18%; background: var(--night); border-radius: 22px 22px 0 0; padding: 14px 10px; display: flex; flex-direction: column; gap: 8px; }
+.how__note { display: flex; align-items: center; gap: 9px; background: var(--surface); border-radius: 12px; padding: 8px 10px; font-size: 12.5px; line-height: 1.3; box-shadow: var(--shadow-pop); }
+.how__note span:last-child { display: flex; flex-direction: column; color: var(--muted); }
+.how__note b { color: var(--text); font-size: 13.5px; }
+.how__thumb { flex: none; width: 30px; height: 30px; border-radius: 8px; background: radial-gradient(circle at 35% 40%, #8a8f99 0 22%, transparent 24%), radial-gradient(circle at 70% 55%, #6c717b 0 20%, transparent 22%), var(--night-3); filter: blur(1.2px); }
+.how__note--alert { border-left: 4px solid var(--coral); }
+.how__note--done svg { flex: none; width: 30px; height: 30px; padding: 6px; border-radius: 8px; background: var(--live-tint); color: var(--live-deep); }
+.armed .how__zone { stroke-dasharray: 1 1; animation: draw 1.2s calc(var(--d) + 0.2s) cubic-bezier(0.6, 0, 0.3, 1) both; }
+.armed .how__dots circle { animation: pop 0.35s calc(var(--d) + 0.15s) both; }
+.armed .how__dots circle:nth-child(2) { animation-delay: calc(var(--d) + 0.45s); }
+.armed .how__dots circle:nth-child(3) { animation-delay: calc(var(--d) + 0.75s); }
+.armed .how__dots circle:nth-child(4) { animation-delay: calc(var(--d) + 1.05s); }
+.armed .how__label { animation: fade 0.4s calc(var(--d) + 1.3s) both; }
+.armed .how__said { animation: rise 0.4s calc(var(--d) + 0.1s) both; }
+.armed .how__got { animation: fade 0.3s calc(var(--d) + 0.6s) both; }
+.armed .how__chips span { animation: pop 0.35s calc(var(--d) + 0.8s + var(--j) * 0.18s) both; }
+.armed .how__ok { animation: pop 0.4s calc(var(--d) + 1.5s) both; }
+.armed .how__note--alert { animation: drop 0.5s calc(var(--d) + 0.2s) cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+.armed .how__note--done { animation: rise 0.45s calc(var(--d) + 1.4s) both; }
+.armed .step__line::after { animation: fill-x 0.6s calc(var(--d) + 1.7s) ease-in-out both; }
+.armed .step__n { animation: n-on 0.8s var(--d) both; }
+@keyframes drop { from { opacity: 0; transform: translateY(-28px); } }
+@keyframes fill-x { from { transform: scaleX(0); } }
+@keyframes n-on { 0% { background: var(--ink); } 30% { background: var(--coral); color: var(--ink); transform: scale(1.12); } }
+
+/* The staff note: a box wanders across zones, AiVee asks, "Da" turns it into staff. */
+.learn { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 28px; align-items: center; margin-top: 12px; }
+.learn__scene { position: relative; background: var(--night-2); border-radius: var(--radius); padding-bottom: 38px; }
+.learn__scene svg { display: block; width: 100%; height: auto; }
+.learn__zone { fill: none; stroke: var(--night-border); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.learn__who { transform: translate(184px, 0); }
+.learn__who circle, .learn__who path { fill: var(--live-on-night); }
+.learn__box { fill: none; stroke: var(--live-on-night); stroke-width: 1.6; }
+.learn__tag { fill: var(--live-on-night); font: 700 7px var(--mono); }
+.learn__ask { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--night-text); }
+.learn__yes, .learn__no { padding: 2px 10px; border-radius: 999px; border: 1px solid var(--night-border); font-size: 12.5px; }
+.learn__yes { margin-left: auto; background: var(--live-on-night); border-color: var(--live-on-night); color: var(--ink); }
+.armed .learn__who { animation: wander 2.6s 0.2s ease-in-out both; }
+.armed .learn__who circle, .armed .learn__who path { animation: tint-guest 0.4s 3.4s both; }
+.armed .learn__box { animation: box-guest 0.4s 3.4s both; }
+.armed .learn__tag { animation: fade 0.3s 3.5s both; }
+.armed .learn__ask { animation: rise 0.4s 2.7s both; }
+.armed .learn__yes { animation: press-yes 0.5s 3.1s both; }
+@keyframes wander { 0% { transform: translate(36px, 0); } 30%, 42% { transform: translate(110px, 0); } 72%, 100% { transform: translate(184px, 0); } }
+@keyframes tint-guest { from { fill: var(--guest-on-night); } }
+@keyframes box-guest { from { stroke: var(--guest-on-night); stroke-dasharray: 3 2; } }
+@keyframes press-yes { 0% { background: transparent; border-color: var(--night-border); color: var(--night-text); } 50% { transform: scale(0.9); } }
+
+/* Scenarii: a tiny camera view per card that plays the situation and ends on the alert. */
+.card { padding: 14px 14px 22px; }
+.card h3, .card > p { padding-inline: 8px; }
+.scene { position: relative; aspect-ratio: 16 / 12; border-radius: 12px; overflow: hidden; background: var(--night-2); margin-bottom: 6px; }
+.scene svg { display: block; width: 100%; height: auto; }
+.sc-zone { fill: rgba(255, 92, 108, 0.14); stroke: var(--coral); stroke-width: 1.6; }
+.sc-label { fill: var(--on-night-soft); font: 600 7.5px var(--mono); }
+.sc-timer { fill: var(--coral-on-night); font: 700 8px var(--mono); }
+.sc-table, .sc-door { fill: var(--night-3); }
+.sc-guest rect { fill: none; stroke: var(--guest-on-night); stroke-width: 1.1; }
+.sc-guest circle, .sc-guest path { fill: var(--guest-on-night); opacity: 0.85; }
+.sc-dim { opacity: 0.4; }
+.sc-hand .sc-box { stroke: var(--coral); stroke-width: 1.6; }
+.sc-hand .sc-arm { fill: none; stroke: var(--guest-on-night); stroke-width: 3.2; stroke-linecap: round; opacity: 1; }
+.sc-arm, .sc-palm { transform-box: view-box; transform-origin: 87px 47px; }
+.sc-ping { fill: none; stroke: var(--coral); stroke-width: 1.6; opacity: 0; transform-box: fill-box; transform-origin: center; }
+.sc-dish circle, .sc-dish rect { fill: none; stroke: var(--coral-on-night); stroke-width: 1.4; }
+.sc-leave { opacity: 0; }
+.scene__alert { position: absolute; left: 12px; bottom: 9px; font: 700 11.5px/1 var(--sans); padding: 6px 10px; border-radius: 999px; background: var(--coral); color: var(--ink); }
+.armed .sc-zone { animation: zone-hot 0.35s calc(var(--b) + var(--a)) both; }
+.armed .sc-timer { animation: timer-hot 0.35s calc(var(--b) + var(--a)) both; }
+.armed .scene__alert { animation: pop 0.4s calc(var(--b) + var(--a) + 0.15s) both; }
+.armed .sc-box { animation: box-hot 0.3s calc(var(--b) + var(--a)) both; }
+.armed .sc-arm, .armed .sc-palm { animation: raise 0.6s calc(var(--b) + 0.7s) cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+.armed .sc-ping { animation: ping 0.9s calc(var(--b) + var(--a)) 2 ease-out; }
+.armed .sc-q { animation: arrive 0.55s calc(var(--b) + 0.2s + var(--q) * 0.35s) ease-out both; }
+.armed .sc-leave--l { animation: leave-l 0.7s calc(var(--b) + 0.4s) ease-in both; }
+.armed .sc-leave--r { animation: leave-r 0.7s calc(var(--b) + 0.4s) ease-in both; }
+.armed .sc-dish circle, .armed .sc-dish rect { animation: dish-hot 0.35s calc(var(--b) + var(--a)) both; }
+@keyframes zone-hot { from { fill: transparent; stroke: var(--guest-on-night); stroke-dasharray: 4 3; } }
+@keyframes timer-hot { from { fill: var(--night-text); } }
+@keyframes box-hot { from { stroke: var(--guest-on-night); } }
+@keyframes dish-hot { from { stroke: var(--on-night-soft); } }
+@keyframes raise { from { transform: rotate(150deg); } }
+@keyframes ping { from { opacity: 1; transform: scale(0.4); } to { opacity: 0; transform: scale(1.8); } }
+@keyframes arrive { from { opacity: 0; transform: translateX(-80px); } }
+@keyframes leave-l { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-26px); } }
+@keyframes leave-r { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(26px); } }
+
+/* Pentru echipa ta: the points light up in turn while the phone shows what each one means. */
+.section .wrap.tt { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 56px; align-items: center; }
+.tt__copy { display: flex; flex-direction: column; gap: 24px; }
+.tt__points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tt__points li { border-left: 3px solid var(--border); border-radius: 0 var(--radius) var(--radius) 0; padding: 12px 18px; display: flex; flex-direction: column; gap: 4px; }
+.tt__points p { color: var(--muted); font-size: 15px; }
+.tt__phone { justify-self: center; width: min(340px, 100%); background: var(--night); border-radius: 36px; padding: 16px 14px 26px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 30px 60px rgba(20, 22, 27, 0.22); }
+.tt__bar { display: flex; justify-content: space-between; padding: 2px 8px 6px; font: 700 12px var(--mono); color: var(--night-muted); }
+.tt__bar span:first-child { color: var(--coral-on-night); }
+.tt__card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.tt__k { font: 700 11.5px var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted-2); }
+.tt__k--hot { color: var(--coral-strong); }
+.tt__big { color: var(--muted); font-size: 14px; }
+.tt__big b { font: 600 28px/1 var(--display); color: var(--text); margin-right: 4px; }
+.tt__bars { display: flex; align-items: flex-end; gap: 6px; height: 34px; }
+.tt__bars i { flex: 1; height: 100%; border-radius: 3px 3px 0 0; background: var(--live); transform: scaleY(var(--h)); transform-origin: bottom; }
+.tt__none { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted-2); border-top: 1px solid var(--border-soft); padding-top: 8px; }
+.tt__none span { font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: var(--radius-xs); background: var(--coral-tint); color: var(--coral-deep); }
+.tt__act { display: grid; }
+.tt__btn, .tt__took { grid-area: 1 / 1; border-radius: var(--radius-sm); padding: 10px 14px; font-weight: 700; font-size: 15px; text-align: center; }
+.tt__btn { background: var(--coral); color: var(--ink); opacity: 0; }
+.tt__took { background: var(--live-tint); color: var(--live-deep); }
+.tt__card--done { flex-direction: row; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.tt__card--done b { color: var(--text); }
+.tt__card--done svg { flex: none; width: 34px; height: 34px; padding: 7px; border-radius: 50%; background: var(--live-tint); color: var(--live-deep); fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.armed .tt__points li { animation: tt-on 2.4s calc(0.3s + var(--i) * 2.4s) both; }
+.armed .tt__card { animation: rise 0.5s calc(0.3s + var(--i) * 2.4s) cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+.armed .tt__bars i { animation: grow 0.6s calc(0.7s + var(--h) * 0.4s) ease-out both; }
+.armed .tt__none s { animation: strike 0.5s 1.6s both; }
+.armed .tt__none span { animation: pop 0.35s 1.9s both; }
+.armed .tt__btn { animation: tt-press 1.3s 3.4s both; }
+.armed .tt__took { animation: rise 0.35s 4.5s both; }
+@keyframes tt-on { 0%, 100% { border-color: var(--border); background: transparent; } 12%, 86% { border-color: var(--coral); background: var(--surface); } }
+@keyframes grow { from { transform: scaleY(0); } }
+@keyframes strike { from { text-decoration-color: transparent; } }
+@keyframes tt-press { 0% { opacity: 1; transform: none; } 55% { opacity: 1; transform: scale(0.94); } 70% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+
+/* Impact: four venues in line art; each camera (the logo's eyes) spots a problem, then sees it solved. */
+.venues li { border-top: 0; padding-top: 0; }
+.venue { display: block; width: 100%; height: auto; margin-bottom: 6px; overflow: hidden; }
+.ve-lines path { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ve-fov { fill: var(--coral-tint); opacity: 0.75; }
+.ve-ring { fill: var(--surface); stroke: var(--ink); stroke-width: 2.2; }
+.ve-pupil { fill: var(--coral); }
+.ve-look, .ve-bang, .ve-ok { transform-box: fill-box; transform-origin: center; }
+.ve-bang circle { fill: var(--coral); }
+.ve-bang path { fill: none; stroke: var(--ink); stroke-width: 2.4; stroke-linecap: round; }
+.ve-bang { opacity: 0; }
+.ve-ok circle { fill: var(--live); }
+.ve-ok path { fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.armed .ve-lines path { stroke-dasharray: 1 1; animation: draw 1.4s var(--v) cubic-bezier(0.6, 0, 0.3, 1) both; }
+.armed .ve-cam { animation: fade 0.4s var(--v) both; }
+.armed .ve-fov { animation: fade 0.6s calc(var(--v) + 1s) both; }
+.armed .ve-look { animation: scan 1.6s calc(var(--v) + 1s) ease-in-out 2; }
+.armed .ve-bang { animation: bang 1.5s calc(var(--v) + 1.6s) both; }
+.armed .ve-ok { animation: pop 0.4s calc(var(--v) + 3s) both; }
+@keyframes scan { 0%, 100% { transform: none; } 30% { transform: translate(-2.5px, 0.5px); } 65% { transform: translate(2.5px, 0.5px); } }
+@keyframes bang { 0% { opacity: 0; transform: scale(0.4); } 14% { opacity: 1; transform: scale(1.12); } 22%, 82% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.8); } }
+.pledges { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pledges li { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px 14px 18px; border-radius: var(--radius); background: var(--ground); border-left: 3px solid var(--coral); }
+.pledges span { color: var(--muted); font-size: 14.5px; }
+
+/* Arhitectură: a coral packet runs the rail and lights each node it reaches; the numbers count up. */
+.arch__track { display: flex; flex-direction: column; }
+.arch__rail { position: relative; height: 2px; margin: 0 calc(100% / 12 - 4px) 16px; background: var(--border-soft); }
+.arch__rail::after { content: ""; position: absolute; inset: 0; background: var(--coral); transform: scaleX(0); transform-origin: left; }
+.arch__rail i { position: absolute; inset: 0; opacity: 0; }
+.arch__rail i::before { content: ""; position: absolute; left: 0; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 5px rgba(255, 92, 108, 0.25); }
+.arch__node::before { content: ""; position: absolute; left: 50%; top: -17px; width: 2px; height: 16px; background: var(--border-soft); }
+.arch__node::after { content: ""; position: absolute; inset: -2px; border: 2px solid var(--coral); border-radius: calc(var(--radius) + 2px); opacity: 0; pointer-events: none; }
+.arch__step { font: 700 11px var(--mono); color: var(--coral-strong); }
+.arch__node--accent .arch__step { color: var(--coral-on-night); }
+.armed .arch__rail i { animation: packet 6s linear 3; }
+.armed .arch__rail::after { animation: trail 6s linear 3; }
+.armed .arch__node::after { animation: hit 6s calc(var(--n) * 0.8s) 3; }
+.armed .arch__node { animation: lift 6s calc(var(--n) * 0.8s) 3; }
+@keyframes packet { 0% { transform: translateX(0); opacity: 0; } 3% { opacity: 1; } 66.6% { transform: translateX(100%); opacity: 1; } 74%, 100% { transform: translateX(100%); opacity: 0; } }
+@keyframes trail { 0% { transform: scaleX(0); opacity: 1; } 66.6% { transform: scaleX(1); opacity: 1; } 80%, 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes hit { 0% { opacity: 1; } 18%, 100% { opacity: 0; } }
+@keyframes lift { 0% { transform: translateY(-4px); } 14%, 100% { transform: none; } }
+.stats div { position: relative; border-top-color: var(--border-soft); }
+.stats div::before { content: ""; position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--ink); transform-origin: left; }
+.stats.armed div::before, .stats div.armed::before { animation: fill-x 0.9s ease-out both; }
+.stats.armed div:nth-child(2)::before { animation-delay: 0.15s; }
+.stats.armed div:nth-child(3)::before { animation-delay: 0.3s; }
+.stats.armed div:nth-child(4)::before { animation-delay: 0.45s; }
+
 /* ---------- Narrow screens ---------- */
 @media (max-width: 1000px) {
   .cards, .points--4, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .arch__flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* The flow wraps: no rail, the nodes still light up in order. */
+  .arch__rail, .arch__node::before { display: none; }
 }
 @media (max-width: 860px) {
   .story__grid, .section .wrap.rules__grid, .pilot__grid, .steps { grid-template-columns: minmax(0, 1fr); }
@@ -365,6 +570,10 @@ h3 { font-size: 19px; line-height: 1.3; }
   .beat, .beat:first-child { min-height: 60vh; justify-content: center; }
   .beats { padding-top: 56px; }
   .points, .team { grid-template-columns: minmax(0, 1fr); }
+  .section .wrap.tt, .learn, .pledges { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .step__line { display: none; }
+  .venues { gap: 36px; }
+  .venue { max-width: 360px; }
 }
 @media (max-width: 620px) {
   .cards, .points--4, .stats { grid-template-columns: minmax(0, 1fr); }
