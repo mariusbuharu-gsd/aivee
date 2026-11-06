@@ -65,6 +65,18 @@ export function TeamPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  /** The chat title, `true` for a group without a known title, null when none is linked. */
+  const [telegram, setTelegram] = useState<string | true | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.getTelegramStatus(locationId).then(
+      (t) => live && setTelegram(t.connected ? t.chat_title || true : null),
+      () => live && setTelegram(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, locationId]);
 
   /** Managers manage staff only; nobody edits themselves here. */
   const editable = (m: Member) =>
@@ -140,6 +152,12 @@ export function TeamPage() {
       <div className="two-col">
         <section aria-labelledby="members-h">
           <h2 id="members-h">Membri</h2>
+          {telegram && (
+            <p className="small muted team-telegram">
+              Alertele merg și în grupul Telegram
+              {telegram === true ? ' al locației' : ` „${telegram}”`}, pentru cine e în el.
+            </p>
+          )}
           {error && <Banner tone="error" title={error} />}
           {members.length === 0 ? (
             <EmptyState icon="team" title="Încă nu e nimeni în echipă">
@@ -155,6 +173,11 @@ export function TeamPage() {
                   <div className="member-who">
                     <strong>{m.name}</strong>
                     <span className="small muted">{m.email}</span>
+                    {m.push_enabled !== undefined && (
+                      <span className={`small member-push ${m.push_enabled ? 'is-on' : ''}`}>
+                        {m.push_enabled ? 'notificări pornite' : 'fără notificări pe telefon'}
+                      </span>
+                    )}
                   </div>
                   <span className="team-role">{ROLE_LABEL[m.role]}</span>
                   {editable(m) ? (

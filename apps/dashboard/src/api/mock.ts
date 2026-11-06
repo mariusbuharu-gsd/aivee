@@ -26,6 +26,7 @@ import {
   type RegisterInput,
   type Role,
   type RuleDraft,
+  type RuleStats,
   type Unsubscribe,
   type NewVideoUpload,
   type VideoAlert,
@@ -164,6 +165,20 @@ function tableSketch(withGlass: boolean): string {
     '</svg>';
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
+
+/** Alerts of the seeded rules on the 6 days before today, oldest first (today comes from the feed). */
+const RULE_HISTORY: Record<string, number[]> = {
+  'r-neservit': [3, 5, 2, 4, 6, 3],
+  'r-mana': [1, 2, 0, 3, 1, 2],
+  'r-pahar': [0, 0, 1, 0, 0, 1],
+};
+
+/** Cameras of the locations the mock does not serve cameras for (only `demo` has real ones). */
+const OTHER_CAMERAS: Record<string, { total: number; online: number }> = {
+  centru: { total: 2, online: 1 },
+};
+
+const utcDay = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);
 
 /**
  * Stand-in for the edge's face-blurred person crop: a silhouette in the waiter's dark-red
@@ -521,6 +536,26 @@ export class MockApi implements ApiClient {
     return this.delay(this.rules);
   }
 
+  getRuleStats(days = 7): Promise<RuleStats> {
+    const dates = Array.from({ length: days }, (_, i) =>
+      utcDay(new Date(Date.now() - (days - 1 - i) * 86_400_000)),
+    );
+    const today = dates[dates.length - 1];
+    return this.delay({
+      days: dates,
+      rules: this.rules.map((r) => {
+        const history = RULE_HISTORY[r.id] ?? [];
+        const now = this.alerts.filter(
+          (a) => a.rule_id === r.id && a.state === 'opened' && utcDay(a.at) === today,
+        ).length;
+        const per_day = dates.map((_, i) =>
+          i === days - 1 ? now : (history[history.length - (days - 1 - i)] ?? 0),
+        );
+        return { rule_id: r.id, total: per_day.reduce((a, b) => a + b, 0), per_day };
+      }),
+    });
+  }
+
   async draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft> {
     if (text.trim().length < 3) throw new ApiError('Cererea este prea scurtă.', 'invalid', 422);
     const cam = this.cameras.find((c) => c.id === cameraId);
@@ -815,7 +850,18 @@ export class MockApi implements ApiClient {
   }
 
   listLocations() {
-    return this.call(() => this.accounts.listLocations());
+    return this.call(() =>
+      this.accounts.listLocations().map((l) => {
+        const counts =
+          l.id === 'demo'
+            ? {
+                total: this.cameras.length,
+                online: this.cameras.filter((c) => c.online).length,
+              }
+            : (OTHER_CAMERAS[l.id] ?? { total: 0, online: 0 });
+        return { ...l, cameras_total: counts.total, cameras_online: counts.online };
+      }),
+    );
   }
 
   createLocation(location: Location) {
