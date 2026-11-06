@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { AlertItem } from '../alerts/fold';
 import { limitsFor } from '../alerts/limit';
 import { AlertFeed } from '../components/AlertFeed';
@@ -7,6 +7,7 @@ import { PushToggle } from '../push/PushToggle';
 import { browserPushService } from '../push/service';
 import { StaffPhotoUpload } from '../components/StaffPhotoUpload';
 import { SuggestionCard } from '../components/SuggestionCard';
+import { TelegramConnect } from '../components/TelegramConnect';
 import { useAuth } from '../auth/context';
 import { useLiveData, zoneName } from '../state/context';
 import { EmptyState, Segmented } from '../ui/controls';
@@ -62,7 +63,7 @@ function groupByDay(items: AlertItem[]): { label: string; items: AlertItem[] }[]
 export function AlertsPage() {
   const { alerts, cameras, rules, suggestions, dropSuggestion, cases, ack, hasOlder, loadOlder } =
     useLiveData();
-  const { can, me } = useAuth();
+  const { can, me, location } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
   const push = useMemo(() => browserPushService(), []);
   const { hash } = useLocation();
@@ -222,10 +223,28 @@ export function AlertsPage() {
                   {suggestions.length - QUESTIONS_SHOWN === 1 ? 'întrebare' : 'întrebări'}
                 </button>
               )}
-              {canEnrol && <StaffPhotoUpload />}
+              {can('devices.manage') && (
+                <Link to="/dispozitive" className="link small">
+                  Adaugă angajat → Camere
+                </Link>
+              )}
+              {canEnrol && (
+                // Uniform photos are a fallback to the Da/Nu questions, so they start folded;
+                // the setup checklist's #poze-personal link opens them.
+                <details className="tech" open={hash === '#poze-personal'}>
+                  <summary>Avansat</summary>
+                  <StaffPhotoUpload />
+                </details>
+              )}
             </section>
           )}
           <PushToggle service={push} variant="actionable" />
+          {can('locations.manage') && location && (
+            <section className="card alerts-telegram" aria-labelledby="telegram-h">
+              <h3 id="telegram-h">Alerte pe Telegram</h3>
+              <TelegramConnect locationId={location.id} />
+            </section>
+          )}
           {!me?.is_owner && <PushToggle service={push} variant="note" />}
         </aside>
       </div>
