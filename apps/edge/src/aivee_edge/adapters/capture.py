@@ -75,7 +75,12 @@ class Cv2Source:
         self._last_emit = -float("inf")
 
     def _open(self) -> bool:
-        cap = cv2.VideoCapture(self._source)
+        if isinstance(self._source, str) and "://" in self._source:
+            # FFmpeg's frame threading holds about one frame per decoder thread: at 5 fps on
+            # 12 cores that is ~2.4 s behind the camera. One thread keeps the reader live.
+            cap = cv2.VideoCapture(self._source, cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])
+        else:
+            cap = cv2.VideoCapture(self._source)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if not cap.isOpened():
             cap.release()
