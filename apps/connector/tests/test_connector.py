@@ -163,6 +163,41 @@ def test_webcam_index_uses_v4l2_on_linux_and_avfoundation_on_macos() -> None:
     assert rtsp[i - 2 : i + 2] == ["-f", "v4l2", "-i", "/dev/video0"]
 
 
+DSHOW_NEW = """\
+[dshow @ 0000020] "Integrated Camera" (video)
+[dshow @ 0000020]   Alternative name "@device_pnp_\\\\?\\usb#vid_0bda"
+[dshow @ 0000020] "OBS Virtual Camera" (video)
+[dshow @ 0000020] "Microphone Array (Realtek)" (audio)
+dummy: Immediate exit requested
+"""
+
+DSHOW_LEGACY = """\
+[dshow @ 0000020] DirectShow video devices (some may be both video and audio devices)
+[dshow @ 0000020]  "USB2.0 HD UVC WebCam"
+[dshow @ 0000020]     Alternative name "@device_pnp_x"
+[dshow @ 0000020] DirectShow audio devices
+[dshow @ 0000020]  "Microphone (Realtek)"
+"""
+
+
+def test_dshow_devices_parse_new_and_legacy_ffmpeg_output() -> None:
+    assert c.parse_dshow_devices(DSHOW_NEW) == ["Integrated Camera", "OBS Virtual Camera"]
+    assert c.parse_dshow_devices(DSHOW_LEGACY) == ["USB2.0 HD UVC WebCam"]
+    assert c.parse_dshow_devices("no devices here") == []
+
+
+def test_webcam_index_uses_dshow_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(c, "dshow_device", lambda index: f"video=cam{index}")
+    win = c.frames_ffmpeg_args(push_cfg(), platform="win32")
+    i = win.index("-i")
+    assert win[i - 2 : i + 2] == ["-f", "dshow", "-i", "video=cam0"]
+    named = c.frames_ffmpeg_args(
+        cfg(push_url="https://app.example", source="video=Integrated Camera"), platform="win32"
+    )
+    i = named.index("-i")
+    assert named[i - 2 : i + 2] == ["-f", "dshow", "-i", "video=Integrated Camera"]
+
+
 def test_frames_args_emit_rotated_small_jpegs_on_stdout() -> None:
     args = c.frames_ffmpeg_args(push_cfg(rotate=90, width=640, fps=5, jpeg_quality=6))
     assert args[args.index("-vf") + 1] == "fps=5,transpose=1,scale=640:-2"
