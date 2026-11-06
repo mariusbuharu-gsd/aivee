@@ -173,6 +173,8 @@ class SuggestionRow(Base):
     reason_ro: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(16), default="pending")
     created_at: Mapped[datetime] = _now()
+    # The face-blurred person crop the edge sent on `snapshots/{suggestion_id}`, if any.
+    snapshot_path: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint("status IN ('pending', 'confirmed', 'rejected')", name="suggestion_status"),
