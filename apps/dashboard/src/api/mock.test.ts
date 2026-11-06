@@ -42,6 +42,8 @@ describe('MockApi timeline', () => {
       'z-masa-2:closed',
     ]);
     expect(suggestions).toHaveBeenCalledTimes(1);
+    // A stand-in photo, as the real API links the edge's face-blurred crop.
+    expect(suggestions.mock.calls[0]?.[0].snapshot_url).toMatch(/^data:image\/svg\+xml,/);
     await api.confirmSuggestion('sug-track-7');
     await vi.advanceTimersByTimeAsync(45_000);
     expect(suggestions).toHaveBeenCalledTimes(1);
@@ -132,5 +134,25 @@ describe('MockApi setup data', () => {
     const cameras = await api.listCameras();
     expect(cameras.some((c) => c.online && (c.zones?.length ?? 0) > 0)).toBe(true);
     expect((await api.listRules()).some((r) => r.enabled !== false)).toBe(true);
+  });
+});
+
+describe('MockApi devices and frames', () => {
+  it('has a fresh last_seen online and an old one offline', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const devices = await api.listDevices();
+    const age = (state: string) =>
+      Date.now() - Date.parse(devices.find((d) => d.state === state)?.last_seen ?? '');
+    expect(age('online')).toBeLessThan(10_000);
+    expect(age('offline')).toBeGreaterThan(10 * 60_000);
+  });
+
+  it('serves a placeholder still for a known camera and 404 otherwise', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const frame = await api.captureFrame('cam-sala');
+    expect(frame.url).toMatch(/^data:image\/svg\+xml,/);
+    expect(Date.parse(frame.at ?? '')).toBeLessThanOrEqual(Date.now());
+    frame.release();
+    await expect(api.captureFrame('nope')).rejects.toMatchObject({ status: 404 });
   });
 });

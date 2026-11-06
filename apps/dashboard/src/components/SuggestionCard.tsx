@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApi } from '../api/context';
-import type { StaffSuggestion } from '../contracts';
+import type { SuggestionView } from '../api/client';
 import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
@@ -12,7 +12,7 @@ export function SuggestionCard({
   onResolved,
   variant = 'card',
 }: {
-  suggestion: StaffSuggestion;
+  suggestion: SuggestionView;
   cameraName?: string;
   onResolved?: (id: string, decision: 'confirmed' | 'rejected') => void;
   /** `card` (default, Live): night card with the score. `question`: one Da/Nu line (Alerte). */
@@ -23,6 +23,20 @@ export function SuggestionCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const headingId = `sug-${suggestion.suggestion_id}`;
+  // The edge's face-blurred crop; without one (older API, failed load) a blurred stand-in.
+  const [failed, setFailed] = useState<string | null>(null);
+  const url = suggestion.snapshot_url;
+  const photo = url && failed !== url ? url : null;
+  const n = suggestion.track_id;
+  const img = photo && (
+    <img
+      className="suggestion-photo"
+      src={photo}
+      alt={`Persoana #${n}, fața estompată`}
+      decoding="async"
+      onError={() => setFailed(photo)}
+    />
+  );
 
   async function decide(decision: 'confirmed' | 'rejected') {
     setBusy(true);
@@ -50,14 +64,18 @@ export function SuggestionCard({
   if (variant === 'question') {
     return (
       <article className="suggestion-q" aria-labelledby={headingId}>
-        {/* The API serves no crop for a suggestion yet, so this stays a blurred stand-in. */}
-        <div
-          className="suggestion-q-crop"
-          role="img"
-          aria-label={`Persoana #${suggestion.track_id}, estompată`}
-        >
-          <span className="mono">#{suggestion.track_id}</span>
-        </div>
+        {img ? (
+          <div className="suggestion-q-crop has-photo">
+            {img}
+            <span className="mono" aria-hidden="true">
+              #{n}
+            </span>
+          </div>
+        ) : (
+          <div className="suggestion-q-crop" role="img" aria-label={`Persoana #${n}, estompată`}>
+            <span className="mono">#{n}</span>
+          </div>
+        )}
         <div className="suggestion-q-body">
           <h3 id={headingId}>#{suggestion.track_id} pare să fie din personal?</h3>
           <p className="muted small">
@@ -90,9 +108,18 @@ export function SuggestionCard({
 
   return (
     <article className="suggestion" aria-labelledby={headingId}>
-      <div className="suggestion-crop" role="img" aria-label={`Persoana #${suggestion.track_id}`}>
-        <span className="mono">#{suggestion.track_id}</span>
-      </div>
+      {img ? (
+        <div className="suggestion-crop has-photo">
+          {img}
+          <span className="mono" aria-hidden="true">
+            #{n}
+          </span>
+        </div>
+      ) : (
+        <div className="suggestion-crop" role="img" aria-label={`Persoana #${n}`}>
+          <span className="mono">#{n}</span>
+        </div>
+      )}
       <div className="suggestion-body">
         <h3 id={headingId}>Pare angajat — confirmi?</h3>
         <p>{suggestion.reason_ro}</p>

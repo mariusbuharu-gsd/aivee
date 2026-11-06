@@ -152,6 +152,12 @@ async def test_suggestion_crop_is_stored_like_an_event_snapshot(
         await asyncio.to_thread(edge.stop)
 
     assert (tmp_path / f"{suggestion.suggestion_id}.jpg").read_bytes() == b"\xff\xd8person"
+    async with sessions() as s:
+        path = await s.scalar(
+            text("SELECT snapshot_path FROM suggestions WHERE suggestion_id = :id"),
+            {"id": suggestion.suggestion_id},
+        )
+    assert path == f"{suggestion.suggestion_id}.jpg"  # the API links it as snapshot_url
 
 
 async def test_last_will_marks_device_offline(

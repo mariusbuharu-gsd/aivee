@@ -15,6 +15,7 @@ class EventOut(AlertEvent):
 class SuggestionOut(StaffSuggestion):
     device_id: str = ""
     status: str = "pending"
+    snapshot_url: str | None = None
 
 
 def event_out(row: EventRow) -> EventOut:
@@ -41,6 +42,8 @@ def suggestion_out(row: SuggestionRow) -> SuggestionOut:
         reason_ro=row.reason_ro,
         device_id=row.device_id,
         status=row.status,
+        snapshot=row.snapshot_path is not None,
+        snapshot_url=f"/api/snapshots/{row.suggestion_id}" if row.snapshot_path else None,
     )
 
 

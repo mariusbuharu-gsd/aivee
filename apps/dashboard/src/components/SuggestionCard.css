@@ -9,7 +9,7 @@
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);
 }
-/* A blurred stand-in for the person: no crop is served for suggestions yet. */
+/* A blurred stand-in for the person, until (or unless) the edge's crop loads. */
 .suggestion-q-crop {
   flex: none;
   width: 48px;
@@ -28,6 +28,26 @@
 .suggestion-q-crop .mono {
   font-size: 0.66rem;
   color: var(--night-text);
+}
+/* The edge's face-blurred crop of the person (both variants), the track number on top. */
+.has-photo {
+  position: relative;
+  overflow: hidden;
+  background: var(--night-2);
+  filter: none;
+}
+.suggestion-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+.has-photo .mono {
+  position: relative;
+  color: #fff;
+  text-shadow: 0 0 3px #000;
 }
 .suggestion-q-body {
   flex: 1 1 160px;

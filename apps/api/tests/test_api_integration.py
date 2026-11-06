@@ -335,6 +335,60 @@ async def test_events_list_and_live_feed(api: httpx.AsyncClient, sessions: Any) 
     assert metrics["alert_latency_ms"] is not None and metrics["alert_latency_ms"] >= 0
 
 
+async def test_camera_frame_is_the_newest_blurred_frame_on_disk(
+    api: httpx.AsyncClient, sessions: Any, settings: ApiSettings
+) -> None:
+    await _camera(api)
+    assert (await api.get("/api/cameras/cam1/frame")).status_code == 404  # nothing yet
+    now = datetime.now(UTC)
+
+    def ev(event_id: str, at: datetime, camera_id: str = "cam1") -> AlertEvent:
+        return AlertEvent(
+            event_id=event_id,
+            rule_id="r1",
+            camera_id=camera_id,
+            zone_id="t1",
+            state="opened",
+            at=at,
+            summary_ro="Masa 1 așteaptă",
+            snapshot=True,
+        )
+
+    settings.snapshot_dir.mkdir(parents=True, exist_ok=True)
+    async with sessions() as s:
+        repo = EventRepository(s)
+        await repo.insert_if_new(ev("f-old", now - timedelta(minutes=5)), "edge-01", "f-old.jpg")
+        # Newest row whose JPEG has not landed yet: skipped, not a 404.
+        await repo.insert_if_new(ev("f-new", now), "edge-01", "f-new.jpg")
+        await repo.insert_if_new(ev("f-none", now + timedelta(seconds=1)), "edge-01", None)
+        await repo.insert_if_new(ev("f-other", now, "cam2"), "edge-01", "f-other.jpg")
+        await s.commit()
+    (settings.snapshot_dir / "f-old.jpg").write_bytes(b"old")
+    (settings.snapshot_dir / "f-other.jpg").write_bytes(b"other")
+
+    r = await api.get("/api/cameras/cam1/frame")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert r.content == b"old"
+    assert r.headers["cache-control"] == "no-store"
+    at = datetime.fromisoformat(r.headers["x-frame-at"])
+    assert abs((at - (now - timedelta(minutes=5))).total_seconds()) < 1
+
+    (settings.snapshot_dir / "f-new.jpg").write_bytes(b"new")
+    assert (await api.get("/api/cameras/cam1/frame")).content == b"new"
+    assert (await api.get("/api/cameras/nope/frame")).status_code == 404
+
+
+async def test_devices_carry_last_seen(api: httpx.AsyncClient, sessions: Any) -> None:
+    async with sessions() as s:
+        await DeviceRepository(s).apply_status(
+            "test", DeviceStatus(device="edge-01", state="online")
+        )
+        await s.commit()
+    [device] = (await api.get("/api/devices")).json()
+    seen = datetime.fromisoformat(device["last_seen"])
+    assert abs((datetime.now(UTC) - seen).total_seconds()) < 10
+
+
 async def test_metrics_combines_devices_and_cache(
     api: httpx.AsyncClient, services: Services, sessions: Any
 ) -> None:
@@ -353,12 +407,19 @@ async def test_metrics_combines_devices_and_cache(
     assert m["alert_latency_ms"] is None
 
 
-async def _suggestion(sessions: Any, suggestion_id: str | None = None) -> str:
+async def _suggestion(
+    sessions: Any, suggestion_id: str | None = None, snapshot: bool = False
+) -> str:
     sid = suggestion_id or f"s-{uuid.uuid4().hex[:6]}"
     async with sessions() as s:
         await SuggestionRepository(s).insert_if_new(
             StaffSuggestion(
-                suggestion_id=sid, camera_id="cam1", track_id=3, staff_score=0.7, reason_ro="x"
+                suggestion_id=sid,
+                camera_id="cam1",
+                track_id=3,
+                staff_score=0.7,
+                reason_ro="x",
+                snapshot=snapshot,
             ),
             "edge-01",
         )
@@ -388,6 +449,21 @@ async def test_confirm_and_reject_suggestions(
         (drop, False, "edge-01"),
     ]
     assert publisher.last(TOPICS.profiles) is None  # no snapshot → nothing learned
+
+
+async def test_pending_suggestions_link_the_blurred_crop_when_the_edge_sent_one(
+    api: httpx.AsyncClient, sessions: Any, settings: ApiSettings
+) -> None:
+    photo = await _suggestion(sessions, snapshot=True)
+    plain = await _suggestion(sessions)
+    (settings.snapshot_dir / f"{photo}.jpg").write_bytes(b"\xff\xd8crop")
+    urls = {
+        s["suggestion_id"]: s["snapshot_url"]
+        for s in (await api.get("/api/staff/suggestions")).json()
+    }
+    assert urls == {photo: f"/api/snapshots/{photo}", plain: None}
+    r = await api.get(urls[photo])
+    assert r.status_code == 200 and r.content == b"\xff\xd8crop"
 
 
 async def test_confirm_with_snapshot_learns_the_crop(

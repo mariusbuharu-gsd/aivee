@@ -1,7 +1,13 @@
 import { createContext, useContext } from 'react';
-import type { AlertCase, AlertView, CameraView, DashboardMetrics } from '../api/client';
+import type {
+  AlertCase,
+  AlertView,
+  CameraView,
+  DashboardMetrics,
+  SuggestionView,
+} from '../api/client';
 import type { AlertItem } from '../alerts/fold';
-import type { Rule, StaffSuggestion, Zone } from '../contracts';
+import type { Rule, Zone } from '../contracts';
 
 /** Why the shared data failed to load: the banner says something different for each. */
 export interface LoadError {
@@ -15,7 +21,7 @@ export interface LiveData {
   events: AlertView[];
   /** `events` folded into opened/closed alerts, newest first. */
   alerts: AlertItem[];
-  suggestions: StaffSuggestion[];
+  suggestions: SuggestionView[];
   metrics: DashboardMetrics | null;
   error: LoadError | null;
   loading: boolean;

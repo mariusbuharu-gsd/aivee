@@ -43,6 +43,28 @@ export interface CameraView extends CameraConfig {
   online: boolean;
 }
 
+/** `GET /api/devices`: the edge's status plus when the API last heard from it. */
+export interface DeviceView extends DeviceStatus {
+  site?: string;
+  /**
+   * ISO time of the last status or metrics message (the edge sends metrics every ~5 s), so
+   * while online it is at most a few seconds old; once offline it is when the device went away.
+   */
+  last_seen?: string | null;
+}
+
+/**
+ * The newest face-blurred still of a camera (`GET /api/cameras/{id}/frame`). Today it is the
+ * whole-frame snapshot of the camera's latest alert, so it can be minutes or hours old: show `at`.
+ */
+export interface CameraFrame {
+  /** Usable as `<img src>`; a `blob:` URL over HTTP, so call `release()` when done with it. */
+  url: string;
+  /** ISO time the frame was taken, null when unknown. */
+  at: string | null;
+  release(): void;
+}
+
 /** What the "Adaugă cameră" form sends. `id` must match the edge's CAMERA_ID. */
 export interface NewCamera {
   id: string;
@@ -56,6 +78,16 @@ export type CameraPatch = Partial<Pick<NewCamera, 'name' | 'source' | 'device'>>
 
 /** `PATCH /api/rules/{id}`: fields left out stay as they are. */
 export type RulePatch = Partial<Omit<Rule, 'id' | 'camera_id'>>;
+
+/**
+ * A staff suggestion as the API serves it: `snapshot_url` (absolute, or null) is the edge's
+ * face-blurred crop of the person. Older APIs omit it; the card then shows a blurred stand-in.
+ */
+export interface SuggestionView extends StaffSuggestion {
+  device_id?: string;
+  status?: string;
+  snapshot_url?: string | null;
+}
 
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
@@ -178,7 +210,12 @@ export interface ApiClient extends AccountApi {
   updateCamera(id: string, patch: CameraPatch): Promise<CameraView>;
   /** Removes the camera with its zones and rules; past alerts stay, open ones close. */
   deleteCamera(id: string): Promise<void>;
-  listDevices(): Promise<DeviceStatus[]>;
+  listDevices(): Promise<DeviceView[]>;
+  /**
+   * The newest face-blurred still of the camera, for a thumbnail or the zone-drawing background.
+   * Rejects with an ApiError (404 `not_found` until the camera has sent one).
+   */
+  captureFrame(cameraId: string): Promise<CameraFrame>;
   saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones>;
   listRules(): Promise<Rule[]>;
   /** Translate a Romanian request into a draft rule; nothing is saved. */
@@ -192,8 +229,8 @@ export interface ApiClient extends AccountApi {
   getRuleStats(days?: number): Promise<RuleStats>;
   listAlerts(): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
-  listSuggestions(): Promise<StaffSuggestion[]>;
-  subscribeSuggestions(cb: (s: StaffSuggestion) => void): Unsubscribe;
+  listSuggestions(): Promise<SuggestionView[]>;
+  subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe;
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe;
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;
