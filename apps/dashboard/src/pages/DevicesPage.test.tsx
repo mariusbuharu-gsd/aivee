@@ -30,6 +30,14 @@ beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
 describe('DevicesPage', () => {
+  it('keeps the latency unit out of the monospace span, which made "0.9 s" read as "0.9  s"', async () => {
+    renderApp();
+    const line = await screen.findByText(/Latență alertă/, {}, { timeout: 5000 });
+    expect(line.textContent).toMatch(/Latență alertă \d+\.\d s · /);
+    const num = within(line).getByText(/^\d+\.\d$/);
+    expect(num).toHaveClass('mono');
+  });
+
   it('puts health on the card and drops the separate system table', async () => {
     renderApp();
     const sala = await screen.findByRole(

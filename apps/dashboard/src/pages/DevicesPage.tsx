@@ -241,8 +241,8 @@ function SystemLine({ metrics }: { metrics: DashboardMetrics }) {
       {metrics.alert_latency_ms != null && (
         <>
           Latență alertă{' '}
-          <span className="mono">{(metrics.alert_latency_ms / 1000).toFixed(1)} s</span>
-          {' · '}
+          {/* The unit stays out of the monospace span: its wide space read as "0.9  s". */}
+          <span className="mono">{(metrics.alert_latency_ms / 1000).toFixed(1)}</span> s{' · '}
         </>
       )}
       cadre verificate <span className="mono">{verified.toFixed(1)}%</span> (trimise modelului greu;
