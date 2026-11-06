@@ -24,3 +24,29 @@
 .rule-card.is-off .rule-line {
   color: var(--muted);
 }
+
+/* Alerts per day over the last week: thin bars, no axes, the total beside them. */
+.rule-spark {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+  align-self: flex-start;
+  font-size: 0.8125rem;
+  line-height: 1;
+  color: var(--muted);
+}
+.rule-spark svg {
+  flex: none;
+  fill: var(--muted);
+}
+.rule-spark rect.is-zero {
+  fill: var(--border);
+}
+.rule-spark-total {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rule-card.is-off .rule-spark svg {
+  opacity: 0.5;
+}

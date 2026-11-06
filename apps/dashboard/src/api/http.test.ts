@@ -283,3 +283,16 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
   });
 });
+
+describe('HttpApi counts', () => {
+  it('asks for 7 days of rule stats at the current location', async () => {
+    const api = new HttpApi('http://api:8000');
+    const stats = { days: ['2026-11-06'], rules: [{ rule_id: 'r-1', total: 2, per_day: [2] }] };
+    const fetch = mockFetch(json(stats));
+    api.setLocation('terasa');
+    expect(await api.getRuleStats()).toEqual(stats);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'http://api:8000/api/rules/stats?days=7&location_id=terasa',
+    );
+  });
+});

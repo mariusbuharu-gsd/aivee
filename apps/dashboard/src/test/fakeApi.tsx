@@ -38,6 +38,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     createRule: vi.fn(async (r) => r),
     updateRule: vi.fn(async (id, patch) => ({ ...patch, id }) as never),
     deleteRule: vi.fn(async () => undefined),
+    getRuleStats: vi.fn(async () => ({ days: [], rules: [] })),
     updateCamera: vi.fn(async (id, patch) => ({ ...patch, id }) as never),
     listAlerts: vi.fn(async () => []),
     subscribeAlerts: vi.fn(noop),

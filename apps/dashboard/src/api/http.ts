@@ -29,6 +29,7 @@ import {
   type StaffProfile,
   type RulePatch,
   type RuleDraft,
+  type RuleStats,
   type Unsubscribe,
   type NewVideoUpload,
   type VideoAlert,
@@ -169,6 +170,10 @@ export class HttpApi implements ApiClient {
 
   listRules() {
     return this.request<Rule[]>('/api/rules');
+  }
+
+  getRuleStats(days = 7) {
+    return this.request<RuleStats>(`/api/rules/stats?days=${days}`);
   }
 
   async draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft> {
