@@ -127,6 +127,15 @@ class CameraRepository:
             .values(zones=[z.model_dump(mode="json") for z in zones])
         )
 
+    async def delete(self, camera_id: str) -> bool:
+        """The camera, its zones (a column) and its rules. Events keep their camera_id
+        (no FK), so the history stays."""
+        await self.s.execute(delete(RuleRow).where(RuleRow.camera_id == camera_id))
+        result = await self.s.execute(
+            delete(Camera).where(Camera.id == camera_id).returning(Camera.id)
+        )
+        return result.first() is not None
+
 
 def camera_config(row: Camera) -> CameraConfig:
     return CameraConfig.model_validate(
