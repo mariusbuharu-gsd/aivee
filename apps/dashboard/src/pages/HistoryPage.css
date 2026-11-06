@@ -1,0 +1,154 @@
+/* Istoric: kind buttons, device badges, one row per alert. */
+.kind-field {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.kind-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kind-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.kind-btn:hover {
+  border-color: var(--muted-2);
+}
+.kind-btn[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+}
+.kind-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Devices and the system: an icon in grey, never initials that read like a person. */
+.audit-actor.is-device,
+.audit-actor.is-system {
+  border-radius: var(--radius-xs);
+  background: var(--surface-3);
+  color: var(--muted);
+}
+.audit-actor.is-alert {
+  border-radius: var(--radius-xs);
+  background: var(--coral-tint);
+  color: var(--coral-deep);
+}
+.audit-row.is-machine .audit-body > p {
+  color: var(--muted);
+}
+
+/* One alert, one row */
+.audit-row.is-thread {
+  grid-template-columns: 56px 32px minmax(0, 1fr) auto;
+}
+.thread-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+.thread-total .mono {
+  font-weight: 700;
+}
+.thread-tl {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 0 6px;
+  max-width: 560px;
+}
+.thread-tl li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--muted-2);
+}
+/* The line between dots, drawn from each dot to the next one. */
+.thread-tl li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 14px;
+  right: -4px;
+  height: 2px;
+  background: var(--border);
+}
+.thread-tl li.is-reached:not(:last-child)::after {
+  background: var(--ink);
+}
+.th-dot {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+}
+.thread-tl .is-reached .th-dot {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+.thread-tl .is-opened.is-reached .th-dot {
+  border-color: var(--coral);
+  background: var(--coral);
+}
+.thread-tl .is-reached {
+  color: var(--text);
+}
+.th-text {
+  overflow-wrap: anywhere;
+}
+.thread-entries {
+  margin-top: 6px;
+  background: var(--surface-2);
+}
+.thread-entries .audit-row {
+  padding: 8px 12px;
+}
+
+@media (max-width: 760px) {
+  .kind-filter {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-inline: -4px;
+    padding: 2px 4px;
+  }
+  .audit-row.is-thread {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .thread-total {
+    grid-column: 2;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .thread-tl li {
+    font-size: 0.74rem;
+  }
+}

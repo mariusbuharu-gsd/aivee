@@ -1,13 +1,23 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import type { AuditEntry, AuditQuery, Member } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth, useLocationId } from '../auth/context';
 import { ROLE_LABEL } from '../auth/session';
+import { duration } from '../alerts/format';
+import { Icon } from '../components/Icon';
 import { describeChanges } from '../history/diff';
+import {
+  foldHistory,
+  itemTime,
+  type AlertThread,
+  type HistoryItem,
+  type Stage,
+} from '../history/threads';
 import { Banner } from '../ui/Banner';
 import { Select } from '../ui/Select';
 import { EmptyState, Segmented, Skeleton } from '../ui/controls';
+import './HistoryPage.css';
 
 const KINDS: { value: string; label: string }[] = [
   { value: '', label: 'Toate' },
@@ -51,13 +61,13 @@ function dayLabel(iso: string): string {
   return d.toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-function byDay(items: AuditEntry[]): { label: string; items: AuditEntry[] }[] {
-  const out: { label: string; items: AuditEntry[] }[] = [];
-  for (const e of items) {
-    const label = dayLabel(e.at);
+function byDay(items: HistoryItem[]): { label: string; items: HistoryItem[] }[] {
+  const out: { label: string; items: HistoryItem[] }[] = [];
+  for (const i of items) {
+    const label = dayLabel(itemTime(i));
     const last = out[out.length - 1];
-    if (last?.label === label) last.items.push(e);
-    else out.push({ label, items: [e] });
+    if (last?.label === label) last.items.push(i);
+    else out.push({ label, items: [i] });
   }
   return out;
 }
@@ -167,7 +177,7 @@ export function HistoryPage() {
         </p>
       </header>
       <form className="filters" aria-label="Filtre istoric" onSubmit={(e) => e.preventDefault()}>
-        <Select id="audit-kind" label="Tip" value={kind} options={KINDS} onChange={setKind} />
+        <KindFilter value={kind} onChange={setKind} />
         {!ownOnly && (
           <Select
             id="audit-actor"
@@ -189,13 +199,6 @@ export function HistoryPage() {
       </form>
       {(kind || actor) && (
         <div className="chips" aria-label="Filtre active">
-          {kind && (
-            <button type="button" className="chip" onClick={() => setKind('')}>
-              {KINDS.find((k) => k.value === kind)?.label}
-              <span aria-hidden="true">×</span>
-              <span className="sr-only">Scoate filtrul</span>
-            </button>
-          )}
           {actor && (
             <button type="button" className="chip" onClick={() => setActor('')}>
               {actors.find((x) => x.value === actor)?.label}
@@ -229,13 +232,17 @@ export function HistoryPage() {
             : 'Ce se întâmplă în locație apare aici.'}
         </EmptyState>
       ) : (
-        byDay(items).map((g) => (
+        byDay(foldHistory(items)).map((g) => (
           <section key={g.label} aria-label={g.label}>
             <h2 className="feed-group">{g.label}</h2>
             <ol className="audit" aria-label={`Intrări în istoric, ${g.label}`}>
-              {g.items.map((e) => (
-                <AuditRow key={e.id} e={e} />
-              ))}
+              {g.items.map((i) =>
+                i.type === 'thread' ? (
+                  <ThreadRow key={`t-${i.id}`} t={i} />
+                ) : (
+                  <AuditRow key={i.entry.id} e={i.entry} />
+                ),
+              )}
             </ol>
           </section>
         ))
@@ -250,16 +257,15 @@ export function HistoryPage() {
 }
 
 function AuditRow({ e }: { e: AuditEntry }) {
+  const machine = e.actor.kind !== 'user';
   const changes = describeChanges(e.before, e.after);
   const changed = e.before !== null && e.after !== null;
   return (
-    <li className="audit-row">
+    <li className={`audit-row${machine ? ' is-machine' : ''}`}>
       <time className="mono small muted" dateTime={e.at}>
         {when(e.at)}
       </time>
-      <span className={`audit-actor is-${e.actor.kind}`} title={e.actor.name}>
-        {e.actor.kind === 'user' ? initials(e.actor.name) : e.actor.kind === 'device' ? 'ED' : 'SY'}
-      </span>
+      <ActorBadge actor={e.actor} />
       <div className="audit-body">
         <p>{e.summary_ro}</p>
         {changed && changes.length > 0 && (
@@ -288,6 +294,136 @@ function AuditRow({ e }: { e: AuditEntry }) {
           </details>
         )}
       </div>
+    </li>
+  );
+}
+
+/** People get their initials; the edge device and AiVee itself get an icon, in grey. */
+function ActorBadge({ actor }: { actor: AuditEntry['actor'] }) {
+  if (actor.kind === 'user') {
+    return (
+      <span className="audit-actor is-user" title={actor.name} aria-hidden="true">
+        {initials(actor.name)}
+      </span>
+    );
+  }
+  const what = actor.kind === 'device' ? `Dispozitivul ${actor.name}` : 'AiVee (sistem)';
+  return (
+    <span className={`audit-actor is-${actor.kind}`} title={what}>
+      <Icon name={actor.kind === 'device' ? 'devices' : 'info'} size={16} label={what} />
+    </span>
+  );
+}
+
+/** Filter by kind with one press: buttons instead of a dropdown. */
+function KindFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const id = useId();
+  return (
+    <div className="kind-field">
+      <span id={id} className="seg-label">
+        Tip
+      </span>
+      <div className="kind-filter" role="group" aria-labelledby={id}>
+        {KINDS.map((k) => (
+          <button
+            key={k.value}
+            type="button"
+            className="kind-btn"
+            aria-pressed={value === k.value}
+            onClick={() => onChange(k.value)}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The four stages a guest cares about; a re-alert slots in when it happened. */
+const STAGE_ORDER: Stage[] = ['opened', 'acknowledged', 'realerted', 'arrived', 'closed'];
+
+const offset = (s: number) => `+${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+function stageLabel(t: AlertThread, stage: Stage): { text: string; reached: boolean } | null {
+  const step = t.steps.find((s) => s.stage === stage);
+  switch (stage) {
+    case 'opened':
+      return { text: 'pornită', reached: !!step };
+    case 'acknowledged':
+      if (step) {
+        const who =
+          step.entry.actor.kind === 'user'
+            ? `${step.entry.actor.name.split(/\s+/)[0]} a preluat`
+            : 'preluată';
+        return { text: who, reached: true };
+      }
+      return {
+        text: t.steps.some((s) => s.stage === 'arrived') ? 'fără preluare' : 'preluată',
+        reached: false,
+      };
+    case 'realerted':
+      return step ? { text: 'reamintită', reached: true } : null;
+    case 'arrived':
+      return { text: 'a ajuns', reached: !!step };
+    case 'closed':
+      return { text: 'închisă', reached: !!step };
+  }
+}
+
+/** One alert, one row: a mini timeline and how long it lasted; the raw entries on demand. */
+function ThreadRow({ t }: { t: AlertThread }) {
+  const stages = STAGE_ORDER.map((s) => ({ s, l: stageLabel(t, s) })).filter(
+    (x): x is { s: Stage; l: { text: string; reached: boolean } } => x.l !== null,
+  );
+  const closed = t.steps.some((s) => s.stage === 'closed');
+  return (
+    <li className="audit-row is-thread">
+      <time className="mono small muted" dateTime={t.start}>
+        {when(t.start)}
+      </time>
+      <span className="audit-actor is-alert" title="Alertă">
+        <Icon name="alerts" size={16} label="Alertă" />
+      </span>
+      <div className="audit-body">
+        <p>
+          <strong>{t.title}</strong>
+        </p>
+        <ol className="thread-tl" aria-label={`Cronologia alertei de la ${t.label}`}>
+          {stages.map(({ s, l }) => {
+            const step = t.steps.find((x) => x.stage === s);
+            return (
+              <li key={s} className={`is-${s}${l.reached ? ' is-reached' : ''}`}>
+                <span className="th-dot" aria-hidden="true" />
+                <span className="th-text">
+                  {l.text}
+                  {step && step.offset_s > 0 && (
+                    <span className="mono muted"> {offset(step.offset_s)}</span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+        <details className="tech">
+          <summary>Toate intrările ({t.entries.length})</summary>
+          <ol className="audit thread-entries">
+            {[...t.entries].reverse().map((e) => (
+              <AuditRow key={e.id} e={e} />
+            ))}
+          </ol>
+        </details>
+      </div>
+      <span className="thread-total">
+        {t.duration_s !== null ? (
+          <>
+            <span className="mono">{duration(t.duration_s)}</span>
+            <span className="small muted">în total</span>
+          </>
+        ) : (
+          !closed && <span className="small muted">încă deschisă</span>
+        )}
+      </span>
     </li>
   );
 }
