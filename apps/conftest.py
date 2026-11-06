@@ -28,7 +28,7 @@ class Broker:
 @pytest.fixture(scope="session")
 def broker() -> Iterator[Broker]:
     from testcontainers.core.container import DockerContainer
-    from testcontainers.core.waiting_utils import wait_for_logs
+    from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
     creds = {
         "api": ("aivee-api", secrets.token_urlsafe(12)),
@@ -42,6 +42,7 @@ def broker() -> Iterator[Broker]:
         .with_volume_mapping(str(INFRA / "entrypoint.sh"), "/entrypoint.sh")
         .with_kwargs(entrypoint=["/bin/sh", "/entrypoint.sh"])
         .with_exposed_ports(1883)
+        .waiting_for(LogMessageWaitStrategy("running").with_startup_timeout(30))
         .with_envs(
             MQTT_API_USER=creds["api"][0],
             MQTT_API_PASSWORD=creds["api"][1],
@@ -52,7 +53,6 @@ def broker() -> Iterator[Broker]:
         )
     )
     with container:
-        wait_for_logs(container, "running", timeout=30)
         yield Broker(
             host=container.get_container_host_ip(),
             port=int(container.get_exposed_port(1883)),
