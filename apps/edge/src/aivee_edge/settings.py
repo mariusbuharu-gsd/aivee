@@ -8,7 +8,8 @@ ROTATIONS = (0, 90, 180, 270)
 
 class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_EDGE_USER, MQTT_EDGE_PASSWORD, SITE, DEVICE,
-    CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL."""
+    CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE,
+    YUNET_MODEL."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 

@@ -99,7 +99,9 @@ class SituationEngine:
         starts over; alerts of removed zones close on the next step."""
         old = self._states
         self._states = {
-            z.id: old[z.id] if z.id in old and old[z.id].zone == z else ZoneState(z, self._grace_s, self._arrive_s or 0.0)
+            z.id: old[z.id]
+            if z.id in old and old[z.id].zone == z
+            else ZoneState(z, self._grace_s, self._arrive_s or 0.0)
             for z in zones
         }
         self._zone_names.update({z.id: z.name for z in zones})
