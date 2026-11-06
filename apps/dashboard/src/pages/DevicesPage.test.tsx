@@ -138,4 +138,32 @@ describe('DevicesPage', () => {
     expect(await within(sala).findByText('Nicio captură încă')).toBeInTheDocument();
     expect(within(sala).queryByRole('img', { name: /Captură de la/ })).toBeNull();
   });
+
+  it('offers a QR to use a phone as a cloud camera, and only for cloud cameras', async () => {
+    const user = userEvent.setup();
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    await api.createCamera({
+      id: 'tel-01',
+      name: 'Telefon',
+      source: 'mqtt-frames://tel-01',
+      device: 'edge-sala',
+    });
+    renderApp('/dispozitive', 'manager@aivee.demo', api);
+    await user.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Acțiuni pentru camera Sala principală' },
+        { timeout: 5000 },
+      ),
+    );
+    expect(screen.queryByRole('menuitem', { name: 'Folosește telefonul' })).toBeNull();
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('button', { name: 'Acțiuni pentru camera Telefon' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Folosește telefonul' }));
+    const dialog = screen.getByRole('dialog', { name: /Folosește telefonul/ });
+    const url = `${window.location.origin}/telefon?camera=tel-01`;
+    expect(within(dialog).getByRole('img', { name: /Cod QR/ })).toBeInTheDocument();
+    expect(within(dialog).getByText(url)).toBeInTheDocument();
+  });
 });

@@ -246,6 +246,12 @@ export interface ApiClient extends AccountApi {
    * (cloud mode). 404 while none came recently. Null when the API has no such stream (mock).
    */
   liveMjpegUrl(cameraId: string): string | null;
+  /**
+   * `POST /api/ingest/frames/{id}` with the session cookie: one JPEG from the phone page into a
+   * cloud camera. Rejects with an ApiError (401 logged out, 403 no `devices.manage`, 409 not a
+   * cloud camera, `network` when the request did not get through).
+   */
+  pushFrame(cameraId: string, jpeg: Blob): Promise<void>;
   saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones>;
   listRules(): Promise<Rule[]>;
   /** Translate a Romanian request into a draft rule; nothing is saved. */

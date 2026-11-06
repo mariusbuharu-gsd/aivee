@@ -638,6 +638,14 @@ export class MockApi implements ApiClient {
     return null;
   }
 
+  /** Frames from the phone page go nowhere in mock mode; the camera must exist. */
+  async pushFrame(cameraId: string): Promise<void> {
+    await wait(this.latency);
+    if (!this.cameras.some((c) => c.id === cameraId)) {
+      throw new ApiError('Camera nu există.', 'not_found', 404);
+    }
+  }
+
   async captureFrame(cameraId: string): Promise<CameraFrame> {
     await wait(this.latency);
     const cam = this.cameras.find((c) => c.id === cameraId);

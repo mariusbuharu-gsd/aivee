@@ -4,6 +4,7 @@ import type { CameraPatch, CameraView, DashboardMetrics, DeviceView } from '../a
 import { useApi } from '../api/context';
 import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
 import { Icon } from '../components/Icon';
+import { QrCode } from '../components/QrCode';
 import { StaffCaptureButton } from '../components/StaffCapture';
 import type { Metrics } from '../contracts';
 import { CameraThumb } from '../devices/CameraThumb';
@@ -11,6 +12,7 @@ import { lastSeenRo } from '../devices/lastSeen';
 import { maskSource } from '../devices/maskSource';
 import { useDevices } from '../devices/useDevices';
 import { useNow } from '../live/useNow';
+import { isCloudCamera } from '../phone/sender';
 import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
@@ -35,6 +37,7 @@ export function DevicesPage() {
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<CameraView | null>(null);
+  const [phone, setPhone] = useState<CameraView | null>(null);
   const devices = useDevices();
   // Prefill the edge default only while it is free; otherwise suggest the next id.
   const taken = new Set(cameras.map((c) => c.id));
@@ -73,6 +76,7 @@ export function DevicesPage() {
             device={devices[c.device] ?? null}
             health={metrics?.devices.find((d) => d.device === c.device) ?? null}
             onEdit={() => setEditing(c)}
+            onPhone={isCloudCamera(c) ? () => setPhone(c) : undefined}
             onZones={() => navigate(zonesPath(c.id))}
             onRemove={() => setRemoving(c)}
           />
@@ -125,6 +129,7 @@ export function DevicesPage() {
         </ConfirmDialog>
       )}
       {editing && <EditCamera camera={editing} onClose={() => setEditing(null)} />}
+      {phone && <PhoneQr camera={phone} onClose={() => setPhone(null)} />}
     </div>
   );
 }
@@ -134,6 +139,7 @@ function CameraCard({
   device,
   health,
   onEdit,
+  onPhone,
   onZones,
   onRemove,
 }: {
@@ -143,6 +149,8 @@ function CameraCard({
   /** This camera's device in the metrics poll; null when it reports nothing. */
   health: Metrics | null;
   onEdit: () => void;
+  /** Cloud cameras only: show the QR that opens the phone-as-camera page. */
+  onPhone?: () => void;
   onZones: () => void;
   onRemove: () => void;
 }) {
@@ -163,6 +171,7 @@ function CameraCard({
             label={`Acțiuni pentru camera ${c.name}`}
             items={[
               { label: 'Editează camera', onSelect: onEdit },
+              ...(onPhone ? [{ label: 'Folosește telefonul', onSelect: onPhone }] : []),
               { label: 'Editează zonele', onSelect: onZones },
               { label: 'Scoate camera…', danger: true, onSelect: onRemove },
             ]}
@@ -275,6 +284,25 @@ function SystemLine({ metrics }: { metrics: DashboardMetrics }) {
       cadre verificate <span className="mono">{verified.toFixed(1)}%</span> (trimise modelului greu;
       restul trec doar prin detecția rapidă)
     </p>
+  );
+}
+
+/** A QR for the presenter's phone: it opens /telefon on this camera, already chosen. */
+function PhoneQr({ camera, onClose }: { camera: CameraView; onClose: () => void }) {
+  const url = `${window.location.origin}/telefon?camera=${encodeURIComponent(camera.id)}`;
+  return (
+    <Dialog title={`Folosește telefonul pentru „${camera.name}”`} icon="devices" onClose={onClose}>
+      <figure className="phone-qr">
+        <QrCode value={url} label={`Cod QR pentru camera ${camera.name} pe telefon`} size={200} />
+        <figcaption className="small muted">
+          Scanează cu telefonul, intră în cont (proprietar sau manager) și apasă „Pornește camera”.
+          <br />
+          <a className="mono" href={url}>
+            {url}
+          </a>
+        </figcaption>
+      </figure>
+    </Dialog>
   );
 }
 

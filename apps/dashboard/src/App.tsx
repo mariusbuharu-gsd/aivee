@@ -10,6 +10,7 @@ import { LivePage } from './pages/LivePage';
 import { LocationsPage } from './pages/LocationsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetricsPage } from './pages/MetricsPage';
+import { PhoneCameraPage } from './pages/PhoneCameraPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RulesPage } from './pages/RulesPage';
 import { TeamPage } from './pages/TeamPage';
@@ -48,6 +49,7 @@ export function App() {
               <Route path="dispozitive" element={<DevicesPage />} />
               <Route path="camere/:cameraId/zone" element={<ZonesPage />} />
               <Route path="video" element={<VideoPage />} />
+              <Route path="telefon" element={<PhoneCameraPage />} />
             </Route>
             <Route element={<RequirePermission any={['audit.view', 'audit.view.own']} />}>
               <Route path="istoric" element={<HistoryPage />} />
