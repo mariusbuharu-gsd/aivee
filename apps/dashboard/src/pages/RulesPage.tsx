@@ -140,9 +140,8 @@ function RuleCard({ rule, perDay }: { rule: Rule; perDay?: number[] }) {
       <div className="side-head">
         <div className="rule-title">
           <h3>{rule.name}</h3>
-          <span className={`pill ${on ? 'pill-ok' : 'pill-muted'}`}>
-            {on ? 'activă' : 'oprită'}
-          </span>
+          {/* On is the normal state and the switch shows it; only "oprită" is worth a word. */}
+          {!on && <span className="pill pill-muted">oprită</span>}
         </div>
         <div className="rule-tools">
           <Switch

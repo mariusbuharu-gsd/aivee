@@ -72,6 +72,12 @@
 .composer-foot .actions {
   margin: 0;
 }
+/* Keyboard shortcuts mean nothing on a touch screen or a phone. */
+@media (pointer: coarse), (max-width: 760px) {
+  .composer-keys {
+    display: none;
+  }
+}
 .composer-hint {
   color: var(--danger);
   font-weight: 600;

@@ -1,14 +1,27 @@
-/* Reguli: rule cards read as one short sentence with a status pill. */
+/* Reguli: rule cards read as one short sentence; a pill only when the rule is off. */
+
+/* A long name wraps inside the title, never pushes the switch to its own line. */
+.rule-card > .side-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.rule-card .rule-tools {
+  flex: none;
+}
 
 .rule-title {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 10px;
   min-width: 0;
+  /* Same height as the switch row, so a one-line name sits centred beside it. */
+  min-height: 44px;
 }
 .rule-title h3 {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 .rule-line {
   margin: 0;
