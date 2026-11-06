@@ -44,7 +44,7 @@ export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
       };
       open.set(key, item);
       items.push(item);
-    } else {
+    } else if (e.state === 'closed') {
       const item = open.get(key);
       if (item) {
         item.closed_at = e.at;

@@ -80,8 +80,24 @@ describe('HttpApi', () => {
   it('maps validation and network errors to Romanian messages', async () => {
     mockFetch(json({ detail: [{ loc: ['body', 'text'], msg: 'too short' }] }, 422));
     await expect(api.listRules()).rejects.toMatchObject({
-      message: 'Datele trimise nu sunt valide.',
+      message: 'Date invalide: verificați text.',
       code: 'invalid',
+    });
+    mockFetch(
+      json(
+        {
+          detail: {
+            code: 'camera_site',
+            message_ro: 'Camera poate fi adăugată doar la Terasa demo.',
+          },
+        },
+        422,
+      ),
+    );
+    await expect(api.listRules()).rejects.toMatchObject({
+      message: 'Camera poate fi adăugată doar la Terasa demo.',
+      code: 'camera_site',
+      status: 422,
     });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(api.listRules()).rejects.toMatchObject({ code: 'network' });
@@ -107,5 +123,66 @@ describe('HttpApi', () => {
     const [a, b] = await api.listAlerts();
     expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/e-1');
     expect(b?.snapshot_url).toBeNull();
+  });
+});
+
+describe('HttpApi accounts (auth-roles-audit spec)', () => {
+  it('sends the session cookie and scopes resources to the current location', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json([]), json([]), json({ user: {} }));
+    api.setLocation('terasa');
+    await api.listCameras();
+    await api.listAlertCases({ location_id: 'centru', state: 'open' });
+    await api.me();
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/cameras?location_id=terasa');
+    expect(fetch.mock.calls[0]?.[1]?.credentials).toBe('include');
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'http://api:8000/api/alerts?location_id=centru&state=open',
+    );
+    expect(fetch.mock.calls[2]?.[0]).toBe('http://api:8000/api/auth/me');
+  });
+
+  it('announces a 401 so the app returns to /intra, except for the auth calls', async () => {
+    const api = new HttpApi('http://api:8000');
+    const seen = vi.fn();
+    window.addEventListener('aivee:unauthorized', seen);
+    const err = { detail: { code: 'unauthenticated', message_ro: 'Intră în cont.' } };
+    mockFetch(json(err, 401), json(err, 401));
+    await expect(api.listRules()).rejects.toMatchObject({ status: 401 });
+    await expect(api.me()).rejects.toMatchObject({ status: 401 });
+    expect(seen).toHaveBeenCalledTimes(1);
+    window.removeEventListener('aivee:unauthorized', seen);
+  });
+
+  it('treats a socket closed with 1008 (no session) like a 401 and stops reconnecting', () => {
+    const sockets: { onclose: ((e: CloseEvent) => void) | null; close: () => void }[] = [];
+    class FakeSocket {
+      onclose: ((e: CloseEvent) => void) | null = null;
+      onmessage: unknown = null;
+      constructor() {
+        sockets.push(this);
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    vi.useFakeTimers();
+    const seen = vi.fn();
+    window.addEventListener('aivee:unauthorized', seen);
+    const off = new HttpApi('http://api:8000').subscribeAlerts(() => undefined);
+    sockets[0]?.onclose?.({ code: 1008 } as CloseEvent);
+    vi.advanceTimersByTime(5000);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(1);
+    off();
+    window.removeEventListener('aivee:unauthorized', seen);
+    vi.useRealTimers();
+  });
+
+  it('acknowledges an alert with "Merg eu"', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));
+    await api.ackAlert('e-1');
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/alerts/e-1/ack');
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
   });
 });

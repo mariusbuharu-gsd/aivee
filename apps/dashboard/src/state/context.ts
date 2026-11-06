@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { AlertView, CameraView, DashboardMetrics } from '../api/client';
+import type { AlertCase, AlertView, CameraView, DashboardMetrics } from '../api/client';
 import type { AlertItem } from '../alerts/fold';
 import type { Rule, StaffSuggestion, Zone } from '../contracts';
 
@@ -17,6 +17,10 @@ export interface LiveData {
   addRule: (rule: Rule) => void;
   addCamera: (camera: CameraView) => void;
   dropSuggestion: (id: string) => void;
+  /** Lifecycle per alert, keyed by the opening event id (AlertItem.key). */
+  cases: Record<string, AlertCase>;
+  /** "Merg eu": acknowledge an open alert; rejects with the API's Romanian message. */
+  ack: (eventId: string) => Promise<void>;
 }
 
 export const LiveDataContext = createContext<LiveData | null>(null);

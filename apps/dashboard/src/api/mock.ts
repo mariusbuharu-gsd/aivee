@@ -10,6 +10,7 @@ import type {
   StaffSuggestion,
   Zone,
 } from '../contracts';
+import { MockAccounts } from './mockAccounts';
 import {
   ApiError,
   type AlertView,
@@ -17,7 +18,12 @@ import {
   type CameraView,
   type DashboardMetrics,
   type Detection,
+  type AlertCase,
+  type AuditQuery,
+  type Location,
   type NewCamera,
+  type RegisterInput,
+  type Role,
   type RuleDraft,
   type Unsubscribe,
 } from './client';
@@ -446,5 +452,103 @@ export class MockApi implements ApiClient {
       ).length,
       alert_latency_ms: 850 + Math.round(Math.random() * 300),
     });
+  }
+
+  // --- Accounts, locations, audit, alert lifecycle (see ./mockAccounts.ts) ---
+
+  private location: string | null = null;
+  readonly accounts = new MockAccounts(
+    () => this.alerts,
+    (zoneId) =>
+      this.cameras.flatMap((c) => c.zones ?? []).find((z) => z.id === zoneId)?.name ?? zoneId,
+    (c: AlertCase) =>
+      this.emitAlert(
+        c.rule_id,
+        c.zone_id,
+        'arrived' as AlertEvent['state'],
+        `${c.zone_name}: ${c.acknowledged_by ?? 'personalul'} a ajuns`,
+      ),
+  );
+
+  /** Run a synchronous account call with the simulated latency; errors become rejections. */
+  private async call<T>(fn: () => T): Promise<T> {
+    await wait(this.latency);
+    return fn();
+  }
+
+  setLocation(locationId: string | null) {
+    this.location = locationId;
+  }
+
+  me() {
+    return this.call(() => this.accounts.me());
+  }
+
+  login(email: string, password: string) {
+    return this.call(() => this.accounts.login(email, password));
+  }
+
+  register(input: RegisterInput) {
+    return this.call(() => this.accounts.register(input));
+  }
+
+  logout() {
+    return this.call(() => this.accounts.logout());
+  }
+
+  getInvite(token: string) {
+    return this.call(() => this.accounts.getInvite(token));
+  }
+
+  acceptInvite(token: string, input: { name: string; password: string }) {
+    return this.call(() => this.accounts.acceptInvite(token, input));
+  }
+
+  listLocations() {
+    return this.call(() => this.accounts.listLocations());
+  }
+
+  createLocation(location: Location) {
+    return this.call(() => this.accounts.createLocation(location));
+  }
+
+  updateLocation(id: string, patch: Partial<Omit<Location, 'id'>>) {
+    return this.call(() => this.accounts.updateLocation(id, patch));
+  }
+
+  deleteLocation(id: string) {
+    return this.call(() => this.accounts.deleteLocation(id));
+  }
+
+  listMembers(locationId: string) {
+    return this.call(() => this.accounts.listMembers(locationId));
+  }
+
+  updateMember(locationId: string, userId: string, role: Role) {
+    return this.call(() => this.accounts.updateMember(locationId, userId, role));
+  }
+
+  removeMember(locationId: string, userId: string) {
+    return this.call(() => this.accounts.removeMember(locationId, userId));
+  }
+
+  createInvite(input: { location_id: string; role: Role; email: string }) {
+    return this.call(() => this.accounts.createInvite(input));
+  }
+
+  listAudit(query: AuditQuery) {
+    return this.call(() => this.accounts.listAudit(query));
+  }
+
+  listAlertCases(query: { location_id: string; state?: string; limit?: number }) {
+    return this.call(() => this.accounts.listAlertCases(query));
+  }
+
+  ackAlert(eventId: string) {
+    return this.call(() => this.accounts.ackAlert(eventId, this.location ?? 'demo'));
+  }
+
+  getServiceMetrics(query: { location_id: string; from?: string; to?: string }) {
+    return this.call(() => this.accounts.serviceMetrics(query));
   }
 }

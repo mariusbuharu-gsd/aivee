@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router';
 import { App } from './App';
 import { createApi } from './api/client';
 import { ApiContext } from './api/context';
-import { LiveDataProvider } from './state/LiveData';
+import { AuthProvider } from './auth/AuthProvider';
 import './styles.css';
 import './pwa/register';
 
@@ -13,11 +13,11 @@ const api = await createApi();
 createRoot(document.getElementById('root') as HTMLElement).render(
   <StrictMode>
     <ApiContext.Provider value={api}>
-      <BrowserRouter>
-        <LiveDataProvider>
+      <AuthProvider>
+        <BrowserRouter>
           <App />
-        </LiveDataProvider>
-      </BrowserRouter>
+        </BrowserRouter>
+      </AuthProvider>
     </ApiContext.Provider>
   </StrictMode>,
 );

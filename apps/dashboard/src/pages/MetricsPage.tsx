@@ -1,4 +1,5 @@
 import { MetricsStrip } from '../components/MetricsStrip';
+import { ServiceStats } from '../components/ServiceStats';
 import { useLiveData } from '../state/context';
 
 export function MetricsPage() {
@@ -8,6 +9,7 @@ export function MetricsPage() {
       <header className="page-head">
         <h1>Metrici</h1>
       </header>
+      <ServiceStats />
       <MetricsStrip metrics={metrics} />
       <section aria-labelledby="per-device-h">
         <h2 id="per-device-h">Pe dispozitiv</h2>

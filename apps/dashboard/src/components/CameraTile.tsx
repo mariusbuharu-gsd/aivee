@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { CameraView, Detection } from '../api/client';
 import { useApi } from '../api/context';
+import { useAuth } from '../auth/context';
 import { detectionLabel } from '../live/detections';
 import { LivePlayer } from '../live/LivePlayer';
 import { toSvgPoints } from '../zones/geometry';
@@ -9,6 +10,7 @@ import { Icon } from './Icon';
 
 export function CameraTile({ camera }: { camera: CameraView }) {
   const api = useApi();
+  const { can } = useAuth();
   const [detections, setDetections] = useState<Detection[]>([]);
 
   useEffect(() => {
@@ -60,13 +62,15 @@ export function CameraTile({ camera }: { camera: CameraView }) {
             {camera.zones?.length ?? 0} zone · {shown.length} persoane
           </span>
         </div>
-        <Link
-          to={`/camere/${encodeURIComponent(camera.id)}/zone`}
-          className="btn btn-ghost"
-          aria-label={`Editează zonele pentru ${camera.name}`}
-        >
-          <Icon name="edit" /> Zone
-        </Link>
+        {can('devices.manage') && (
+          <Link
+            to={`/camere/${encodeURIComponent(camera.id)}/zone`}
+            className="btn btn-ghost"
+            aria-label={`Editează zonele pentru ${camera.name}`}
+          >
+            <Icon name="edit" /> Zone
+          </Link>
+        )}
       </footer>
     </article>
   );
