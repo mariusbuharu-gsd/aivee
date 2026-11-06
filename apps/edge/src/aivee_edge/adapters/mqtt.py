@@ -72,7 +72,7 @@ class MqttEdgeClient:
 
     def start(self, timeout: float | None = 10.0) -> None:
         """Connect and run the network loop in a background thread."""
-        props = Properties(PacketTypes.CONNECT)
+        props = Properties(PacketTypes.CONNECT)  # type: ignore[no-untyped-call]
         props.SessionExpiryInterval = SESSION_EXPIRY_S
         self._client.connect_async(
             self._host,
