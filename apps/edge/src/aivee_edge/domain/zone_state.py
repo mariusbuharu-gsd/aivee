@@ -8,6 +8,10 @@ from an angle can fall outside it. Durations are measured on `Frame.ts` (seconds
 missing for at most `grace_s` still counts as present, so a detector that drops a
 person for a frame does not reset their timers.
 
+A capture gap (no frames at all, e.g. the stream reconnecting) is not absence: the
+engine calls `shift` with the gap, which moves every stored time forward so timers
+freeze during the gap and the grace window starts again from the first frame after it.
+
 With `arrive_s > 0` a staff member counts as present only once their foot point has
 stayed in the zone for `arrive_s`: a waiter walking past a table has not served it.
 """
@@ -86,6 +90,25 @@ class ZoneState:
             if label not in labels and self._expired(self._objects_last_seen[label], ts):
                 del self.objects_since[label]
                 del self._objects_last_seen[label]
+
+    def shift(self, dt: float) -> None:
+        """Move every stored timestamp forward by `dt`, as if the gap had not happened."""
+
+        def moved(t: float | None) -> float | None:
+            return None if t is None else t + dt
+
+        self.started_at = moved(self.started_at)
+        self.empty_since = moved(self.empty_since)
+        for times in (self.present_since, self.last_seen):
+            for role in times:
+                times[role] = moved(times[role])
+        for labels in (self.objects_since, self._objects_last_seen):
+            for label in labels:
+                labels[label] += dt
+        for tracks in (self._staff_since, self._staff_last_seen):
+            for tid in tracks:
+                tracks[tid] += dt
+        self.objects.shift(dt)
 
     def _update_staff(self, ts: float) -> bool:
         """Track how long each staff member has stood in the zone; True when one of those

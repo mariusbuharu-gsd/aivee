@@ -1,5 +1,6 @@
 """EdgePipeline with every port faked: scripted frames in, published calls out."""
 
+import logging
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import count
 
@@ -595,3 +596,25 @@ def test_other_alerts_have_no_before_snapshot() -> None:
     p.run()
     assert rec.states()[0][0] == "opened"
     assert rec.befores == [None]
+
+
+def test_a_stream_gap_is_bridged_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """E26: after a 30 s capture gap the first frames have no tracks; the guests are not
+    counted as gone, so the open alert does not close as "rezolvat"."""
+    seated = rule(
+        "seated",
+        "table",
+        Condition(kind="present", role="guest", min_duration_s=10),
+        cooldown_s=0,
+    )
+    frames = [Frame(ts=float(t), tracks=guests(t)) for t in range(0, 21)]
+    frames += [Frame(ts=float(t)) for t in range(50, 53)]
+    frames += [Frame(ts=float(t), tracks=guests(t)) for t in range(53, 60)]
+    rec = Recorder()
+    p = pipeline(frames, Config([seated], [T1]), rec, grace_s=5.0)
+    with caplog.at_level(logging.INFO, logger="aivee_edge.pipeline"):
+        p.run()
+    assert rec.states() == [("opened", "seated", "t1")]
+    assert [r.getMessage() for r in caplog.records if "stream_gap" in r.getMessage()] == [
+        "stream_gap seconds=30.0"
+    ]

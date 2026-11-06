@@ -11,6 +11,15 @@ than that neither arrives nor counts as staff presence for the rule's conditions
 `object_gone` is a momentary fact made to last: it holds from the moment an object has
 been missing for `GONE_CONFIRM_S` until it reappears or `GONE_HOLD_S` later, so its
 alert opens once, can be acknowledged and arrived at, and closes by itself.
+
+Capture gaps (E26). With `gap_s` set, a frame arriving more than `gap_s` after the
+previous one means the stream stalled or reconnected: nothing was observed, so the gap
+is not absence. Every zone timer and the per-alert opening time used for arrival are
+shifted forward by the gap, so timers freeze and the grace window restarts from the
+first frame after it. Durations ("neservită de 1 min") therefore count observed time
+only. The cooldown is kept in wall time on purpose: it limits how often staff are paged,
+so a gap neither restarts it (swallowing a real call after a long outage) nor lets an
+alert re-open before `cooldown_s` has passed since it last opened.
 """
 
 from collections.abc import Callable
@@ -26,6 +35,16 @@ from aivee_edge.domain.observation import Frame
 from aivee_edge.domain.zone_state import ZoneState
 
 AlertKey = tuple[str, str]  # (rule_id, zone_id)
+
+STREAM_GAP_MIN_S = 2.0
+"""Floor of the capture-gap threshold, so frame jitter at low fps is never a gap."""
+
+
+def stream_gap_s(grace_s: float) -> float:
+    """Capture-gap threshold: a frame interval longer than `grace_s` is the first one
+    that can expire a role or object by itself (no frame, no observation), so that is
+    where a gap starts; never below `STREAM_GAP_MIN_S`."""
+    return max(grace_s, STREAM_GAP_MIN_S)
 
 
 def utc_from_timestamp(ts: float) -> datetime:
@@ -92,8 +111,13 @@ class SituationEngine:
         to_datetime: Callable[[float], datetime] = utc_from_timestamp,
         grace_s: float = 0.0,
         arrive_s: float | None = None,
+        gap_s: float | None = None,
     ) -> None:
         self._grace_s = grace_s
+        self._gap_s = gap_s
+        self._last_ts: float | None = None
+        self.last_gap_s: float | None = None
+        """Seconds of capture gap bridged by the latest `step`, else None."""
         self._arrive_s = arrive_s
         self._states: dict[str, ZoneState] = {}
         self._zone_names: dict[str, str] = {}
@@ -103,6 +127,9 @@ class SituationEngine:
         self._open: set[AlertKey] = set()
         self._arrived: set[AlertKey] = set()
         self._last_opened: dict[AlertKey, float] = {}
+        """Wall time of the latest opening, for the cooldown (never shifted)."""
+        self._opened_at: dict[AlertKey, float] = {}
+        """Opening time on the observed clock, for arrival (shifted over gaps)."""
         self._rules: list[Rule] = []
         self.update_rules(rules)
         self.update_zones(zones)
@@ -128,6 +155,7 @@ class SituationEngine:
 
     def step(self, frame: Frame) -> list[AlertEvent]:
         now = frame.ts
+        self._bridge_gap(now)
         for state in self._states.values():
             state.update(frame)
 
@@ -149,6 +177,7 @@ class SituationEngine:
                     if last is None or now - last >= rule.cooldown_s:
                         self._open.add(key)
                         self._last_opened[key] = now
+                        self._opened_at[key] = now
                         events.append(
                             self._event(
                                 key,
@@ -165,11 +194,23 @@ class SituationEngine:
             events.append(self._close(key, now))
         return events
 
+    def _bridge_gap(self, now: float) -> None:
+        last, self._last_ts = self._last_ts, now
+        self.last_gap_s = None
+        if self._gap_s is None or last is None or now - last <= self._gap_s:
+            return
+        gap = now - last
+        self.last_gap_s = gap
+        for state in self._states.values():
+            state.shift(gap)
+        for key in self._opened_at:
+            self._opened_at[key] += gap
+
     def _has_arrived(self, key: AlertKey, state: ZoneState, now: float) -> bool:
         if self._arrive_s is None or key not in self._open or key in self._arrived:
             return False
         since = state.staff_since()
-        return since is not None and now - max(since, self._last_opened[key]) >= self._arrive_s
+        return since is not None and now - max(since, self._opened_at[key]) >= self._arrive_s
 
     def _close(self, key: AlertKey, now: float) -> AlertEvent:
         self._open.discard(key)
