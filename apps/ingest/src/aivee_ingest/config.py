@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class IngestSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_INGEST_USER, MQTT_INGEST_PASSWORD, SNAPSHOT_DIR,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (+ POSTGRES_* via aivee_api.db.settings)."""
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (+ POSTGRES_* via aivee_api.db.settings, VAPID_* via
+    aivee_api.push.settings for Web Push)."""
 
     model_config = SettingsConfigDict(extra="ignore", env_ignore_empty=True)
 
