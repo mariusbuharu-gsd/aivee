@@ -1,0 +1,64 @@
+{
+  "description": "A vision model's second opinion on an opened alert (ingest, at most one per alert).\n\npending: being checked · confirmed / rejected: the model's answer · unavailable: not\nchecked (feature off, no key, timeout, error, no image); the alert is a normal one.",
+  "properties": {
+    "status": {
+      "enum": [
+        "pending",
+        "confirmed",
+        "rejected",
+        "unavailable"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "summary_ro": {
+      "default": "",
+      "description": "e.g. \"Masa 1: a dispărut paharul de vin\"",
+      "title": "Summary Ro",
+      "type": "string"
+    },
+    "object_ro": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Romanian name of the object, if any",
+      "title": "Object Ro"
+    },
+    "model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Model"
+    },
+    "latency_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latency Ms"
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "Verification",
+  "type": "object"
+}

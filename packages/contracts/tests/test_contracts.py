@@ -1,7 +1,7 @@
 import pytest
 from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import DetectedObject, DetectedTrack, Detections
-from aivee_contracts.events import AlertEvent, StaffSuggestion
+from aivee_contracts.events import AlertEvent, StaffSuggestion, Verification, before_snapshot_id
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Action, Condition, Rule
 from aivee_contracts.topics import Topics
@@ -146,3 +146,41 @@ def test_detections_round_trip_and_boxes_are_normalised() -> None:
 def test_staff_suggestion_snapshot_defaults_to_false() -> None:
     s = StaffSuggestion(suggestion_id="s", camera_id="c", track_id=1, staff_score=0.9, reason_ro="")
     assert s.snapshot is False
+
+
+def test_object_gone_condition_requires_objects() -> None:
+    with pytest.raises(ValidationError):
+        Condition(kind="object_gone")
+    cond = Condition(kind="object_gone", objects=["wine glass"], min_duration_s=30)
+    assert cond.objects == ["wine glass"]
+
+
+def test_alert_event_object_change_is_optional_and_backward_compatible() -> None:
+    old = {
+        "event_id": "e1",
+        "rule_id": "r1",
+        "camera_id": "c",
+        "zone_id": "t1",
+        "state": "opened",
+        "at": "2026-11-06T10:00:00Z",
+        "summary_ro": "Masa 1",
+    }
+    assert AlertEvent.model_validate(old).object_change is None
+    event = AlertEvent.model_validate(
+        {**old, "object_change": {"kind": "gone", "objects": ["wine glass"]}}
+    )
+    assert event.object_change is not None
+    assert event.object_change.before_snapshot is False
+
+
+def test_verification_defaults() -> None:
+    v = Verification(status="pending")
+    assert (v.summary_ro, v.object_ro, v.model, v.latency_ms) == ("", None, None, None)
+    with pytest.raises(ValidationError):
+        Verification.model_validate({"status": "maybe"})
+
+
+def test_before_snapshot_topic_and_id() -> None:
+    t = Topics(site="demo", device="edge-01")
+    assert t.snapshot_before("e1") == "aivee/demo/edge-01/snapshots/e1-before"
+    assert before_snapshot_id("e1") == "e1-before"

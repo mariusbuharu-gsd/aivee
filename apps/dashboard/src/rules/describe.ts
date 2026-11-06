@@ -37,6 +37,8 @@ export function describeCondition(c: Condition): string {
       return `${who} ridică mâna`;
     case 'objects_unattended':
       return `rămân obiecte (${(c.objects ?? []).join(', ') || 'vase'}) fără nimeni${duration(c.min_duration_s)}`;
+    case 'object_gone':
+      return `dispare un obiect (${(c.objects ?? []).join(', ') || 'pahar'}) aflat pe masă${duration(c.min_duration_s)}`;
   }
 }
 

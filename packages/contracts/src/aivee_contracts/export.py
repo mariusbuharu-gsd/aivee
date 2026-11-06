@@ -13,6 +13,7 @@ from aivee_contracts.events import (
     Metrics,
     StaffProfiles,
     StaffSuggestion,
+    Verification,
 )
 from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import Rule, RuleSet
@@ -30,6 +31,7 @@ MODELS: list[type[BaseModel]] = [
     StaffProfiles,
     EdgeCommand,
     Detections,
+    Verification,
 ]
 
 OUT = Path(__file__).resolve().parents[2] / "schema"
