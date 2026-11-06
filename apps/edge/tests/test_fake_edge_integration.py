@@ -25,7 +25,7 @@ def test_unattended_scenario_publishes_alert_events(broker: Any, site: str) -> N
 
     def on_message(_c: Any, _u: Any, msg: mqtt.MQTTMessage) -> None:
         received.append(AlertEvent.model_validate_json(msg.payload))
-        if len(received) == 2:
+        if len(received) == 3:
             done.set()
 
     watcher = mqtt.Client(callback_api_version=CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
@@ -57,6 +57,7 @@ def test_unattended_scenario_publishes_alert_events(broker: Any, site: str) -> N
 
     assert [(e.state, e.rule_id, e.zone_id) for e in received] == [
         ("opened", "demo-unattended", "masa-1"),
+        ("arrived", "demo-unattended", "masa-1"),
         ("closed", "demo-unattended", "masa-1"),
     ]
     assert [e.event_id for e in received] == [e.event_id for e in rec.alerts]
