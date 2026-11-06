@@ -7,6 +7,7 @@ Adapters in `aivee_edge.adapters` implement these protocols; tests use fakes.
 from typing import Protocol
 
 from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig
 from aivee_contracts.rules import Rule
@@ -36,6 +37,8 @@ class EventPublisher(Protocol):
     ) -> None: ...
 
     def publish_metrics(self, metrics: Metrics) -> None: ...
+
+    def publish_detections(self, detections: Detections) -> None: ...
 
 
 class CommandSource(Protocol):

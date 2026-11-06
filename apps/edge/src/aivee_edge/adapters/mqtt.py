@@ -17,6 +17,7 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import (
     AlertEvent,
     DeviceStatus,
@@ -120,6 +121,9 @@ class MqttEdgeClient:
             self._client.publish(topic, snapshot_jpeg, qos=1)
             suggestion = suggestion.model_copy(update={"snapshot": True})
         self._client.publish(self.topics.suggestions, suggestion.model_dump_json(), qos=1)
+
+    def publish_detections(self, detections: Detections) -> None:
+        self._client.publish(self.topics.detections, detections.model_dump_json(), qos=0)
 
     def publish_metrics(self, metrics: Metrics) -> None:
         self._client.publish(self.topics.metrics, metrics.model_dump_json(), qos=0)

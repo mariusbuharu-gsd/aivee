@@ -2,7 +2,9 @@
 
 source.read → detector.detect → (pose → raised hand, table zones only) → trajectory →
 behaviour features → (appearance vs staff profiles) → roles → situation engine →
-publish alerts (with snapshot on open), staff suggestions and periodic metrics.
+publish alerts (with snapshot on open), staff suggestions (with a person crop), live
+detections (<= 5 Hz) and periodic metrics. Owner commands (confirm/reject staff) are
+applied at the start of every step.
 
 Rules and zones are re-read from the `ConfigSource` on every frame and applied when
 they change, so edits in the dashboard take effect without a restart.
@@ -17,6 +19,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Protocol
 
+from aivee_contracts.detections import DetectedObject, DetectedTrack, Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfiles, StaffSuggestion
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Rule
@@ -89,6 +92,12 @@ def _new_id() -> str:
     return str(uuid.uuid4())
 
 
+def _clamp(bbox: BBox) -> BBox:
+    """Detector boxes can overshoot the frame by a hair; the contract wants [0, 1]."""
+    x1, y1, x2, y2 = (min(1.0, max(0.0, c)) for c in bbox)
+    return (x1, y1, x2, y2)
+
+
 class EdgePipeline:
     def __init__(
         self,
@@ -108,6 +117,7 @@ class EdgePipeline:
         embed_interval_s: float = 2.0,
         forget_after_s: float = 5.0,
         metrics_interval_s: float = 5.0,
+        detections_interval_s: float = 0.2,
         id_factory: Callable[[], str] = _new_id,
         to_datetime: Callable[[float], datetime] = utc_from_timestamp,
         cpu: Callable[[], float] = cpu_percent,
@@ -123,6 +133,9 @@ class EdgePipeline:
         self._commands = commands
         self._camera_id = camera_id
         self._seen_commands: deque[str] = deque(maxlen=1000)
+        self._to_datetime = to_datetime
+        self._detections_interval_s = detections_interval_s
+        self._detections_at = -float("inf")
         self._embed_interval_s = embed_interval_s
         self._forget_after_s = forget_after_s
 
@@ -254,6 +267,7 @@ class EdgePipeline:
                 suggestion.reason_ro,
             )
 
+        self._publish_detections(frame)
         self._forget_gone(frame, ts)
         verified = posed or embedded
         metrics = self.meter.record(ts, verified)
@@ -322,6 +336,28 @@ class EdgePipeline:
             if vector is not None:
                 self._appearance[t.track_id] = appearance_score(vector, centroids)
         return {t.track_id: self._appearance.get(t.track_id) for t in frame.tracks}, embedded
+
+    def _publish_detections(self, frame: Frame) -> None:
+        """Live overlay for the dashboard, throttled to `detections_interval_s`."""
+        if frame.ts - self._detections_at + 1e-6 < self._detections_interval_s:
+            return
+        self._detections_at = frame.ts
+        detections = Detections(
+            camera_id=self._camera_id,
+            ts=self._to_datetime(frame.ts),
+            tracks=[
+                DetectedTrack(
+                    track_id=t.track_id,
+                    bbox=_clamp(t.bbox),
+                    role=t.role,
+                    staff_score=min(1.0, max(0.0, t.staff_score)),
+                    raised_hand=t.raised_hand,
+                )
+                for t in frame.tracks
+            ],
+            objects=[DetectedObject(label=o.label, bbox=_clamp(o.bbox)) for o in frame.objects],
+        )
+        self._publisher.publish_detections(detections)
 
     def _forget_gone(self, frame: Frame, ts: float) -> None:
         for t in frame.tracks:

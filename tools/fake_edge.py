@@ -28,6 +28,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, Zone
 from aivee_contracts.rules import Action, Condition, Rule
@@ -318,6 +319,10 @@ class Recorder:
         self.metrics.append(metrics)
         if self.inner:
             self.inner.publish_metrics(metrics)
+
+    def publish_detections(self, detections: Detections) -> None:
+        if self.inner:
+            self.inner.publish_detections(detections)
 
 
 def wall_clock(_ts: float) -> datetime:

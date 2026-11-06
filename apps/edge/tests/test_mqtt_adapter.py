@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, DeviceStatus, Metrics, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import RuleSet
@@ -66,6 +67,22 @@ def test_metrics_are_qos0_and_suggestions_qos1(client: Any) -> None:
     )
     assert [(t, q) for t, _, q in sent] == [(edge.topics.metrics, 0), (edge.topics.suggestions, 1)]
     assert StaffSuggestion.model_validate_json(sent[1][1]).snapshot is False
+
+
+def test_detections_are_qos0_and_not_retained(monkeypatch: pytest.MonkeyPatch) -> None:
+    edge = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    sent: list[tuple[str, Any, int, bool]] = []
+
+    def fake_publish(topic: str, payload: Any = None, qos: int = 0, retain: bool = False) -> _Info:
+        sent.append((topic, payload, qos, retain))
+        return _Info()
+
+    monkeypatch.setattr(edge._client, "publish", fake_publish)
+    detections = Detections(camera_id="cam-01", ts=datetime.now(UTC))
+    edge.publish_detections(detections)
+    [(topic, payload, qos, retain)] = sent
+    assert (topic, qos, retain) == (edge.topics.detections, 0, False)
+    assert Detections.model_validate_json(payload) == detections
 
 
 def test_suggestion_crop_is_published_before_the_suggestion(client: Any) -> None:

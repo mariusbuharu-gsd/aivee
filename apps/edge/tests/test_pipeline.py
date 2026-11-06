@@ -4,10 +4,11 @@ from collections.abc import Iterator, Mapping, Sequence
 from itertools import count
 
 from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfile, StaffProfiles, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, Zone
 from aivee_contracts.rules import Action, Condition, Rule
-from aivee_edge.domain.observation import BBox, Frame, TrackObs
+from aivee_edge.domain.observation import BBox, Frame, ObjectObs, TrackObs
 from aivee_edge.domain.ports import Image
 from aivee_edge.domain.pose import Keypoint
 from aivee_edge.pipeline import EdgePipeline, StepResult
@@ -91,6 +92,7 @@ class Recorder:
         self.suggestions: list[StaffSuggestion] = []
         self.suggestions_with_snapshots: list[tuple[StaffSuggestion, bytes | None]] = []
         self.metrics: list[Metrics] = []
+        self.detections: list[Detections] = []
 
     def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
         self.alerts.append((event, snapshot_jpeg))
@@ -101,6 +103,9 @@ class Recorder:
 
     def publish_metrics(self, metrics: Metrics) -> None:
         self.metrics.append(metrics)
+
+    def publish_detections(self, detections: Detections) -> None:
+        self.detections.append(detections)
 
     def states(self) -> list[tuple[str, str, str]]:
         return [(e.state, e.rule_id, e.zone_id) for e, _ in self.alerts]
@@ -391,3 +396,33 @@ def test_commands_for_other_cameras_unknown_tracks_or_seen_twice_are_ignored() -
     commands.pending = [command("reject_staff", 1, command_id="c1")]  # redelivered id
     assert roles(p.step()) == {1: ("staff", 1.0)}
     assert roles(p.step())[42][0] == "guest"
+
+
+# -- live detections -----------------------------------------------------------------
+
+
+def test_detections_are_published_at_most_five_times_a_second() -> None:
+    frames = [Frame(ts=i / 10, tracks=(TrackObs(1, at(T1)),)) for i in range(20)]  # 10 fps, 2 s
+    rec = Recorder()
+    pipeline(frames, Config([], ZONES), rec).run()
+    stamps = [d.ts.timestamp() for d in rec.detections]
+    assert stamps == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8]
+
+
+def test_detections_carry_roles_hands_and_objects_with_clamped_boxes() -> None:
+    hand = TrackObs(1, at(T2))
+    edge_of_frame = TrackObs(2, (-0.01, 0.5, 0.1, 1.0004))
+    cup = ObjectObs("cup", (0.1, 0.1, 0.12, 0.13), confidence=0.9)
+    frames = [Frame(ts=0.0, tracks=(hand, edge_of_frame), objects=(cup,))]
+    commands = FakeCommands()
+    rec = Recorder()
+    p = pipeline(frames, Config([], ZONES), rec, pose=RaisingPose(), commands=commands)
+    p.run()
+
+    [d] = rec.detections
+    assert d.camera_id == CAM
+    by_id = {t.track_id: t for t in d.tracks}
+    assert by_id[1].raised_hand is True and by_id[1].role == "guest"
+    assert by_id[1].bbox == hand.bbox
+    assert by_id[2].bbox == (0.0, 0.5, 0.1, 1.0)
+    assert [(o.label, o.bbox) for o in d.objects] == [("cup", cup.bbox)]

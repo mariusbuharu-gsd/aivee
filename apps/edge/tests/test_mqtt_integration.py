@@ -3,10 +3,13 @@
 import threading
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import paho.mqtt.client as mqtt
 import pytest
+from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import DeviceStatus
 from aivee_contracts.rules import Action, Condition, Rule, RuleSet
 from aivee_contracts.topics import Topics
@@ -73,6 +76,53 @@ def test_retained_ruleset_reaches_a_fresh_client_after_reconnect(broker: Any, si
         second.stop()
         api.loop_stop()
         api.disconnect()
+
+
+def test_command_from_the_api_user_reaches_the_edge_through_the_acl(broker: Any, site: str) -> None:
+    device = broker.edge[0]
+    topics = Topics(site=site, device=device)
+    edge = _edge(broker, site)
+    api = _api_client(broker)
+    cmd = EdgeCommand(
+        command_id="c1",
+        kind="confirm_staff",
+        camera_id="cam1",
+        track_id=7,
+        suggestion_id="s1",
+        at=datetime.now(UTC),
+    )
+    try:
+        api.publish(topics.commands, cmd.model_dump_json(), qos=1).wait_for_publish(5)
+        received: list[EdgeCommand] = []
+        assert _wait(lambda: bool(received.extend(edge.take_commands()) or received))
+        assert received == [cmd]
+    finally:
+        edge.stop()
+        api.loop_stop()
+        api.disconnect()
+
+
+def test_acl_lets_the_edge_publish_its_own_detections(broker: Any, site: str) -> None:
+    topics = Topics(site=site, device=broker.edge[0])
+    got = threading.Event()
+    watcher = mqtt.Client(callback_api_version=CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
+    watcher.username_pw_set(*broker.api)
+    watcher.on_message = lambda *_: got.set()
+    watcher.connect(broker.host, broker.port)
+    watcher.subscribe(topics.detections, qos=0)
+    watcher.loop_start()
+    edge = _edge(broker, site)
+    try:
+        detections = Detections(camera_id="cam1", ts=datetime.now(UTC))
+        for _ in range(20):
+            edge.publish_detections(detections)
+            if got.wait(0.25):
+                break
+        assert got.is_set()
+    finally:
+        edge.stop()
+        watcher.loop_stop()
+        watcher.disconnect()
 
 
 def test_broker_publishes_offline_will_when_edge_dies(broker: Any, site: str) -> None:
