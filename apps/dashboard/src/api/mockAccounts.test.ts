@@ -87,3 +87,39 @@ describe('mock accounts follow the permission matrix', () => {
     expect(m.wait.count).toBeGreaterThan(0);
   });
 });
+
+describe('mock counts for the cards', () => {
+  it('counts every location’s cameras, not only the current one', async () => {
+    const api = await signedIn('owner@aivee.demo');
+    const cameras = await api.listCameras();
+    const locations = await api.listLocations();
+    const demo = locations.find((l) => l.id === 'demo');
+    expect(demo?.cameras_total).toBe(cameras.length);
+    expect(demo?.cameras_online).toBe(cameras.filter((c) => c.online).length);
+    expect(locations.find((l) => l.id === 'centru')?.cameras_total).toBeGreaterThan(0);
+  });
+
+  it('says which members get push notifications', async () => {
+    const api = await signedIn('manager@aivee.demo');
+    const push = Object.fromEntries(
+      (await api.listMembers('demo')).map((m) => [m.email, m.push_enabled]),
+    );
+    expect(push).toEqual({
+      'owner@aivee.demo': true,
+      'manager@aivee.demo': false,
+      'staff@aivee.demo': true,
+    });
+  });
+
+  it('gives every rule 7 days of alert counts that add up to the total', async () => {
+    const api = await signedIn('owner@aivee.demo');
+    const stats = await api.getRuleStats();
+    expect(stats.days).toHaveLength(7);
+    const rules = await api.listRules();
+    expect(stats.rules.map((r) => r.rule_id)).toEqual(rules.map((r) => r.id));
+    for (const r of stats.rules) {
+      expect(r.per_day).toHaveLength(7);
+      expect(r.per_day.reduce((a, b) => a + b, 0)).toBe(r.total);
+    }
+  });
+});

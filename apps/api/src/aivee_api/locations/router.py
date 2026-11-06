@@ -7,6 +7,7 @@ from aivee_api.locations.schemas import (
     LocationIn,
     LocationOut,
     LocationPatch,
+    LocationSummary,
     MemberOut,
     MemberPatch,
 )
@@ -19,8 +20,8 @@ LocationId = Path(pattern=SAFE_ID)
 
 
 @router.get("")
-async def list_locations(s: SessionDep, p: CurrentUser) -> list[LocationOut]:
-    """Every location the caller can see (owner: all of the organization)."""
+async def list_locations(s: SessionDep, p: CurrentUser) -> list[LocationSummary]:
+    """Every location the caller can see (owner: all of the organization), with camera counts."""
     return await LocationService(s, p).visible()
 
 

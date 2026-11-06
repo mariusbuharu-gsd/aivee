@@ -181,6 +181,8 @@ export class MockAccounts {
     ],
   ]);
   private revoked = new Set<string>();
+  /** Users with a Web Push subscription (the API's push_subscriptions). */
+  private pushUsers = new Set(['u-owner', 'u-staff']);
   private audit: AuditEntry[] = seedAudit();
   /** event_id → who pressed "Merg eu" and when; arrival time once the waiter reached the zone. */
   private acks = new Map<
@@ -519,7 +521,7 @@ export class MockAccounts {
     const owners: Member[] = this.users
       .filter((u) => u.orgId === orgId && u.isOwner)
       .map((u) => ({ user_id: u.id, name: u.name, email: u.email, role: 'owner' }));
-    return [
+    const members: Member[] = [
       ...owners,
       ...this.members
         .filter((m) => m.locationId === locationId)
@@ -528,6 +530,7 @@ export class MockAccounts {
           return { user_id: u.id, name: u.name, email: u.email, role: m.role };
         }),
     ];
+    return members.map((m) => ({ ...m, push_enabled: this.pushUsers.has(m.user_id) }));
   }
 
   /** Managers may only manage staff of their own location (spec: users.manage). */
