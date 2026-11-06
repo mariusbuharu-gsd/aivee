@@ -32,15 +32,25 @@ export interface RuleChip {
   fields: ChipField[];
 }
 
+// COCO class names (Condition.objects) in Romanian, with the indefinite article; the same
+// pairs the translator prompt uses (apps/api rules/prompt.py). Unknown labels stay as COCO.
 const OBJECT_RO: Record<string, string> = {
-  cup: 'pahar',
-  'wine glass': 'pahar',
-  bowl: 'bol',
-  bottle: 'sticlă',
-  fork: 'tacâm',
-  knife: 'tacâm',
-  spoon: 'tacâm',
+  'wine glass': 'un pahar de vin',
+  cup: 'o ceașcă',
+  bottle: 'o sticlă',
+  bowl: 'un bol',
+  fork: 'o furculiță',
+  knife: 'un cuțit',
+  spoon: 'o lingură',
 };
+const OBJECT_KINDS = new Set<Condition['kind']>(['objects_unattended', 'object_gone']);
+const DISHES = new Set(['cup', 'bottle', 'wine glass', 'bowl', 'fork', 'knife', 'spoon']);
+
+/** "un pahar de vin sau o ceașcă"; COCO labels without a Romanian name are kept as they are. */
+export function objectNames(c: Condition, join = ' sau '): string {
+  const names = [...new Set((c.objects ?? []).map((o) => OBJECT_RO[o] ?? o))];
+  return names.length ? names.join(join) : 'un obiect';
+}
 
 const ACTION_RO: Record<Rule['action']['type'], string> = {
   telegram: 'mesaj pe Telegram',
@@ -58,11 +68,6 @@ export function shortDuration(s: number | undefined): string {
 const withTime = (text: string, s: number | undefined) =>
   [text, shortDuration(s)].filter(Boolean).join(' ');
 
-const objects = (c: Condition, fallback: string) => {
-  const names = [...new Set((c.objects ?? []).map((o) => OBJECT_RO[o] ?? o))];
-  return names.length ? names.join(', ') : fallback;
-};
-
 function guestPart(c: Condition): string {
   switch (c.kind) {
     case 'present':
@@ -76,7 +81,7 @@ function guestPart(c: Condition): string {
     case 'objects_unattended':
       return withTime('vase lăsate', c.min_duration_s);
     case 'object_gone':
-      return `dispare ${objects(c, 'un obiect')}`;
+      return `dispare ${objectNames(c)}`;
   }
 }
 
@@ -117,7 +122,11 @@ export function ruleChips(rule: Rule): [RuleChip, RuleChip, RuleChip, RuleChip] 
     { key: 'where', label: CHIP_LABEL.where, value: where, fields: [{ kind: 'zone' }] },
     {
       key: 'guest',
-      label: CHIP_LABEL.guest,
+      // An object rule (unattended dishes, a glass that disappears) is not about a guest.
+      label:
+        guest.length > 0 && guest.every(({ c }) => OBJECT_KINDS.has(c.kind))
+          ? 'Obiect'
+          : CHIP_LABEL.guest,
       value: guest.map(({ c }) => guestPart(c)).join(', ') || 'oricine',
       fields: fieldsOf(guest),
     },
@@ -136,13 +145,64 @@ export function ruleChips(rule: Rule): [RuleChip, RuleChip, RuleChip, RuleChip] 
   ];
 }
 
-/** One line for a rule card: "orice masă · client stă 1 min · personal lipsește 1 min → …". */
+const WHO: Record<NonNullable<Condition['role']>, string> = {
+  guest: 'un client',
+  staff: 'cineva de la personal',
+  any: 'cineva',
+};
+const NOBODY: Record<NonNullable<Condition['role']>, string> = {
+  guest: 'niciun client',
+  staff: 'nimeni de la personal',
+  any: 'nimeni',
+};
+
+/** " de 2 min", or "" with no duration. */
+const forTime = (s: number | undefined) => (shortDuration(s) ? ` de ${shortDuration(s)}` : '');
+
+/** One condition as a clause of the card sentence, worded for its kind. */
+export function conditionClause(c: Condition, zoneTag: string): string {
+  const role = c.role ?? 'any';
+  const time = shortDuration(c.min_duration_s);
+  const onTable = zoneTag === 'table';
+  switch (c.kind) {
+    case 'present':
+      return `${WHO[role]} stă${forTime(c.min_duration_s)}`;
+    case 'absent':
+      return `nu vine ${NOBODY[role]}${forTime(c.min_duration_s)}`;
+    case 'count':
+      return `cel puțin ${c.min_count ?? 1} persoane${zoneTag === 'entrance' ? ' la coadă' : ''}`;
+    case 'pose':
+      return `${WHO[role === 'any' ? 'guest' : role]} ridică mâna`;
+    case 'objects_unattended':
+      if (onTable && (c.objects ?? []).every((o) => DISHES.has(o))) {
+        return `masa rămâne nedebarasată${forTime(c.min_duration_s)}`;
+      }
+      return `rămâne ${objectNames(c)} fără nimeni lângă${forTime(c.min_duration_s)}`;
+    case 'object_gone':
+      return `dispare ${objectNames(c)}${time ? ` (după ${time} ${onTable ? 'pe masă' : 'în zonă'})` : ''}`;
+  }
+}
+
+/**
+ * One line for a rule card, worded per condition kind, e.g.
+ * "orice masă · un client așteaptă 2 min și nu vine nimeni de la personal → mesaj pe Telegram"
+ * or "orice masă · dispare un pahar de vin (după 1 min pe masă) → notificare pe telefon".
+ */
 export function shortRule(rule: Rule): string {
-  const [where, guest, staff, then] = ruleChips(rule);
-  const parts = [where.value];
-  if (guest.value !== 'oricine') parts.push(`client ${guest.value}`);
-  if (staff.value !== 'nu contează') parts.push(`personal ${staff.value}`);
-  return `${parts.join(' · ')} → ${then.value}`;
+  const [where, , , then] = ruleChips(rule);
+  const [first, second, ...rest] = rule.all_of;
+  // The default wait rule: a guest is there and staff has not come, for the same time.
+  const wait =
+    first?.kind === 'present' &&
+    first.role === 'guest' &&
+    second?.kind === 'absent' &&
+    second.role === 'staff' &&
+    rest.length === 0 &&
+    (first.min_duration_s ?? 0) === (second.min_duration_s ?? 0);
+  const what = wait
+    ? `un client așteaptă ${shortDuration(first.min_duration_s) || 'în zonă'} și nu vine nimeni de la personal`
+    : rule.all_of.map((c) => conditionClause(c, rule.zone_tag)).join(' și ');
+  return `${where.value} · ${what} → ${then.value}`;
 }
 
 // ---------------------------------------------------------------------------------------------

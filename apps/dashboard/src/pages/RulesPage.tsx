@@ -147,10 +147,10 @@ function RuleCard({ rule }: { rule: Rule }) {
         </div>
       </div>
       <p className="rule-line">{shortRule(rule)}</p>
+      {rule.prompt_ro && <p className="muted small rule-prompt">„{rule.prompt_ro}”</p>}
       {error && <Banner tone="error" title={error} />}
       <details className="tech">
         <summary>Detalii</summary>
-        {rule.prompt_ro && <p className="muted small">Ai scris: „{rule.prompt_ro}”</p>}
         <p className="small">{describeRule(rule)}</p>
         <pre className="mono json">{JSON.stringify(rule, null, 2)}</pre>
       </details>
