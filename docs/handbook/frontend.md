@@ -6,8 +6,19 @@
 - Run against the mock: `npm ci && npm run dev` (no `VITE_API_URL`) — a 45 s demo timeline plays.
 - Run against the real stack: `make up && make api` in the repo root, then
   `VITE_API_URL=http://localhost:8000 npm run dev`. Live video: `VITE_WHEP_BASE` (default `http://localhost:8889`).
-- Checks before a PR: `npm run lint && npm test -- --run && npm run build`, and
+- Checks before a PR: `npm run lint && npm test -- --run && npm run build && npm run e2e`, and
   `npm run contracts && git diff --exit-code src/contracts`.
+
+### End-to-end tests (Playwright, `e2e/`)
+- `npm run e2e` (or `make e2e`): a production build on the built-in mock, in Chrome on desktop and on a
+  Pixel 7 viewport. Needs nothing running; not part of CI — run it before a release. First time locally: `npx playwright install chromium`.
+- `npm run e2e:real`: the same app against a running API (`make api` + `make seed`). Reads `E2E_API_URL`
+  (default `http://localhost:8000`) and `DEMO_PASSWORD` from the environment; it serves on :5174, which the
+  API's CORS allows. These tests are read-only except "Merg eu", which writes only the audit log.
+- `e2e/mock/` covers sign-in and `?next=`, sign-out, invites, the role matrix per page, the location switcher,
+  "Merg eu" and the alert timeline, history filters, metrics. `e2e/real/` asserts each role loads its pages
+  without any 4xx from the API (the anonymous `/api/auth/me` probe excepted).
+- Failures keep a trace and screenshot in `test-results/`; open one with `npx playwright show-trace <zip>`.
 
 ### Screens (UI copy in Romanian)
 | Route | Page | Purpose |
