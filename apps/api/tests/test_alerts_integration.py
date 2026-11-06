@@ -378,6 +378,7 @@ async def test_ack_replaces_the_alert_push_on_every_phone_with_who_goes(
     assert payload["tag"] == opened.event_id
     assert payload["body"] == "Ana merge la Masa Unu"
     assert payload["title"] == "AiVee · Preluată"
+    assert payload["kind"] == "ack"  # the service worker replaces it silently
 
     assert (await ion.post(f"/api/alerts/{opened.event_id}/ack")).status_code == 409
     assert len(sender.sent) == 1  # a refused ack pushes nothing

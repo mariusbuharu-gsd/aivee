@@ -106,6 +106,7 @@ async def send_test(
     message = PushMessage(
         title="AiVee",
         body="Test reușit: aici primești alertele AiVee.",
+        kind="test",
         url="/alerte",
         tag="aivee-test",
     )

@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import httpx
+from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent
 
 from aivee_ingest.notify import alert_text, with_prefix
@@ -62,7 +63,7 @@ class TelegramNotifier:
         self._check(resp)
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         chat_id = await self._chat(tag)
         if not chat_id:

@@ -110,7 +110,7 @@ class IngestHandler:
                 log.exception("notifier failed for event %s", event.event_id)
         elif event.state == "arrived" and view is not None:
             try:
-                await self._notifier.send_text(arrival_ro(view), view.event_id)
+                await self._notifier.send_text(arrival_ro(view), view.event_id, kind="arrived")
             except Exception:
                 log.exception("notifier failed for event %s", event.event_id)
 
@@ -161,7 +161,9 @@ class IngestHandler:
             note = device_closed_note_ro(t.device, reason, len(closed))
             try:
                 # No "a ajuns": nobody came. The tag picks the location (and its chat).
-                await self._notifier.send_text(note, closed[0].event_id, title="AiVee · Dispozitiv")
+                await self._notifier.send_text(
+                    note, closed[0].event_id, title="AiVee · Dispozitiv", kind="device"
+                )
             except Exception:
                 log.exception("notifier failed for the %s note of %s", reason, t.device)
 

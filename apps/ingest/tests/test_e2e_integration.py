@@ -30,6 +30,7 @@ from aivee_api.edge.publisher import MqttEdgeLink
 from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
 from aivee_api.main import create_app
 from aivee_api.metrics.cache import MetricsCache
+from aivee_api.push.sender import PushKind
 from aivee_api.settings import ApiSettings
 from aivee_contracts.events import AlertEvent
 from aivee_contracts.topics import Topics
@@ -86,7 +87,7 @@ class QuietNotifier:
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None: ...
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None: ...
 
 

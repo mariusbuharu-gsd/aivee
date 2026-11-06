@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from aivee_api.db.repositories import CameraRepository
-from aivee_api.push.sender import PushMessage, PushSender
+from aivee_api.push.sender import PushKind, PushMessage, PushSender
 from aivee_api.push.service import push_to_location
 from aivee_contracts.events import AlertEvent
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,13 +36,14 @@ class WebPushNotifier:
         message = PushMessage(
             title=f"Alertă AiVee · {zone}",
             body=event.summary_ro,
+            kind="alert",
             url="/alerte",
             tag=event.event_id,
         )
         await push_to_location(self._sessions, self._sender, message, location_id)
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         """Follow-up (staff arrived, device gone); the same `tag` replaces the alert's
         notification. `title` defaults to the arrival's."""
@@ -51,7 +52,11 @@ class WebPushNotifier:
             log.warning("no location for alert %s; follow-up push not sent", tag)
             return
         message = PushMessage(
-            title=title or "AiVee · Angajat sosit", body=text, url="/alerte", tag=tag or "aivee"
+            title=title or "AiVee · Angajat sosit",
+            body=text,
+            kind=kind,
+            url="/alerte",
+            tag=tag or "aivee",
         )
         await push_to_location(self._sessions, self._sender, message, location_id)
 
@@ -77,10 +82,11 @@ class CompositeNotifier:
         self._log_failures(results, f"event {event.event_id}")
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         results = await asyncio.gather(
-            *(n.send_text(text, tag, title=title) for n in self.notifiers), return_exceptions=True
+            *(n.send_text(text, tag, title=title, kind=kind) for n in self.notifiers),
+            return_exceptions=True,
         )
         self._log_failures(results, f"follow-up {tag}")
 

@@ -16,6 +16,7 @@ from aivee_api.alerts.audit import RepositoryAuditWriter
 from aivee_api.alerts.repository import AlertRepository
 from aivee_api.audit.models import AuditRow
 from aivee_api.db.models import Device, EventRow
+from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent, DeviceStatus
 from aivee_contracts.topics import Topics
 from aivee_ingest.handler import IngestHandler
@@ -30,15 +31,15 @@ TOPICS = Topics(site=SITE, device=DEVICE)
 class Notifier:
     def __init__(self) -> None:
         self.opened: list[str] = []
-        self.texts: list[tuple[str, str | None, str | None]] = []
+        self.texts: list[tuple[str, str | None, str | None, PushKind]] = []
 
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         self.opened.append(event.event_id)
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
-        self.texts.append((text, tag, title))
+        self.texts.append((text, tag, title, kind))
 
 
 def _status(state: str) -> bytes:
@@ -146,10 +147,11 @@ async def test_offline_closes_open_and_acknowledged_alerts_once(
 
     texts = [t for n in notifiers for t in n.texts]
     assert len(texts) == 1
-    text, tag, title = texts[0]
+    text, tag, title, kind = texts[0]
     assert text == "edge-01 s-a deconectat — 2 alerte închise"
     assert tag in {waiting.event_id, acked.event_id} and title
-    assert not any("a ajuns" in t for t, _, _ in texts)
+    assert kind == "device"
+    assert not any("a ajuns" in t for t, _, _, _ in texts)
 
     # The live feed (/ws/events) sees both alerts change.
     async with sessions() as s:
@@ -172,7 +174,7 @@ async def test_one_alert_is_singular(sessions: Any, tmp_path: Path) -> None:
     await a.handle(TOPICS.status, _status("online"))
     await _publish(a, _event("opened", "t1"))
     await a.handle(TOPICS.status, _status("offline"))
-    assert [t for t, _, _ in notifiers[0].texts] == ["edge-01 s-a deconectat — o alertă închisă"]
+    assert [t for t, _, _, _ in notifiers[0].texts] == ["edge-01 s-a deconectat — o alertă închisă"]
 
 
 async def test_back_online_closes_stale_alerts_but_retained_online_does_not(
@@ -204,7 +206,7 @@ async def test_back_online_closes_stale_alerts_but_retained_online_does_not(
     )
     [row] = await _closed_audit(sessions)
     assert row.summary_ro == "Alerta de la Masa 1 s-a închis: dispozitivul a repornit"
-    texts = [t for n in notifiers for t, _, _ in n.texts]
+    texts = [t for n in notifiers for t, _, _, _ in n.texts]
     assert texts == ["edge-01 a repornit — o alertă închisă"]
 
 

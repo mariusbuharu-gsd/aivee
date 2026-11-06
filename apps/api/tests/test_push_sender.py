@@ -72,7 +72,9 @@ def _browser(base: str) -> tuple[Subscription, ec.EllipticCurvePrivateKey, bytes
 async def test_sends_an_encrypted_vapid_signed_message(push_service: PushService) -> None:
     vapid = _vapid()
     sub, key, auth = _browser(push_service.base)
-    message = PushMessage(title="Alertă AiVee · Masa 1", body="Masa 1 așteaptă de 1 min", tag="e1")
+    message = PushMessage(
+        title="Alertă AiVee · Masa 1", body="Masa 1 așteaptă de 1 min", kind="alert", tag="e1"
+    )
 
     assert await WebPushSender(vapid).send(sub, message.payload()) == 201
 
@@ -85,6 +87,7 @@ async def test_sends_an_encrypted_vapid_signed_message(push_service: PushService
     assert json.loads(plain) == {
         "title": "Alertă AiVee · Masa 1",
         "body": "Masa 1 așteaptă de 1 min",
+        "kind": "alert",
         "url": "/alerte",
         "tag": "e1",
     }

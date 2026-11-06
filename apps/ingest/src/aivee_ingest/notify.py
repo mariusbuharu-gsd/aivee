@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
+from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent
 
 log = logging.getLogger(__name__)
@@ -19,11 +20,12 @@ class Notifier(Protocol):
         ...
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         """A follow-up message, e.g. "Ana a ajuns la Masa 4 după 2 min 10 s". `tag` is the
         alert's id (Web Push uses it to replace the alert's notification); `title` is the
-        push title where the channel has one."""
+        push title where the channel has one; `kind` tells the dashboard's service worker
+        whether the replaced notification rings again."""
         ...
 
 
@@ -51,6 +53,6 @@ class LogNotifier:
         )
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         log.info("ALERT %s (alert: %s)", text, tag)
