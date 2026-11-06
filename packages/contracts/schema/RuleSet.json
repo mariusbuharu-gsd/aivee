@@ -31,7 +31,7 @@
       "type": "object"
     },
     "Condition": {
-      "description": "One fact about a zone that must hold for a rule to fire.\n\n- present: someone with `role` has been in the zone for at least `min_duration_s`\n- absent: nobody with `role` has been in the zone for at least `min_duration_s`\n  (counted from when guests sat down, so \"nobody came since they arrived\")\n- count: at least `min_count` people with `role` are in the zone\n- pose: someone with `role` in the zone shows `pose`\n- objects_unattended: `objects` are in the zone and no person has been there\n  for at least `min_duration_s`\n- object_gone: an object of `objects` was in the zone for at least `min_duration_s`\n  and has now been missing for a short confirm window (a few seconds, set by the\n  edge), so detector flicker does not count as a disappearance",
+      "description": "One fact about a zone that must hold for a rule to fire.\n\n- present: someone with `role` has been in the zone for at least `min_duration_s`\n- absent: nobody with `role` has been in the zone for at least `min_duration_s`\n  (counted from when guests sat down, so \"nobody came since they arrived\")\n- count: at least `min_count` people with `role` are in the zone\n- pose: someone with `role` in the zone shows `pose`\n- objects_unattended: `objects` are in the zone and no person has been there\n  for at least `min_duration_s`\n- object_gone: an object of `objects` was in the zone for at least `min_duration_s`\n  and has now been missing for a short confirm window (a few seconds, set by the\n  edge), so detector flicker does not count as a disappearance\n- object_present: an object of `objects` (COCO class names, not \"person\") has been in\n  the zone for at least `min_duration_s` (\"a apărut un urs\", \"cineva are un cuțit\")\n- visual: a zero-shot image check (CLIP) of the zone crop (or the whole frame) has\n  scored the `positive` prompts above `threshold` against the `negative` ones for at\n  least `min_duration_s`, continuously (\"e foc\", \"e apă pe jos\", \"ușa e deschisă\")",
       "properties": {
         "kind": {
           "enum": [
@@ -40,7 +40,9 @@
             "count",
             "pose",
             "objects_unattended",
-            "object_gone"
+            "object_gone",
+            "object_present",
+            "visual"
           ],
           "title": "Kind",
           "type": "string"
@@ -87,6 +89,53 @@
           },
           "title": "Objects",
           "type": "array"
+        },
+        "positive": {
+          "description": "visual: English CLIP prompts of what to find, e.g. [\"a photo of fire\"]",
+          "items": {
+            "type": "string"
+          },
+          "title": "Positive",
+          "type": "array"
+        },
+        "negative": {
+          "description": "visual: English contrast prompts, e.g. [\"a photo of a normal room\"]",
+          "items": {
+            "type": "string"
+          },
+          "title": "Negative",
+          "type": "array"
+        },
+        "threshold": {
+          "default": 0.5,
+          "description": "visual: share of the softmax on the positive prompts needed to count",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Threshold",
+          "type": "number"
+        },
+        "crop": {
+          "anyOf": [
+            {
+              "enum": [
+                "zone",
+                "frame"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "visual: score the zone's box (\"zone\", default) or \"frame\"",
+          "title": "Crop"
+        },
+        "label_ro": {
+          "default": "",
+          "description": "Short Romanian name of what is looked for, e.g. \"foc\"",
+          "title": "Label Ro",
+          "type": "string"
         }
       },
       "required": [
