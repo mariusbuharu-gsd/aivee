@@ -6,15 +6,11 @@ import { useAuth, useLocationId } from '../auth/context';
 import { isEmail, ROLE_LABEL } from '../auth/session';
 import { Banner } from '../ui/Banner';
 import { ConfirmDialog } from '../ui/Dialog';
-import { Menu } from '../ui/Menu';
-import { Select } from '../ui/Select';
+import { QrCode } from '../components/QrCode';
+import { Menu, type MenuItem } from '../ui/Menu';
 import { EmptyState, Segmented } from '../ui/controls';
 import { useToast } from '../ui/toast';
-
-const ROLE_OPTIONS: { value: Exclude<Role, 'owner'>; label: string; hint: string }[] = [
-  { value: 'manager', label: ROLE_LABEL.manager, hint: 'reguli, camere, zone, echipă' },
-  { value: 'staff', label: ROLE_LABEL.staff, hint: 'alerte pe telefon și „Merg eu”' },
-];
+import './TeamPage.css';
 
 const initials = (name: string) =>
   name
@@ -25,6 +21,20 @@ const initials = (name: string) =>
 
 const day = (iso: string) =>
   new Date(iso).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long' });
+
+/** Copy a link and say so; the clipboard can refuse (no focus, no permission). */
+async function copyLink(toast: ReturnType<typeof useToast>, url: string, text: string) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast({ title: 'Link copiat', text });
+  } catch {
+    toast({
+      kind: 'error',
+      title: 'Nu am putut copia linkul',
+      text: 'Selectează-l și copiază-l de mână.',
+    });
+  }
+}
 
 export function TeamPage() {
   const api = useApi();
@@ -38,6 +48,11 @@ export function TeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Member | null>(null);
   const [revoking, setRevoking] = useState<PendingInvite | null>(null);
+  /**
+   * Links created in this tab, by email. The API stores only a hash of the token, so an older
+   * invite's link cannot be read back; "Copiază link" re-issues it instead.
+   */
+  const [links, setLinks] = useState<Record<string, string>>({});
 
   const load = useCallback(
     () =>
@@ -54,6 +69,49 @@ export function TeamPage() {
   /** Managers manage staff only; nobody edits themselves here. */
   const editable = (m: Member) =>
     m.role !== 'owner' && m.user_id !== me?.user.id && (isOwner || m.role === 'staff');
+
+  async function copyInvite(i: PendingInvite) {
+    const known = links[i.email];
+    if (known) return copyLink(toast, known, `Expiră pe ${day(i.expires_at)}.`);
+    setError(null);
+    try {
+      const fresh = await api.createInvite({
+        location_id: locationId,
+        role: i.role,
+        email: i.email,
+      });
+      await api.revokeInvite(i.id);
+      setLinks((l) => ({ ...l, [i.email]: fresh.invite_url }));
+      await load();
+      await copyLink(
+        toast,
+        fresh.invite_url,
+        `Am făcut un link nou; cel trimis înainte nu mai merge. Expiră pe ${day(fresh.expires_at)}.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** Role changes live in the ⋯ menu, so a row is never re-roled by a stray tap. */
+  function memberItems(m: Member): MenuItem[] {
+    const other: Exclude<Role, 'owner'> = m.role === 'manager' ? 'staff' : 'manager';
+    return [
+      ...(isOwner
+        ? [
+            {
+              label: `Schimbă rolul în ${ROLE_LABEL[other].toLowerCase()}`,
+              onSelect: () => void setRole(m, other),
+            },
+          ]
+        : []),
+      {
+        label: 'Vezi ce a făcut în Istoric',
+        onSelect: () => navigate(`/istoric?cine=${encodeURIComponent(m.user_id)}`),
+      },
+      { label: 'Scoate din echipă…', danger: true, onSelect: () => setRemoving(m) },
+    ];
+  }
 
   async function setRole(m: Member, role: Role, undo = true) {
     setError(null);
@@ -98,36 +156,9 @@ export function TeamPage() {
                     <strong>{m.name}</strong>
                     <span className="small muted">{m.email}</span>
                   </div>
-                  {editable(m) && isOwner ? (
-                    <Select
-                      id={`role-${m.user_id}`}
-                      size="sm"
-                      className="member-role"
-                      label={`Rol pentru ${m.name}`}
-                      hideLabel
-                      value={m.role}
-                      options={ROLE_OPTIONS}
-                      onChange={(r) => void setRole(m, r)}
-                    />
-                  ) : (
-                    <span className="pill pill-muted">{ROLE_LABEL[m.role]}</span>
-                  )}
+                  <span className="team-role">{ROLE_LABEL[m.role]}</span>
                   {editable(m) ? (
-                    <Menu
-                      label={`Acțiuni pentru ${m.name}`}
-                      items={[
-                        {
-                          label: 'Vezi ce a făcut în Istoric',
-                          onSelect: () =>
-                            navigate(`/istoric?cine=${encodeURIComponent(m.user_id)}`),
-                        },
-                        {
-                          label: 'Scoate din echipă…',
-                          danger: true,
-                          onSelect: () => setRemoving(m),
-                        },
-                      ]}
-                    />
+                    <Menu label={`Acțiuni pentru ${m.name}`} items={memberItems(m)} />
                   ) : (
                     <span className="menu-spacer" aria-hidden="true" />
                   )}
@@ -150,13 +181,22 @@ export function TeamPage() {
                         {ROLE_LABEL[i.role]} · expiră pe {day(i.expires_at)}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setRevoking(i)}
-                    >
-                      Retrage
-                    </button>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => void copyInvite(i)}
+                      >
+                        Copiază link
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setRevoking(i)}
+                      >
+                        Retrage
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -164,7 +204,14 @@ export function TeamPage() {
           )}
         </section>
         <aside className="side-col">
-          <InviteForm locationId={locationId} canInviteManager={isOwner} onInvited={load} />
+          <InviteForm
+            locationId={locationId}
+            canInviteManager={isOwner}
+            onInvited={(email, url) => {
+              setLinks((l) => ({ ...l, [email]: url }));
+              void load();
+            }}
+          />
           <div className="card">
             <h2 className="h3">Ce poate face fiecare rol</h2>
             <dl className="roles">
@@ -231,13 +278,14 @@ function InviteForm({
 }: {
   locationId: string;
   canInviteManager: boolean;
-  onInvited: () => void;
+  onInvited: (email: string, url: string) => void;
 }) {
   const api = useApi();
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('staff');
   const [invite, setInvite] = useState<Invite | null>(null);
+  const [inviteRole, setInviteRole] = useState<Role>('staff');
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -250,8 +298,14 @@ function InviteForm({
     setBusy(true);
     setError(null);
     try {
-      setInvite(await api.createInvite({ location_id: locationId, role, email: email.trim() }));
-      onInvited();
+      const created = await api.createInvite({
+        location_id: locationId,
+        role,
+        email: email.trim(),
+      });
+      setInvite(created);
+      setInviteRole(role);
+      onInvited(email.trim(), created.invite_url);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -259,21 +313,13 @@ function InviteForm({
     }
   }
 
-  async function copy() {
+  function copy() {
     if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite.invite_url);
-      toast({
-        title: 'Link copiat',
-        text: `Trimite-l pe WhatsApp sau email. Expiră pe ${day(invite.expires_at)}.`,
-      });
-    } catch {
-      toast({
-        kind: 'error',
-        title: 'Nu am putut copia linkul',
-        text: 'Selectează-l și copiază-l de mână.',
-      });
-    }
+    void copyLink(
+      toast,
+      invite.invite_url,
+      `Trimite-l pe WhatsApp sau email. Expiră pe ${day(invite.expires_at)}.`,
+    );
   }
 
   return (
@@ -329,10 +375,19 @@ function InviteForm({
               aria-label="Link de invitație"
               onFocus={(e) => e.target.select()}
             />
-            <button type="button" className="btn" onClick={() => void copy()}>
+            <button type="button" className="btn" onClick={copy}>
               Copiază
             </button>
           </div>
+          <figure className="team-qr">
+            <QrCode
+              value={invite.invite_url}
+              label={`Cod QR pentru linkul de invitație (${ROLE_LABEL[inviteRole]})`}
+            />
+            <figcaption className="small muted">
+              Sau scanează cu telefonul: omul își pune numele și parola, apoi primește alertele.
+            </figcaption>
+          </figure>
         </div>
       )}
     </form>

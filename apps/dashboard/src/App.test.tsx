@@ -174,12 +174,14 @@ describe('App with the mock API', () => {
   it('changes a role with undo, removes through a dialog and revokes an invite', async () => {
     const user = userEvent.setup();
     renderApp('/echipa', 'owner@aivee.demo');
-    const role = await screen.findByRole('combobox', { name: 'Rol pentru Ana Dumitru' });
-    await user.click(role);
-    await user.click(screen.getByRole('option', { name: /Manager/ }));
+    const actions = await screen.findByRole('button', { name: 'Acțiuni pentru Ana Dumitru' });
+    const row = actions.closest('li') as HTMLElement;
+    await user.click(actions);
+    await user.click(screen.getByRole('menuitem', { name: 'Schimbă rolul în manager' }));
     expect(await screen.findByText('Ana Dumitru e acum Manager')).toBeInTheDocument();
+    await waitFor(() => expect(row).toHaveTextContent('Manager'));
     await user.click(screen.getByRole('button', { name: 'Anulează' }));
-    await waitFor(() => expect(role).toHaveTextContent('Personal'));
+    await waitFor(() => expect(row).toHaveTextContent('Personal'));
 
     await user.click(screen.getByRole('button', { name: 'Acțiuni pentru Ana Dumitru' }));
     await user.click(screen.getByRole('menuitem', { name: 'Scoate din echipă…' }));
