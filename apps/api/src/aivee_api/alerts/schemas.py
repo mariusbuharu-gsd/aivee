@@ -40,7 +40,8 @@ class AlertView(BaseModel):
     )
     closed_reason: CloseReason | None = Field(
         None,
-        description="Why the system closed it: device_offline | device_restarted | camera_deleted",
+        description="Why the system closed it: device_offline | device_restarted | camera_deleted"
+        " | video_end (an uploaded clip ended with the alert open)",
     )
     wait_s: float | None = Field(None, description="arrived (or closed) - opened")
     reaction_s: float | None = Field(None, description="acknowledged - opened")

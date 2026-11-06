@@ -119,7 +119,7 @@ class EventRow(Base):
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Set when the system (not the edge) closed it: device_offline | device_restarted |
-    # camera_deleted.
+    # camera_deleted | video_end.
     closed_reason: Mapped[str | None] = mapped_column(String(32))
     # The "before" JPEG of an object_gone alert (the snapshot is the "after").
     before_snapshot_path: Mapped[str | None] = mapped_column(Text)
