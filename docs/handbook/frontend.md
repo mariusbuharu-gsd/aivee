@@ -114,6 +114,16 @@ Contract types: `packages/contracts` → `make schema` → `npm run contracts`. 
 
 ## Presentation site (`apps/site`)
 Static HTML/CSS, built by `apps/site/build.mjs`, deployed to GitHub Pages by `.github/workflows/pages.yml`.
+- One page told as a scroll story: the hero eyes dive into the room, then one evening replays in five
+  beats, then the reference sections (how it works, scenarios, privacy, team, impact, demo, pilot,
+  architecture, team).
+- Modules in `src/`: `story.js` (dive, story timeline, typing rule), `eyes.js` (pupils follow the pointer
+  inside a circular clamp), `nav.js`, `contact.js` (copy buttons), `form.js` ("Cere un demo" opens a
+  prefilled `mailto:`; there is no backend).
+- Motion is opt-in: `<head>` sets `html.js` and, unless the visitor prefers reduced motion, `html.motion`.
+  Only then does `story.js` load the self-hosted GSAP, ScrollTrigger and Lenis from `src/vendor/`
+  (licences in `src/vendor/LICENSES.md`; GSAP is not MIT). Without JS or with reduced motion the page is
+  a still, complete layout: no smooth scroll, no pinning.
 
 ## Known gaps
 - WHEP live video checked only headless (black frame) — verify in a real browser before the demo.
