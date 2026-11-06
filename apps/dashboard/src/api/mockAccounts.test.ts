@@ -60,7 +60,7 @@ describe('mock accounts follow the permission matrix', () => {
     expect(rules.items.every((e) => e.kind.startsWith('rule.'))).toBe(true);
   });
 
-  it('refuses a second "Merg eu" with the name of who took it', async () => {
+  it('refuses a second "Preiau" with the name of who took it', async () => {
     const api = await signedIn('staff@aivee.demo');
     api.emitAlert('r-mana', 'z-masa-1', 'opened', 'Masa 1: un client a ridicat mâna');
     const [open] = await api.listAlertCases({ location_id: 'demo', state: 'open' });

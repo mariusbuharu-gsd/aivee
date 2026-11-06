@@ -179,7 +179,7 @@ export function PhoneCameraPage() {
 
       {!loading && cloud.length === 0 && !camera && (
         <EmptyState icon="devices" title="Nicio cameră cloud la această locație">
-          Adaugă la <Link to="/dispozitive">Dispozitive</Link> o cameră cu sursa{' '}
+          Adaugă la <Link to="/dispozitive">Camere</Link> o cameră cu sursa{' '}
           <span className="mono">mqtt-frames://&lt;id&gt;</span>, apoi revino aici.
         </EmptyState>
       )}

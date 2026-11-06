@@ -42,9 +42,9 @@ export function MetricsPage() {
             Clienții așteptau deja de dinainte, cât spune regula.
           </dd>
           <dt>Reacție</dt>
-          <dd>De la alertă până apasă cineva „Merg eu”.</dd>
+          <dd>De la alertă până apasă cineva „Preiau”.</dd>
           <dt>Drum</dt>
-          <dd>De la „Merg eu” până ajunge omul la masă.</dd>
+          <dd>De la „Preiau” până ajunge omul la masă.</dd>
         </dl>
         <p className="small muted">
           Mediana: jumătate din alerte au fost mai rapide, jumătate mai lente. p90: 9 din 10 alerte
@@ -55,7 +55,7 @@ export function MetricsPage() {
         <p className="muted small">
           Cifrele camerelor și ale dispozitivelor (FPS, procesor) sunt pe{' '}
           <Link to="/dispozitive" className="link">
-            Dispozitive
+            Camere
           </Link>
           .
         </p>

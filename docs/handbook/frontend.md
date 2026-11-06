@@ -19,9 +19,9 @@
   Pixel 7 viewport. Needs nothing running; not part of CI — run it before a release. First time locally: `npx playwright install chromium`.
 - `npm run e2e:real`: the same app against a running API (`make api` + `make seed`). Reads `E2E_API_URL`
   (default `http://localhost:8000`) and `DEMO_PASSWORD` from the environment; it serves on :5174, which the
-  API's CORS allows. These tests are read-only except "Merg eu", which writes only the audit log.
+  API's CORS allows. These tests are read-only except "Preiau", which writes only the audit log.
 - `e2e/mock/` covers sign-in and `?next=`, sign-out, invites, the role matrix per page, the location switcher,
-  "Merg eu" and the alert timeline, history filters, metrics. `e2e/real/` asserts each role loads its pages
+  "Preiau" and the alert timeline, history filters, metrics. `e2e/real/` asserts each role loads its pages
   without any 4xx from the API (the anonymous `/api/auth/me` probe excepted).
 - Failures keep a trace and screenshot in `test-results/`; open one with `npx playwright show-trace <zip>`.
 
@@ -33,18 +33,20 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | Route | Page | Permission | Purpose |
 |---|---|---|---|
 | `/` | Live | `alerts.view` | camera tiles, live video with detection boxes (staff light blue, guests white), alert feed, staff suggestions; "Configurare" checklist for owners and managers (8 steps from cameras, zones, rules, staff profiles, push/Telegram; `src/setup/checklist.ts`), "Ascunde" remembered per user on the device |
-| `/alerte` | Alerte | `alerts.view` | alerts with "Merg eu" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
+| `/alerte` | Alerte | `alerts.view` | alerts with "Preiau" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare, Reacție, Drum: median and p90), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text; open rules („dacă e foc”, „dacă vine un urs”) read Unde / Ce caută / Cât timp / Atunci, `anywhere` shows as „oriunde în imagine” (`src/rules/chips.ts`) |
-| `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră"; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile |
+| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | edge devices online/offline, "Adaugă cameră"; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile |
 | `/telefon` | Telefonul ca cameră | `devices.manage` | the phone browser becomes a cloud camera: `getUserMedia` (back camera, front/back toggle) → always a 640x360 canvas, the video contain-fitted with black bars (a portrait phone arrives whole, never cropped, so zones and boxes line up with the 16:9 Live tile and zone editor; the preview is 16:9 too, with the hint "Ține telefonul pe orizontală pentru imagine întreagă") → JPEG 0.7 → `POST /api/ingest/frames/<id>` with the session cookie at 5 fps, one request in flight (`src/phone/sender.ts` skips frames instead of queueing); status Trimite / Reconectare… / Oprit, frames/s, Screen Wake Lock. Needs HTTPS (or localhost) |
-| `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` |
-| `/video` | Analiză video | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
+| `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` (shown as „Zonă angajați”) |
+| `/video` | Testează pe un clip | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
 | `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
 | `/echipa` | Echipă | `users.manage` | members, roles, invite link |
 | `/locatii` | Locații | `locations.manage` | the organization's locations (owner); in the edit form "Conectează Telegram" opens the bot link in a new tab, polls the status every 3 s for up to 15 min and shows "Conectat: <grup>"; the manual chat id sits under "Avansat" (no QR: there is no QR library in the deps) |
 
-The sidebar has a location switcher when the user has more than one location; every page reads the current
+The sidebar groups the pages: what happens now, Configurare, Administrare, then Avansat (Istoric,
+Locații). Reguli and Testează pe un clip open on the first online camera that has zones or rules
+(`src/devices/defaultCamera.ts`). The sidebar has a location switcher when the user has more than one location; every page reads the current
 location. `can(permission)` hides actions and routes; the API is what enforces them.
 
 ### Code map
@@ -74,7 +76,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | GET/POST | `/api/rules` · GET/PATCH/DELETE `/api/rules/{id}` | |
 | POST | `/api/rules/from-text` | `{camera_id, text, save?}` → `{rule, explanation_ro, saved}`; may answer a clarifying question |
 | GET | `/api/alerts?state=&limit=` | folded `AlertView` with `wait_s`, `reaction_s`, `travel_s`, `unacknowledged_arrival`, `verification {status, summary_ro, object_ro}` and `before_snapshot_url` (object_gone) |
-| POST | `/api/alerts/{event_id}/ack` | "Merg eu"; 409 when someone already took it |
+| POST | `/api/alerts/{event_id}/ack` | "Preiau"; 409 when someone already took it |
 | GET | `/api/metrics/service?from&to` | `{alerts, unacknowledged_arrivals, wait, reaction, travel}`, each `{count, median_s, p90_s}` |
 | GET | `/api/events?limit=` · `/api/snapshots/{id}` | raw events · blurred JPEG |
 | POST | `/api/ingest/frames/{id}` | `pushFrame()`: one JPEG body (`image/jpeg`) from `/telefon`; 204, 401 / 403 / 409 (not a cloud camera) stop the sender |
@@ -101,7 +103,7 @@ Contract types: `packages/contracts` → `make schema` → `npm run contracts`. 
 - The look is a light working surface (`--ground` `#F6F7F9`, `--surface` white, `--ink` `#14161B` text) with night
   chrome: the sidebar, camera media and the suggestion card are ink. Add `.on-night` to any dark container;
   it remaps `--text`, `--surface*`, `--border*` and `--focus`.
-- Coral `#FF5C6C` means "needs attention" (open alerts, the one alert action "Merg eu"). Use it for fills only.
+- Coral `#FF5C6C` means "needs attention" (open alerts, the one alert action "Preiau"). Use it for fills only.
   As text on light, use `--coral-strong` `#C8283E`. On camera media, light blue (`--live-on-night`) marks staff
   and live, and white/grey marks guests and tables.
 - Fonts: Fredoka 600 for the logo and h1, Figtree for the UI, JetBrains Mono for ids, timers and metrics.

@@ -51,9 +51,17 @@ export function fromContract(d: Detections): Detection[] {
   });
 }
 
-/** Short enough to fit a phone tile: a guest's raised hand replaces the role word. */
+/**
+ * Short enough to fit a phone tile: a guest's raised hand replaces the role word. The track id
+ * means nothing to a waiter, so it lives in `detectionTitle` (hover) instead.
+ */
 export function detectionLabel(d: Detection): string {
-  if (d.raised_hand && d.role === 'guest') return `${RAISED_HAND_LABEL} #${d.track_id}`;
-  const role = `${ROLE_LABEL[d.role]} #${d.track_id}`;
+  if (d.raised_hand && d.role === 'guest') return RAISED_HAND_LABEL;
+  const role = ROLE_LABEL[d.role];
   return d.raised_hand ? `${role} · ${RAISED_HAND_LABEL}` : role;
+}
+
+/** The same label with the track id, for the box's title (debugging, support). */
+export function detectionTitle(d: Detection): string {
+  return `${detectionLabel(d)} #${d.track_id}`;
 }

@@ -11,7 +11,7 @@ import { TOAST_MS, useToast } from './toast';
 
 const ROLES = [
   { value: 'manager', label: 'Manager', hint: 'reguli, camere, echipă' },
-  { value: 'staff', label: 'Personal', hint: 'alerte și „Merg eu”' },
+  { value: 'staff', label: 'Personal', hint: 'alerte și „Preiau”' },
 ] as const;
 type R = (typeof ROLES)[number]['value'];
 

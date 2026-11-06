@@ -3,18 +3,18 @@ import { MOCK_PASSWORD, signIn } from '../helpers';
 
 // The mock opens "Masa 2" about 4 s after the page loads and closes it after 32 s.
 
-test('staff take an open alert with "Merg eu" and the timeline shows who and how fast', async ({
+test('staff take an open alert with "Preiau" and the timeline shows who and how fast', async ({
   page,
 }) => {
   await signIn(page, 'staff', MOCK_PASSWORD, '/alerte');
-  const go = page.getByRole('button', { name: /Merg eu la/ }).first();
+  const go = page.getByRole('button', { name: /^Preiau / }).first();
   await expect(go).toBeVisible({ timeout: 20_000 });
   // The button disappears once taken, so pin the card itself before clicking.
   await go.evaluate((el) => el.closest('li')?.setAttribute('data-e2e', 'taken'));
   const card = page.locator('li[data-e2e="taken"]');
   await go.click();
   await expect(page.getByText('Ai preluat Masa 2')).toBeVisible();
-  await expect(card.getByRole('button', { name: /Merg eu/ })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: /Preiau/ })).toHaveCount(0);
   const timeline = card.getByRole('list', { name: 'Desfășurarea alertei' });
   await expect(timeline).toContainText('Preluată');
   await expect(timeline).toContainText('Ana Dumitru');

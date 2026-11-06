@@ -307,7 +307,7 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     vi.useRealTimers();
   });
 
-  it('acknowledges an alert with "Merg eu"', async () => {
+  it('acknowledges an alert with "Preiau"', async () => {
     const api = new HttpApi('http://api:8000');
     const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));
     await api.ackAlert('e-1');

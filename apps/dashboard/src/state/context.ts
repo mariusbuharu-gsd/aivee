@@ -38,7 +38,7 @@ export interface LiveData {
   dropSuggestion: (id: string) => void;
   /** Lifecycle per alert, keyed by the opening event id (AlertItem.key). */
   cases: Record<string, AlertCase>;
-  /** "Merg eu": acknowledge an open alert; rejects with the API's Romanian message. */
+  /** "Preiau": acknowledge an open alert; rejects with the API's Romanian message. */
   ack: (eventId: string) => Promise<void>;
   /** True while the API may hold events older than the ones loaded (the last page was full). */
   hasOlder: boolean;

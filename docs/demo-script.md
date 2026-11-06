@@ -33,7 +33,7 @@ screen names, button labels and alert texts are copied from the code.
 | 1 | 0:00 | Login → location → live camera with boxes | 0:20 |
 | 2 | 0:20 | Write a rule in Romanian → "Ce am înțeles" → confirm | 0:35 |
 | 3 | 0:55 | Guest has been sitting since 0:15 → alert at ~1:15 on Telegram + push | 0:25 |
-| 4 | 1:20 | "Merg eu" on the phone → walk → arrived → closed, with times | 0:40 |
+| 4 | 1:20 | "Preiau" on the phone → walk → arrived → closed, with times | 0:40 |
 | 5 | 2:00 | Guest raises a hand → alert | 0:20 |
 | 6 | 2:20 | Both leave Masa 1, cups stay → wait 1 min | (runs in background) |
 | 7 | 2:20 | Istoric shows everything | 0:30 |
@@ -82,7 +82,7 @@ Istoric and Metrici.
 
 - **Marius:** go back to **Live** (or **Alerte**). Talk about the minute while it runs: "Radu sat down at 0:15.
   Nobody from staff has come. At one minute AiVee raises it."
-- **Expected at ~1:15:** in the dashboard a coral alert **"Masa 1: neservită de 1 min"** with a **Merg eu**
+- **Expected at ~1:15:** in the dashboard a coral alert **"Masa 1: neservită de 1 min"** with a **Preiau**
   button; in the Telegram group a message with the blurred snapshot; on Vasi's phone a push notification.
 - **Vasi:** show the phone notification to the jury.
 - **Fallback:** no alert after 1:30 → check Dispozitive (device online?) and that Vasi is not inside Masa 1.
@@ -90,9 +90,9 @@ Istoric and Metrici.
   Telegram silent but dashboard OK → carry on; Telegram is a notifier, not the pipeline. Push silent →
   carry on with Telegram (push needs HTTPS on the phone).
 
-### 4. "Merg eu" → arrived → closed (1:20–2:00)
+### 4. "Preiau" → arrived → closed (1:20–2:00)
 
-- **Vasi:** tap the notification (opens **Alerte**) → **Merg eu**.
+- **Vasi:** tap the notification (opens **Alerte**) → **Preiau**.
 - **Expected:** the timeline under the alert: **Deschisă** → **Preluată** (Ana Ospătar, "reacție …").
 - **Vasi:** walk to Masa 1 and **stay at least 5 s** (`ARRIVE_S`); serve Radu.
 - **Expected:** **Ajuns** ("drum …"), a second Telegram message "Ana Ospătar a ajuns la Masa 1 după …", then
@@ -100,7 +100,7 @@ Istoric and Metrici.
 - **Say:** "Arrival is what the camera saw, not a button a busy waiter forgets. Wait, reaction and travel are
   measured, per alert."
 - **Fallback:** no "Ajuns" → Vasi is probably tagged as guest: stand still, fully in the zone, 5 s more. If the
-  alert closes without arrival, show the "fără preluare" / closed state and move on. "Merg eu" returns an error
+  alert closes without arrival, show the "fără preluare" / closed state and move on. "Preiau" returns an error
   → someone already took it (409); refresh.
 
 ### 5. The guest raises a hand (2:00–2:20)
@@ -179,7 +179,7 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
 > iar imaginea e analizată în cloud-ul nostru, cu servere în UE, și aruncată, nu e salvată niciodată. În demo,
 > laptopul ține locul serverului din cloud. Desenezi mesele, scrii o regulă în română — „Anunță ospătarul dacă
 > la o masă nu a venit nimeni de un minut" — și AiVee o transformă într-o regulă pe care tu o confirmi. Când
-> clientul așteaptă, ospătarul primește alerta pe telefon, apasă „Merg eu", iar camera vede când a ajuns la
+> clientul așteaptă, ospătarul primește alerta pe telefon, apasă „Preiau", iar camera vede când a ajuns la
 > masă. Proprietarul vede cât au așteptat clienții, cât de repede a reacționat echipa și tot istoricul, care
 > nu poate fi modificat.
 >

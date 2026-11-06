@@ -4,6 +4,7 @@ import { RuleComposer, RuleDraftEditor } from '../components/RuleComposer';
 import type { Rule } from '../contracts';
 import { useAuth } from '../auth/context';
 import { shortRule } from '../rules/chips';
+import { defaultCamera } from '../devices/defaultCamera';
 import { describeRule } from '../rules/describe';
 import { RuleSparkline } from '../rules/RuleSparkline';
 import { ruleTemplates } from '../rules/templates';
@@ -33,7 +34,7 @@ export function RulesPage() {
       live = false;
     };
   }, [api, location?.id]);
-  const selected = cameraId || cameras[0]?.id || '';
+  const selected = cameraId || defaultCamera(cameras, rules)?.id || '';
   const picker =
     cameras.length > 1 ? (
       <Select
@@ -139,9 +140,8 @@ function RuleCard({ rule, perDay }: { rule: Rule; perDay?: number[] }) {
       <div className="side-head">
         <div className="rule-title">
           <h3>{rule.name}</h3>
-          <span className={`pill ${on ? 'pill-ok' : 'pill-muted'}`}>
-            {on ? 'activă' : 'oprită'}
-          </span>
+          {/* On is the normal state and the switch shows it; only "oprită" is worth a word. */}
+          {!on && <span className="pill pill-muted">oprită</span>}
         </div>
         <div className="rule-tools">
           <Switch

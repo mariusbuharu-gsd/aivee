@@ -322,7 +322,7 @@ function seedAlerts(): AlertView[] {
     ev('e-3', 'r-mana', 'z-masa-2', 'opened', 21, 'Masa 2: un client a ridicat mâna'),
     ev('e-4', 'r-mana', 'z-masa-2', 'closed', 20, 'Masa 2: clientul a fost servit'),
     // An object disappeared from a table, confirmed by the AI check (before/after snapshots).
-    // Closed, so the open alerts of the demo timeline stay the first "Merg eu" on the page.
+    // Closed, so the open alerts of the demo timeline stay the first "Preiau" on the page.
     {
       ...ev('e-5', 'r-pahar', 'z-masa-1', 'opened', 9, 'Masa 1: a dispărut paharul de vin'),
       snapshot_url: tableSketch(false),
@@ -472,6 +472,16 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     allOf = [
       { kind: 'count', role: 'guest', min_count: Math.max(1, n) },
       { kind: 'absent', role: 'staff', min_duration_s: 0 },
+    ];
+  } else if (/dispar|dispăr|lipse[sș]te|ia cineva/.test(t) && /pahar|sticl|cea[sș]c/.test(t)) {
+    name = 'A dispărut un obiect';
+    allOf = [
+      {
+        kind: 'object_gone',
+        role: 'any',
+        objects: /vin/.test(t) ? ['wine glass'] : ['wine glass', 'cup'],
+        min_duration_s: 60,
+      },
     ];
   } else if (/debaras|pahar|farfur|sticl|strâns|strans/.test(t)) {
     name = 'Masă nedebarasată';

@@ -453,14 +453,14 @@ export interface AlertCase {
   summary_ro: string;
   opened_at: string;
   acknowledged_at: string | null;
-  /** Display name of whoever pressed "Merg eu". */
+  /** Display name of whoever pressed "Preiau". */
   acknowledged_by: string | null;
   acknowledged_by_id: string | null;
   arrived_at: string | null;
   /** Staff arrived without anyone acknowledging first ("fără preluare"). */
   unacknowledged_arrival: boolean;
   closed_at: string | null;
-  /** The shift was reminded: "Merg eu" was pressed 2 min earlier and nobody had arrived. */
+  /** The shift was reminded: "Preiau" was pressed 2 min earlier and nobody had arrived. */
   realerted_at?: string | null;
   wait_s: number | null;
   reaction_s: number | null;
@@ -535,7 +535,7 @@ export interface AccountApi {
     limit?: number;
     before?: string;
   }): Promise<AlertCase[]>;
-  /** "Merg eu". 409 when someone already took it. */
+  /** "Preiau". 409 when someone already took it. */
   ackAlert(eventId: string): Promise<AlertCase>;
   getServiceMetrics(query: {
     location_id: string;
