@@ -1,9 +1,9 @@
-import { useState, type MouseEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import { useApi } from '../api/context';
 import { Icon } from '../components/Icon';
 import type { Zone } from '../contracts';
-import { LivePlayer } from '../live/LivePlayer';
+import { LivePlayer, type PlayerStatus } from '../live/LivePlayer';
 import { ZONE_TAGS, tagLabel } from '../rules/describe';
 import { useLiveData } from '../state/context';
 import {
@@ -53,6 +53,12 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [live, setLive] = useState<PlayerStatus>('connecting');
+  // A still the user picked; kept only in this browser as the drawing background.
+  const [still, setStill] = useState<string | null>(null);
+  const [frame, setFrame] = useState<[number, number] | null>(null);
+
+  useEffect(() => () => void (still && URL.revokeObjectURL(still)), [still]);
 
   if (!camera) return null;
   const current = zones.find((z) => z.id === selected) ?? null;
@@ -117,6 +123,31 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   }
 
   const canFinish = draft?.closed && (redrawId !== null || name.trim() !== '');
+  const editorStyle: CSSProperties | undefined = frame
+    ? { aspectRatio: `${frame[0]} / ${frame[1]}` }
+    : undefined;
+
+  function pickStill(file: File | undefined) {
+    if (!file || !file.type.startsWith('image/')) return;
+    setFrame(null);
+    setStill(URL.createObjectURL(file));
+  }
+
+  const stillPicker = (
+    <label className="btn">
+      <Icon name="upload" /> {still ? 'Altă imagine' : 'Încarcă o imagine'}
+      <input
+        type="file"
+        accept="image/*"
+        className="visually-hidden"
+        aria-label="Încarcă o imagine din cameră"
+        onChange={(e) => {
+          pickStill(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+    </label>
+  );
 
   return (
     <div className="page">
@@ -135,8 +166,25 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
       )}
       <div className="two-col">
         <section aria-label="Imagine cameră">
-          <div className={`editor ${draft ? 'is-drawing' : ''}`}>
-            <LivePlayer cameraId={camera.id} enabled={camera.online} label={camera.name} />
+          <div className={`editor ${draft ? 'is-drawing' : ''}`} style={editorStyle}>
+            {still ? (
+              <img
+                className="editor-still"
+                src={still}
+                alt={`Imagine încărcată pentru ${camera.name}`}
+                onLoad={(e) =>
+                  setFrame([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])
+                }
+              />
+            ) : (
+              // Try MediaMTX even if the device has not reported online yet: the stream may be up.
+              <LivePlayer
+                cameraId={camera.id}
+                label={camera.name}
+                onStatus={setLive}
+                onFrameSize={(w, h) => w > 0 && h > 0 && setFrame([w, h])}
+              />
+            )}
             <svg
               className="overlay overlay-edit"
               viewBox="0 0 1 1"
@@ -227,6 +275,32 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
         </section>
 
         <aside className="side-col">
+          <div className="card">
+            <h2 className="h3">Fundal</h2>
+            <p className="muted small" role="status">
+              {still
+                ? 'Desenezi pe imaginea încărcată (rămâne doar în acest browser).'
+                : live === 'playing'
+                  ? 'Desenezi pe imaginea live a camerei.'
+                  : live === 'connecting'
+                    ? 'Se conectează la camera live…'
+                    : 'Fluxul live nu e disponibil. Încarcă o captură din cameră ca să desenezi mesele exact.'}
+            </p>
+            <div className="actions">
+              {stillPicker}
+              {still && (
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setStill(null);
+                    setFrame(null);
+                  }}
+                >
+                  Folosește imaginea live
+                </button>
+              )}
+            </div>
+          </div>
           {draft && !redrawId && (
             <form
               className="card"

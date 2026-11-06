@@ -1,9 +1,11 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { AlertItem } from '../alerts/fold';
 import type { Rule, StaffSuggestion } from '../contracts';
 import { fakeApi, renderWithApi } from '../test/fakeApi';
+import { ApiError } from '../api/client';
+import { AddCameraForm } from './AddCameraForm';
 import { AlertFeed } from './AlertFeed';
 import { RuleComposer } from './RuleComposer';
 import { StaffPhotoUpload } from './StaffPhotoUpload';
@@ -24,39 +26,104 @@ const rule: Rule = {
 };
 
 describe('RuleComposer', () => {
-  it('submits the Romanian text and shows what was understood', async () => {
+  const draft = { rule, explanation_ro: 'Vă anunț când la o masă nu vine nimeni de 1 minut.' };
+  const typeRequest = async (user: ReturnType<typeof userEvent.setup>, text = rule.prompt_ro) => {
+    await user.type(screen.getByLabelText('Spune-i camerei ce să vadă'), text);
+    await user.click(screen.getByRole('button', { name: 'Creează regula' }));
+  };
+
+  it('shows the draft first and saves it only on confirm', async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
-    const api = fakeApi({ createRuleFromText: vi.fn(async () => rule) });
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
     renderWithApi(<RuleComposer cameraId="cam-sala" onCreated={onCreated} />, api);
 
-    const submit = screen.getByRole('button', { name: 'Creează regula' });
-    expect(submit).toBeDisabled();
-    await user.type(screen.getByLabelText('Spune-i camerei ce să vadă'), rule.prompt_ro);
-    await user.click(submit);
+    expect(screen.getByRole('button', { name: 'Creează regula' })).toBeDisabled();
+    await typeRequest(user);
 
-    expect(api.createRuleFromText).toHaveBeenCalledWith(rule.prompt_ro, 'cam-sala');
-    const panel = await screen.findByRole('status');
-    expect(within(panel).getByText('Ce am înțeles')).toBeInTheDocument();
+    expect(api.draftRuleFromText).toHaveBeenCalledWith(rule.prompt_ro, 'cam-sala');
+    const panel = await screen.findByRole('region', { name: 'Ce am înțeles' });
     expect(within(panel).getByText('Masă neservită')).toBeInTheDocument();
+    expect(within(panel).getByText('ciornă')).toBeInTheDocument();
+    expect(screen.getByTestId('rule-explanation')).toHaveTextContent(draft.explanation_ro);
     expect(screen.getByTestId('rule-summary')).toHaveTextContent(
       'La fiecare masă, când un client stă în zonă de 1 minut și nu a venit cineva de la personal de 1 minut → mesaj pe Telegram.',
     );
+    expect(api.createRule).not.toHaveBeenCalled();
+    expect(onCreated).not.toHaveBeenCalled();
+
+    await user.click(within(panel).getByRole('button', { name: /Confirmă și salvează/ }));
+    expect(api.createRule).toHaveBeenCalledWith(rule);
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Regula „Masă neservită” a fost salvată',
+    );
     expect(onCreated).toHaveBeenCalledWith(rule);
+    expect(screen.queryByRole('region', { name: 'Ce am înțeles' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveValue('');
   });
 
-  it('shows the API error', async () => {
+  it('lets the user edit the draft before saving', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
+    await typeRequest(user);
+    await user.click(await screen.findByRole('button', { name: /Modifică/ }));
+    const name = screen.getByLabelText('Nume');
+    await user.clear(name);
+    await user.type(name, 'Masă uitată');
+    const first = screen.getByLabelText('Durată condiția 1 (secunde)');
+    await user.clear(first);
+    await user.type(first, '120');
+    await user.click(screen.getByRole('button', { name: /Confirmă și salvează/ }));
+    expect(api.createRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Masă uitată',
+        all_of: [
+          { kind: 'present', role: 'guest', min_duration_s: 120 },
+          { kind: 'absent', role: 'staff', min_duration_s: 60 },
+        ],
+      }),
+    );
+  });
+
+  it('discards the draft without saving', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
+    await typeRequest(user);
+    await user.click(await screen.findByRole('button', { name: 'Renunță' }));
+    expect(screen.queryByRole('region', { name: 'Ce am înțeles' })).not.toBeInTheDocument();
+    expect(api.createRule).not.toHaveBeenCalled();
+  });
+
+  it('shows the Romanian API error', async () => {
     const user = userEvent.setup();
     const api = fakeApi({
-      createRuleFromText: vi.fn(async () => {
-        throw new Error('Nu am înțeles cererea');
+      draftRuleFromText: vi.fn(async () => {
+        throw new ApiError('Camera nu are nicio zonă de tip „table”.', 'clarify', 422);
       }),
     });
     renderWithApi(<RuleComposer cameraId="c" />, api);
-    await user.type(screen.getByLabelText('Spune-i camerei ce să vadă'), 'ceva');
-    await user.click(screen.getByRole('button', { name: 'Creează regula' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Nu am înțeles cererea');
+    await typeRequest(user, 'ceva');
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Camera nu are nicio zonă de tip „table”.',
+    );
+  });
+});
+
+describe('AddCameraForm', () => {
+  it('creates the camera with the edge defaults prefilled', async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const { api } = renderWithApi(<AddCameraForm onCreated={onCreated} />);
+    expect(screen.getByLabelText('Id cameră')).toHaveValue('cam-01');
+    expect(screen.getByLabelText('Dispozitiv')).toHaveValue('edge-01');
+    await user.type(screen.getByLabelText('Nume'), 'Sala');
+    await user.type(screen.getByLabelText(/Adresa sursei/), 'rtsp://cam/1');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    const sent = { id: 'cam-01', name: 'Sala', source: 'rtsp://cam/1', device: 'edge-01' };
+    expect(api.createCamera).toHaveBeenCalledWith(sent);
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining(sent)));
   });
 });
 
@@ -71,6 +138,7 @@ describe('AlertFeed', () => {
       opened_at: new Date(Date.now() - 30_000).toISOString(),
       closed_at: null,
       snapshot: true,
+      snapshot_url: 'http://api/api/snapshots/e-2',
     },
     {
       key: 'e-1',
@@ -80,7 +148,8 @@ describe('AlertFeed', () => {
       summary_ro: 'Masa 1: ospătarul a ajuns',
       opened_at: '2026-11-06T10:00:00Z',
       closed_at: '2026-11-06T10:01:30Z',
-      snapshot: true,
+      snapshot: false,
+      snapshot_url: null,
     },
   ];
   const names: Record<string, string> = { 'z-1': 'Masa 1', 'z-2': 'Masa 2' };
@@ -93,7 +162,13 @@ describe('AlertFeed', () => {
     expect(within(rows[0] as HTMLElement).getByText('Masa 2')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('Închisă')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('rezolvată în 1 min 30 s')).toBeInTheDocument();
-    expect(screen.getAllByRole('img', { name: 'Captură cu fețele estompate' })).toHaveLength(2);
+    const shots = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
+    expect(shots).toHaveLength(2);
+    expect(shots[0]).toHaveAttribute('src', 'http://api/api/snapshots/e-2');
+    expect(shots[1]?.tagName).not.toBe('IMG');
+    fireEvent.error(shots[0] as HTMLElement);
+    const after = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
+    expect(after.map((el) => el.tagName)).not.toContain('IMG');
   });
 
   it('shows an empty state', () => {

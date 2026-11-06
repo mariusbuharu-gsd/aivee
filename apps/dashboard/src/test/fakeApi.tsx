@@ -11,10 +11,12 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     kind: 'mock',
     listCameras: vi.fn(async () => []),
+    createCamera: vi.fn(async (c) => ({ ...c, zones: [], online: false })),
     listDevices: vi.fn(async () => []),
     saveZones: vi.fn(async (_id, zones) => zones),
     listRules: vi.fn(async () => []),
-    createRuleFromText: vi.fn(),
+    draftRuleFromText: vi.fn(),
+    createRule: vi.fn(async (r) => r),
     listAlerts: vi.fn(async () => []),
     subscribeAlerts: vi.fn(noop),
     listSuggestions: vi.fn(async () => []),

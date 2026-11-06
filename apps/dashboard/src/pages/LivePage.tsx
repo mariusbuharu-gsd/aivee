@@ -19,6 +19,14 @@ export function LivePage() {
       <div className="live-grid">
         <section aria-label="Camere" className="cameras">
           {loading && cameras.length === 0 && <p className="muted">Se încarcă camerele…</p>}
+          {!loading && cameras.length === 0 && (
+            <div className="card">
+              <p>Nicio cameră configurată.</p>
+              <Link to="/dispozitive" className="btn btn-primary">
+                Adaugă cameră
+              </Link>
+            </div>
+          )}
           {cameras.map((c) => (
             <CameraTile key={c.id} camera={c} />
           ))}

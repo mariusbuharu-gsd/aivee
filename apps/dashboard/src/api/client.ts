@@ -26,6 +26,39 @@ export interface CameraView extends CameraConfig {
   online: boolean;
 }
 
+/** What the "Adaugă cameră" form sends. `id` must match the edge's CAMERA_ID. */
+export interface NewCamera {
+  id: string;
+  name: string;
+  source: string;
+  device: string;
+}
+
+/** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
+export interface AlertView extends AlertEvent {
+  device_id?: string;
+  snapshot_url?: string | null;
+}
+
+/** A rule drafted from Romanian text; not saved until the user confirms it. */
+export interface RuleDraft {
+  rule: Rule;
+  explanation_ro: string;
+}
+
+/** A backend error with the Romanian message the dashboard shows as is. */
+export class ApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+
+  constructor(messageRo: string, code = 'error', status = 0) {
+    super(messageRo);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+  }
+}
+
 /** Aggregated numbers for the metrics strip; `devices` holds the raw per-device Metrics. */
 export interface DashboardMetrics {
   devices: Metrics[];
@@ -39,12 +72,16 @@ export interface DashboardMetrics {
 export interface ApiClient {
   readonly kind: 'mock' | 'http';
   listCameras(): Promise<CameraView[]>;
+  createCamera(camera: NewCamera): Promise<CameraView>;
   listDevices(): Promise<DeviceStatus[]>;
   saveZones(cameraId: string, zones: Zone[]): Promise<Zone[]>;
   listRules(): Promise<Rule[]>;
-  createRuleFromText(text: string, cameraId: string): Promise<Rule>;
-  listAlerts(): Promise<AlertEvent[]>;
-  subscribeAlerts(cb: (event: AlertEvent) => void): Unsubscribe;
+  /** Translate a Romanian request into a draft rule; nothing is saved. */
+  draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft>;
+  /** Save (and publish to the edge) a rule, usually a confirmed draft. */
+  createRule(rule: Rule): Promise<Rule>;
+  listAlerts(): Promise<AlertView[]>;
+  subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
   listSuggestions(): Promise<StaffSuggestion[]>;
   subscribeSuggestions(cb: (s: StaffSuggestion) => void): Unsubscribe;
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe;

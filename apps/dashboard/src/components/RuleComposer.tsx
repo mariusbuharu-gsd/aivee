@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import type { RuleDraft } from '../api/client';
 import { useApi } from '../api/context';
-import type { Rule } from '../contracts';
+import type { Condition, Rule } from '../contracts';
 import { describeRule } from '../rules/describe';
 import { Icon } from './Icon';
 
@@ -38,12 +39,17 @@ export function RuleComposer({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rule, setRule] = useState<Rule | null>(null);
+  const [draft, setDraft] = useState<RuleDraft | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<Rule | null>(null);
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const Speech = typeof window === 'undefined' ? null : speechCtor();
 
   useEffect(() => () => recRef.current?.stop(), []);
+
+  const message = (err: unknown, fallback: string) =>
+    err instanceof Error && err.message ? err.message : fallback;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -51,16 +57,40 @@ export function RuleComposer({
     if (!value || busy) return;
     setBusy(true);
     setError(null);
+    setSaved(null);
+    setEditing(false);
     try {
-      const created = await api.createRuleFromText(value, cameraId);
-      setRule(created);
-      setText('');
-      onCreated?.(created);
+      setDraft(await api.draftRuleFromText(value, cameraId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nu am putut crea regula');
+      setDraft(null);
+      setError(message(err, 'Nu am putut înțelege cererea'));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function confirm() {
+    if (!draft || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.createRule(draft.rule);
+      setSaved(created);
+      setDraft(null);
+      setEditing(false);
+      setText('');
+      onCreated?.(created);
+    } catch (err) {
+      setError(message(err, 'Nu am putut salva regula'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function discard() {
+    setDraft(null);
+    setEditing(false);
+    setError(null);
   }
 
   function toggleMic() {
@@ -112,7 +142,7 @@ export function RuleComposer({
             <Icon name="mic" />
           </button>
           <button type="submit" className="btn btn-primary" disabled={busy || !text.trim()}>
-            {busy ? 'Se creează…' : 'Creează regula'}
+            {busy && !draft ? 'Se analizează…' : 'Creează regula'}
           </button>
         </div>
       </form>
@@ -121,20 +151,95 @@ export function RuleComposer({
           {error}
         </p>
       )}
-      {rule && (
-        <div className="understood" role="status" aria-live="polite">
+      {draft && (
+        <div className="understood" role="region" aria-label="Ce am înțeles">
           <h3 className="understood-title">Ce am înțeles</h3>
           <p className="understood-name">
-            <strong>{rule.name}</strong>{' '}
-            <span className="pill pill-live">{rule.enabled === false ? 'inactivă' : 'activă'}</span>
+            <strong>{draft.rule.name}</strong> <span className="pill pill-muted">ciornă</span>
           </p>
-          <p data-testid="rule-summary">{describeRule(rule)}</p>
+          {draft.explanation_ro && <p data-testid="rule-explanation">{draft.explanation_ro}</p>}
+          <p className="muted small" data-testid="rule-summary">
+            {describeRule(draft.rule)}
+          </p>
+          {editing && (
+            <RuleDraftEditor rule={draft.rule} onChange={(rule) => setDraft({ ...draft, rule })} />
+          )}
+          <div className="actions">
+            <button className="btn btn-primary" onClick={confirm} disabled={busy}>
+              <Icon name="check" /> {busy ? 'Se salvează…' : 'Confirmă și salvează'}
+            </button>
+            <button
+              className="btn"
+              onClick={() => setEditing((v) => !v)}
+              aria-pressed={editing}
+              disabled={busy}
+            >
+              <Icon name="edit" /> {editing ? 'Gata cu modificările' : 'Modifică'}
+            </button>
+            <button className="btn btn-ghost" onClick={discard} disabled={busy}>
+              Renunță
+            </button>
+          </div>
           <details>
             <summary>Vezi regula JSON</summary>
-            <pre className="mono json">{JSON.stringify(rule, null, 2)}</pre>
+            <pre className="mono json">{JSON.stringify(draft.rule, null, 2)}</pre>
           </details>
         </div>
       )}
+      {saved && !draft && (
+        <p className="small" role="status" aria-live="polite">
+          <Icon name="check" /> Regula „{saved.name}” a fost salvată și trimisă dispozitivului.
+        </p>
+      )}
     </section>
+  );
+}
+
+/** Small editor for the parts of a draft a manager is likely to correct. */
+function RuleDraftEditor({ rule, onChange }: { rule: Rule; onChange: (rule: Rule) => void }) {
+  const setCondition = (i: number, patch: Partial<Condition>) => {
+    const all_of = rule.all_of.map((c, j) => (j === i ? { ...c, ...patch } : c)) as Rule['all_of'];
+    onChange({ ...rule, all_of });
+  };
+  const seconds = (v: string) => Math.max(0, Math.round(Number(v) || 0));
+  return (
+    <fieldset className="draft-editor">
+      <legend className="visually-hidden">Modifică regula</legend>
+      <label className="field">
+        <span>Nume</span>
+        <input
+          className="input"
+          value={rule.name}
+          onChange={(e) => onChange({ ...rule, name: e.target.value })}
+          required
+        />
+      </label>
+      {rule.all_of.map((c, i) =>
+        c.min_duration_s === undefined ? null : (
+          <label className="field" key={i}>
+            <span>Durată condiția {i + 1} (secunde)</span>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              step={10}
+              value={c.min_duration_s}
+              onChange={(e) => setCondition(i, { min_duration_s: seconds(e.target.value) })}
+            />
+          </label>
+        ),
+      )}
+      <label className="field">
+        <span>Pauză între alerte (secunde)</span>
+        <input
+          className="input"
+          type="number"
+          min={0}
+          step={30}
+          value={rule.cooldown_s ?? 300}
+          onChange={(e) => onChange({ ...rule, cooldown_s: seconds(e.target.value) })}
+        />
+      </label>
+    </fieldset>
   );
 }
