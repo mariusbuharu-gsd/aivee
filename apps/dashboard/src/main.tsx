@@ -6,6 +6,7 @@ import { createApi } from './api/client';
 import { ApiContext } from './api/context';
 import { LiveDataProvider } from './state/LiveData';
 import './styles.css';
+import './pwa/register';
 
 const api = await createApi();
 
