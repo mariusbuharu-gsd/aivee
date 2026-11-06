@@ -59,11 +59,38 @@ services:
       replicas: 2
     restart: unless-stopped
 
+  # Relays camera streams (never records). Publishing needs STREAM_PUBLISH_USER/PASSWORD;
+  # reading stays open for the dashboard live view and the cloud vision worker.
   mediamtx:
-    image: bluenviron/mediamtx:1
+    image: bluenviron/mediamtx:1-ffmpeg
+    env_file: .env
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     volumes:
-      - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
+      - ./infra/mediamtx/mediamtx.yml:/mediamtx.base.yml:ro
+      - ./infra/mediamtx/entrypoint.sh:/entrypoint.sh:ro
     ports: ["8554:8554", "8889:8889", "8189:8189/udp"]
+
+  # Cloud mode (`docker compose --profile cloud up -d`): the edge pipeline running next to
+  # MediaMTX, analysing the stream the restaurant's connector pushes. Frames stay in memory.
+  # One service = one camera for now; a per-camera supervisor comes with multi-tenancy.
+  vision:
+    profiles: ["cloud"]
+    build: { context: ., dockerfile: apps/edge/Dockerfile }
+    image: aivee-edge:dev
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      CAMERA_ID: "${CAMERA_ID:-cam-01}"
+      SOURCE: "rtsp://mediamtx:8554/${CAMERA_ID:-cam-01}"
+      TARGET_FPS: "${CLOUD_FPS:-5}"
+      ROTATE: "0" # the connector already sends the picture upright
+    volumes:
+      - ./models:/app/models:ro
+    depends_on:
+      mosquitto: { condition: service_started }
+      mediamtx: { condition: service_started }
+    restart: unless-stopped
 
   # HTTP API for the dashboard; publishes retained rules/config/profiles to the edge.
   api:

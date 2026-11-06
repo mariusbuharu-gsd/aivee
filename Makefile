@@ -56,3 +56,15 @@ record:
 # DEMO_PASSWORD from .env; when empty, one is generated into .env (never printed).
 seed:
 	uv run --env-file .env python -m aivee_api.accounts.seed --env-file .env
+
+.PHONY: connector cloud-up cloud-down
+# Cloud mode. Restaurant side: push one camera to the AiVee cloud (no analysis on site).
+#   make connector SOURCE=http://PHONE:8080/video CAMERA_ID=cam-01 ROTATE=90
+# Cloud side: run the vision worker for CAMERA_ID next to MediaMTX.
+CAMERA_ID ?= cam-01
+connector:
+	uv run --env-file .env python apps/connector/connector.py --source $(SOURCE) --camera-id $(CAMERA_ID) --rotate $(ROTATE)
+cloud-up:
+	docker compose --profile cloud up -d --build vision
+cloud-down:
+	docker compose --profile cloud stop vision

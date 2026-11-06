@@ -1,6 +1,14 @@
-# Live view: the edge (or the phone) publishes RTSP to rtsp://localhost:8554/<camera-id>;
-# the dashboard plays it over WebRTC at http://localhost:8889/<camera-id>.
+# Base MediaMTX config; infra/mediamtx/entrypoint.sh appends the auth section from env.
+#
+# Live view: a camera (edge mode) or the restaurant's connector (cloud mode) publishes RTSP to
+# rtsp://<host>:8554/<camera-id>; the dashboard plays it over WebRTC at
+# http://<host>:8889/<camera-id>; the cloud vision worker reads rtsp://mediamtx:8554/<camera-id>.
+# Nothing is recorded: frames are only relayed.
 webrtc: yes
 rtsp: yes
+# Not used; closed to keep the exposed surface small.
+rtmp: no
+hls: no
+srt: no
 paths:
   all_others:
