@@ -48,3 +48,9 @@ ROTATE ?= 0
 NAME ?= clip
 record:
 	uv run python tools/record_clip.py --source $(SOURCE) --seconds $(SECONDS) --rotate $(ROTATE) --out recordings/$(NAME).mp4
+
+.PHONY: seed
+# Demo org, location `demo` and owner@/manager@/staff@aivee.demo (idempotent). The password is
+# DEMO_PASSWORD from .env; when empty, one is generated into .env (never printed).
+seed:
+	uv run --env-file .env python -m aivee_api.accounts.seed --env-file .env
