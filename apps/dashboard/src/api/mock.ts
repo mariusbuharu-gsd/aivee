@@ -338,8 +338,8 @@ export class MockApi implements ApiClient {
       const x = 0.42 + Math.sin(t / 4) * 0.3;
       cb([
         { track_id: 7, role: 'staff', box: [x, 0.22 + Math.cos(t / 3) * 0.04, 0.09, 0.4] },
-        { track_id: 12, role: 'guest', box: [0.47, 0.42, 0.09, 0.3] },
-        { track_id: 13, role: 'guest', box: [0.6, 0.43, 0.09, 0.29] },
+        { track_id: 12, role: 'guest', box: [0.44, 0.42, 0.09, 0.3] },
+        { track_id: 13, role: 'guest', box: [0.64, 0.43, 0.09, 0.29] },
       ]);
     };
     tick();
