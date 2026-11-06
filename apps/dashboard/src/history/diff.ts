@@ -16,6 +16,7 @@ const LABELS: Record<string, string> = {
   device: 'Dispozitiv',
   type: 'Tip',
   telegram_chat_id: 'Chat Telegram',
+  telegram_chat_title: 'Grup Telegram',
   email: 'Email',
 };
 

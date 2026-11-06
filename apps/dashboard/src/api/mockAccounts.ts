@@ -20,6 +20,8 @@ import {
   type RegisterInput,
   type Role,
   type ServiceMetrics,
+  type TelegramLink,
+  type TelegramStatus,
 } from './client';
 
 /** Password of the three demo users in the mock (the real seed reads DEMO_PASSWORD). */
@@ -32,6 +34,9 @@ const SESSION_KEY = 'aivee.mock.session';
 const MIN_PASSWORD = 8;
 /** How long the mock waiter takes to reach the table after "Merg eu". */
 const ARRIVE_AFTER_MS = 4_000;
+/** In the mock, the group "joins" this long after "Conectează Telegram" (the bot's side). */
+export const MOCK_TELEGRAM_CONNECT_MS = 6_000;
+const TELEGRAM_LINK_TTL_MS = 15 * 60_000;
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   owner: [
@@ -158,6 +163,8 @@ export class MockAccounts {
     { id: 'demo', name: 'Terasa demo', type: 'restaurant', orgId: 'org-demo' },
     { id: 'centru', name: 'Bistro Centru', type: 'restaurant', orgId: 'org-demo' },
   ];
+  private telegram = new Map<string, { connectAt: number; expiresAt: number }>();
+  private telegramTitles = new Map<string, string>();
   private members: Membership[] = [
     { locationId: 'demo', userId: 'u-manager', role: 'manager' },
     { locationId: 'demo', userId: 'u-staff', role: 'staff' },
@@ -435,6 +442,9 @@ export class MockAccounts {
       type: loc.type,
       telegram_chat_id: loc.telegram_chat_id ?? null,
     };
+    if ('telegram_chat_id' in patch && patch.telegram_chat_id !== loc.telegram_chat_id) {
+      this.telegramTitles.delete(id);
+    }
     Object.assign(loc, patch);
     this.log({
       location_id: id,
@@ -460,6 +470,46 @@ export class MockAccounts {
       target: { type: 'location', id, label: loc?.name ?? id },
       summary_ro: `${this.current().name} a șters locația ${loc?.name ?? id}`,
     });
+  }
+
+  createTelegramLink(locationId: string): TelegramLink {
+    this.require('locations.manage', locationId);
+    const code = uid('tg');
+    const now = Date.now();
+    const expiresAt = now + TELEGRAM_LINK_TTL_MS;
+    this.telegram.set(locationId, { connectAt: now + MOCK_TELEGRAM_CONNECT_MS, expiresAt });
+    const base = 'https://t.me/aivee_demo_bot';
+    return {
+      url: `${base}?startgroup=${code}`,
+      private_url: `${base}?start=${code}`,
+      expires_at: new Date(expiresAt).toISOString(),
+    };
+  }
+
+  getTelegramStatus(locationId: string): TelegramStatus {
+    this.require('locations.manage', locationId);
+    const loc = this.locations.find((l) => l.id === locationId);
+    const pending = this.telegram.get(locationId);
+    const now = Date.now();
+    if (loc && pending && now >= pending.connectAt && now < pending.expiresAt) {
+      // What the bot does when the group sends /start <code>.
+      this.telegram.delete(locationId);
+      const title = `Echipa ${loc.name}`;
+      const before = loc.telegram_chat_id ?? null;
+      loc.telegram_chat_id = '-1009876543210';
+      this.telegramTitles.set(locationId, title);
+      this.log({
+        location_id: locationId,
+        actor: this.actor(),
+        kind: 'location.telegram_connected',
+        target: { type: 'location', id: locationId, label: loc.name },
+        summary_ro: `${this.current().name} a conectat grupul Telegram „${title}” la ${loc.name}`,
+        before: { telegram_chat_id: before },
+        after: { telegram_chat_id: loc.telegram_chat_id, telegram_chat_title: title },
+      });
+    }
+    if (!loc?.telegram_chat_id) return { connected: false, chat_title: null };
+    return { connected: true, chat_title: this.telegramTitles.get(locationId) ?? null };
   }
 
   listMembers(locationId: string): Member[] {

@@ -59,6 +59,8 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     createLocation: vi.fn(async (l) => l),
     updateLocation: vi.fn(),
     deleteLocation: vi.fn(async () => undefined),
+    createTelegramLink: vi.fn(),
+    getTelegramStatus: vi.fn(async () => ({ connected: false, chat_title: null })),
     listMembers: vi.fn(async () => []),
     updateMember: vi.fn(),
     removeMember: vi.fn(async () => undefined),

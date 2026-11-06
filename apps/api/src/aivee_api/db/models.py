@@ -45,6 +45,8 @@ class Site(Base):
     )
     type: Mapped[str] = mapped_column(String(16), default="other", server_default="other")
     telegram_chat_id: Mapped[str | None] = mapped_column(Text)
+    telegram_chat_title: Mapped[str | None] = mapped_column(Text)
+    """The chat's title when it was linked through the bot (None after a manual chat id)."""
 
     __table_args__ = (
         CheckConstraint(
@@ -234,3 +236,21 @@ class VideoUploadRow(Base):
         ),
         CheckConstraint("rotate IN (0, 90, 180, 270)", name="video_upload_rotate"),
     )
+
+
+class TelegramLinkRow(Base):
+    """A one-click "Conectează Telegram" code (aivee_api.locations.telegram). Only the
+    sha256 of the code is stored; it works once, until `expires_at`."""
+
+    __tablename__ = "telegram_links"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    location_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    created_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_telegram_links_created_by_id")
+    )
+    created_at: Mapped[datetime] = _now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    chat_id: Mapped[str | None] = mapped_column(Text)
+    """The chat the code was used in."""

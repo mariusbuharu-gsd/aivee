@@ -8,7 +8,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 class ApiSettings(BaseSettings):
     """Env: SITE, DEVICE, MQTT_HOST, MQTT_PORT, MQTT_API_USER, MQTT_API_PASSWORD, SNAPSHOT_DIR,
     CORS_ORIGINS (comma-separated), COOKIE_SECURE, SESSION_TTL_HOURS, DASHBOARD_URL,
-    CLAUDE_MODEL, YOLO_WEIGHTS, VIDEO_DIR, VIDEO_PYTHON, MQTT_UPLOAD_USER, MQTT_UPLOAD_PASSWORD
+    CLAUDE_MODEL, YOLO_WEIGHTS, VIDEO_DIR, VIDEO_PYTHON, MQTT_UPLOAD_USER, MQTT_UPLOAD_PASSWORD,
+    TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_TOKEN
     (+ POSTGRES_* via aivee_api.db.settings,
     ANTHROPIC_API_KEY read by the SDK itself)."""
 
@@ -46,6 +47,10 @@ class ApiSettings(BaseSettings):
     video_max_s: float = 120.0
     video_fps: float = 10.0
     """Frames per second of clip time the runner analyses (the live edge's default)."""
+    telegram_bot_username: str | None = None
+    """For "Conectează Telegram" links; when empty, resolved once via getMe."""
+    telegram_bot_token: str | None = None
+    """Only for that getMe; the API never sends messages."""
     default_profile_id: str = "staff"
     default_profile_name: str = "Personal"
 

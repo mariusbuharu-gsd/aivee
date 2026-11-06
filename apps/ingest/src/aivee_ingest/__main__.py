@@ -17,6 +17,13 @@ from aivee_ingest.locations import telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
 from aivee_ingest.realert import Realerter, run_realerts
 from aivee_ingest.telegram import TelegramNotifier
+from aivee_ingest.telegram_link import (
+    AdvisoryPollLock,
+    DbLinkStore,
+    HttpBotApi,
+    TelegramLinkBot,
+    run_link_poller,
+)
 from aivee_ingest.verify import AlertVerification, DbVerificationStore, build_verifier
 from aivee_ingest.webpush import CompositeNotifier, WebPushNotifier
 from aivee_ingest.worker import run_worker
@@ -79,11 +86,16 @@ async def main() -> None:
     )
     realerter = Realerter(sessions, notifier, audit, settings.realert_after_s)
 
+    jobs = [run_worker(settings, handler), run_realerts(realerter, settings.realert_interval_s)]
+    if settings.telegram_bot_token and settings.telegram_poll:
+        bot_api = HttpBotApi(settings.telegram_bot_token)
+        bot = TelegramLinkBot(bot_api, DbLinkStore(sessions))
+        jobs.append(run_link_poller(bot, bot_api, AdvisoryPollLock(engine)))
+    else:
+        log.info("Telegram link poller off (no TELEGRAM_BOT_TOKEN, or TELEGRAM_POLL=false)")
+
     async def run() -> None:
-        await asyncio.gather(
-            run_worker(settings, handler),
-            run_realerts(realerter, settings.realert_interval_s),
-        )
+        await asyncio.gather(*jobs)
 
     task = asyncio.create_task(run())
     loop = asyncio.get_running_loop()

@@ -28,6 +28,7 @@ from aivee_api.edge.sync import EdgeCommands, EdgeSync, LoggingEdgeCommands, Mqt
 from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
 from aivee_api.locations.router import router as locations_router
+from aivee_api.locations.telegram import TelegramBotUsername
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.metrics.router import router as metrics_router
 from aivee_api.push.router import router as push_router
@@ -79,6 +80,9 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
             metrics=metrics,
             live=live,
             videos=videos,
+            telegram_bot=TelegramBotUsername(
+                settings.telegram_bot_username, settings.telegram_bot_token
+            ),
         )
     finally:
         await videos.stop()

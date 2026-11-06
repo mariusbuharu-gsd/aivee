@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Path, status
 
 from aivee_api.auth.deps import CurrentUser
-from aivee_api.deps import SessionDep
+from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.locations.schemas import (
     SAFE_ID,
     LocationIn,
@@ -11,6 +11,7 @@ from aivee_api.locations.schemas import (
     MemberPatch,
 )
 from aivee_api.locations.service import LocationService, MemberService
+from aivee_api.locations.telegram import TelegramLinkOut, TelegramLinkService, TelegramStatusOut
 
 router = APIRouter(prefix="/api/locations", tags=["locations"])
 
@@ -59,3 +60,18 @@ async def remove_member(
     user_id: str, s: SessionDep, p: CurrentUser, location_id: str = LocationId
 ) -> None:
     await MemberService(s, p).remove(location_id, user_id)
+
+
+@router.post("/{location_id}/telegram/link")
+async def create_telegram_link(
+    s: SessionDep, p: CurrentUser, svc: ServicesDep, location_id: str = LocationId
+) -> TelegramLinkOut:
+    """A single-use "Conectează Telegram" deep link, valid 15 minutes."""
+    return await TelegramLinkService(s, p).create(location_id, svc.telegram_bot)
+
+
+@router.get("/{location_id}/telegram")
+async def telegram_status(
+    s: SessionDep, p: CurrentUser, location_id: str = LocationId
+) -> TelegramStatusOut:
+    return await TelegramLinkService(s, p).status(location_id)

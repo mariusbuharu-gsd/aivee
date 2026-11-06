@@ -767,6 +767,14 @@ export class MockApi implements ApiClient {
     return this.call(() => this.accounts.deleteLocation(id));
   }
 
+  createTelegramLink(locationId: string) {
+    return this.call(() => this.accounts.createTelegramLink(locationId));
+  }
+
+  getTelegramStatus(locationId: string) {
+    return this.call(() => this.accounts.getTelegramStatus(locationId));
+  }
+
   listMembers(locationId: string) {
     return this.call(() => this.accounts.listMembers(locationId));
   }

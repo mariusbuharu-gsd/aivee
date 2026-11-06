@@ -21,6 +21,7 @@ TEMPLATES: dict[str, str] = {
     "location.created": "{actor} a creat locația {target}",
     "location.updated": "{actor} a modificat locația {target}",
     "location.deleted": "{actor} a șters locația {target}",
+    "location.telegram_connected": "{actor} a conectat grupul Telegram „{chat}” la {target}",
     "camera.created": "{actor} a adăugat camera {target}",
     "camera.updated": "{actor} a modificat camera {target}",
     "camera.deleted": "{actor} a șters camera {target}",

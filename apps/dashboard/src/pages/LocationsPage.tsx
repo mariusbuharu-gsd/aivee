@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { Location } from '../api/client';
 import { useApi } from '../api/context';
+import { TelegramConnect } from '../components/TelegramConnect';
 import { useAuth } from '../auth/context';
 import { LOCATION_TYPES, locationTypeLabel as typeLabel } from '../auth/session';
 import { Banner } from '../ui/Banner';
@@ -77,12 +78,16 @@ export function LocationsPage() {
                       initial={l}
                       submitLabel="Salvează"
                       onCancel={() => setEditing(null)}
+                      onTelegramConnected={() => void load()}
                       onSubmit={(v) =>
                         run(async () => {
                           await api.updateLocation(l.id, {
                             name: v.name,
                             type: v.type,
-                            telegram_chat_id: v.telegram_chat_id || null,
+                            // Only a typed chat id is sent: the bot may have linked one meanwhile.
+                            ...(v.telegram_chat_id === undefined
+                              ? {}
+                              : { telegram_chat_id: v.telegram_chat_id || null }),
                           });
                           setEditing(null);
                           toast({ title: `„${v.name}” a fost salvată` });
@@ -177,17 +182,20 @@ function LocationForm({
   submitLabel,
   onSubmit,
   onCancel,
+  onTelegramConnected,
 }: {
   initial?: Location;
   submitLabel: string;
   onSubmit: (v: Location) => Promise<void> | void;
   onCancel?: () => void;
+  onTelegramConnected?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [id, setId] = useState(initial?.id ?? '');
   const [idTouched, setIdTouched] = useState(!!initial);
   const [type, setType] = useState(initial?.type ?? 'restaurant');
   const [telegram, setTelegram] = useState(initial?.telegram_chat_id ?? '');
+  const [telegramTouched, setTelegramTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const prefix = initial ? `loc-${initial.id}` : 'loc-new';
 
@@ -199,7 +207,12 @@ function LocationForm({
       return setError('Id-ul poate avea litere mici, cifre și cratimă (2–40).');
     }
     setError(null);
-    void onSubmit({ id: finalId, name: name.trim(), type, telegram_chat_id: telegram.trim() });
+    void onSubmit({
+      id: finalId,
+      name: name.trim(),
+      type,
+      telegram_chat_id: telegramTouched || !initial ? telegram.trim() : undefined,
+    });
   }
 
   return (
@@ -239,19 +252,29 @@ function LocationForm({
         onChange={setType}
       />
       {initial && (
-        <label className="field">
-          <span>Chat Telegram (opțional)</span>
-          <input
-            id={`${prefix}-tg`}
-            className="input mono"
-            value={telegram}
-            onChange={(e) => setTelegram(e.target.value)}
-            placeholder="-1001234567890"
-          />
-          <small className="muted">
-            Adaugă botul AiVee în grupul echipei, apoi scrie aici id-ul grupului.
-          </small>
-        </label>
+        <fieldset className="telegram-fieldset">
+          <legend>Alerte pe Telegram</legend>
+          <TelegramConnect locationId={initial.id} onConnected={onTelegramConnected} />
+          <details className="tech">
+            <summary>Avansat: id-ul chatului</summary>
+            <label className="field">
+              <span>Chat Telegram (opțional)</span>
+              <input
+                id={`${prefix}-tg`}
+                className="input mono"
+                value={telegram}
+                onChange={(e) => {
+                  setTelegramTouched(true);
+                  setTelegram(e.target.value);
+                }}
+                placeholder="-1001234567890"
+              />
+              <small className="muted">
+                Doar dacă știi deja id-ul grupului. Altfel folosește „Conectează Telegram”.
+              </small>
+            </label>
+          </details>
+        </fieldset>
       )}
       {error && <Banner tone="error" title={error} />}
       <div className="row-actions">

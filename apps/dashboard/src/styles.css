@@ -2832,6 +2832,28 @@ label.btn:focus-within {
   }
 }
 
+/* Locații: "Conectează Telegram" */
+.telegram-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 10px;
+}
+.telegram-fieldset legend {
+  padding: 0 0 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.telegram-connect {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+.telegram-connect .row-actions {
+  flex-wrap: wrap;
+}
+
 /* ---------- Setup checklist ("Configurare", Live) ---------- */
 .setup {
   margin-bottom: var(--gap);
