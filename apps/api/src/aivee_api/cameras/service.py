@@ -1,9 +1,12 @@
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from aivee_contracts.geometry import CameraConfig, Zone
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from aivee_api.alerts.audit import AuditWriter, system_closed_entry
+from aivee_api.alerts.repository import AlertRepository
 from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.db.models import Camera
 from aivee_api.db.repositories import CameraRepository, DeviceRepository, camera_config
@@ -77,6 +80,23 @@ class CameraService:
         if patch.device and patch.device != before.device:
             await self._sync.publish_rules()  # the camera's rules move with it
         return await self.get(camera_id)
+
+    async def delete(self, camera_id: str, audit: AuditWriter) -> CameraOut:
+        """Delete the camera with its zones and rules; its open alerts are closed by the
+        system (`camera_deleted`) in the same transaction, and the device's retained
+        config and rules are republished so the edge drops the camera. Returns the
+        camera as it was."""
+        before = await self.get(camera_id)
+        closed = await AlertRepository(self._s).close_open_for_camera(
+            camera_id, datetime.now(UTC), "camera_deleted"
+        )
+        for view in closed:
+            await audit.append(self._s, system_closed_entry(view, "camera_deleted"))
+        await self._cameras.delete(camera_id)
+        await self._s.commit()
+        await self._sync.publish_config()
+        await self._sync.publish_rules()
+        return before
 
     async def zones(self, camera_id: str) -> list[Zone]:
         return (await self.get(camera_id)).zones
