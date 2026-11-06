@@ -32,12 +32,18 @@ export function RuleComposer({
   onCreated,
   compact = false,
   camera,
+  examples = [],
+  startHere = false,
 }: {
   cameraId: string;
   onCreated?: (rule: Rule) => void;
   compact?: boolean;
   /** The camera picker, shown inside the composer so it is clear what it applies to. */
   camera?: ReactNode;
+  /** Example requests; picking one fills the text (nothing is translated or saved yet). */
+  examples?: string[];
+  /** The camera has no rules yet: show the examples as a "start here" list, not as chips. */
+  startHere?: boolean;
 }) {
   const api = useApi();
   const toast = useToast();
@@ -49,6 +55,7 @@ export function RuleComposer({
   const [editing, setEditing] = useState(false);
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const Speech = typeof window === 'undefined' ? null : speechCtor();
 
   useEffect(() => () => recRef.current?.stop(), []);
@@ -94,6 +101,14 @@ export function RuleComposer({
     }
   }
 
+  function pickExample(example: string) {
+    setText(example);
+    setDraft(null);
+    setEditing(false);
+    setError(null);
+    inputRef.current?.focus();
+  }
+
   function discard() {
     setDraft(null);
     setEditing(false);
@@ -134,6 +149,7 @@ export function RuleComposer({
         <div className="composer-row">
           <input
             id={inputId}
+            ref={inputRef}
             className="input"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -156,6 +172,40 @@ export function RuleComposer({
           </button>
         </div>
       </form>
+      {examples.length > 0 && !startHere && (
+        <div className="chips composer-examples" role="group" aria-labelledby={`${inputId}-ex`}>
+          <span id={`${inputId}-ex`} className="small muted">
+            Exemple
+          </span>
+          {examples.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              className="chip chip-tap"
+              onClick={() => pickExample(ex)}
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      )}
+      {examples.length > 0 && startHere && (
+        <div className="rule-starters" role="group" aria-labelledby={`${inputId}-start`}>
+          <p id={`${inputId}-start`} className="small muted">
+            Camera nu are încă nicio regulă. Pornește de la un exemplu și adaptează-l:
+          </p>
+          <ul>
+            {examples.map((ex) => (
+              <li key={ex}>
+                <button type="button" className="rule-starter" onClick={() => pickExample(ex)}>
+                  <Icon name="rules" />
+                  <span>{ex}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && <Banner tone="error" title={error} />}
       {draft && (
         <div className="understood" role="region" aria-label="Ce am înțeles">

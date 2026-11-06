@@ -3,6 +3,7 @@ import { AlertFeed } from '../components/AlertFeed';
 import { CameraTile } from '../components/CameraTile';
 import { Icon } from '../components/Icon';
 import { LiveSummary } from '../components/LiveSummary';
+import { SetupChecklist } from '../components/SetupChecklist';
 import { SuggestionCard } from '../components/SuggestionCard';
 import { useAuth } from '../auth/context';
 import { useLiveData, zoneName } from '../state/context';
@@ -27,6 +28,7 @@ export function LivePage() {
           </Link>
         )}
       </header>
+      <SetupChecklist />
       <LiveSummary alerts={alerts} cameras={cameras} metrics={metrics} />
       <div className="live-grid">
         <section aria-label="Camere" className="cameras">

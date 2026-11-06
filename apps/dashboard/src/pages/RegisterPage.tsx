@@ -50,7 +50,7 @@ export function RegisterPage() {
     <AuthShell
       aside={
         <>
-          <h2 className="auth-claim">În 10 minute primești prima alertă.</h2>
+          <h2 className="auth-claim">Te ghidăm pas cu pas până la prima alertă.</h2>
           <ol className="auth-steps">
             {STEPS.map(([title, hint], i) => (
               <li key={title} aria-current={i === 0 ? 'step' : undefined}>

@@ -26,7 +26,7 @@ export function StaffPhotoUpload() {
   }
 
   return (
-    <div className="upload">
+    <div id="poze-personal" className="upload">
       <input
         id={id}
         className="visually-hidden"
