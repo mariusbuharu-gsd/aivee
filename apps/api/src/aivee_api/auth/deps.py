@@ -17,7 +17,7 @@ from fastapi import Depends, Query, Request, Response
 
 from aivee_api.auth.permissions import Role
 from aivee_api.auth.principal import Principal, principal_for_token
-from aivee_api.deps import ServicesDep, SessionDep
+from aivee_api.deps import ServicesDep
 from aivee_api.errors import Unauthenticated
 from aivee_api.settings import ApiSettings
 
@@ -44,12 +44,14 @@ def clear_session_cookie(response: Response, settings: ApiSettings) -> None:
     )
 
 
-async def current_principal(
-    request: Request, response: Response, s: SessionDep, svc: ServicesDep
-) -> Principal:
+async def current_principal(request: Request, response: Response, svc: ServicesDep) -> Principal:
+    """No cookie → 401 without touching the database."""
     token = request.cookies.get(COOKIE)
+    if not token:
+        raise Unauthenticated(NOT_LOGGED_IN)
     ttl = timedelta(hours=svc.settings.session_ttl_hours)
-    found = await principal_for_token(s, token, ttl)
+    async with svc.sessions() as s:
+        found = await principal_for_token(s, token, ttl)
     if found is None:
         raise Unauthenticated(NOT_LOGGED_IN)
     if found.extended_until is not None and token:

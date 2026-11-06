@@ -49,10 +49,19 @@ def services(
 
 
 @pytest.fixture
-async def api(services: Services) -> AsyncIterator[httpx.AsyncClient]:
+async def api(
+    services: Services, sessions: Any, tenancy_factory: Any, login: Any
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Logged in as the owner of the org that holds location `test` (= settings.site), whose
+    edge device `edge-01` events and suggestions come from."""
+    await tenancy_factory(sessions)
+    async with sessions() as s:
+        await DeviceRepository(s).ensure_device("test", "edge-01")
+        await s.commit()
     app = create_app(services)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await login(client, "owner@t.ro")
         yield client
 
 
@@ -423,11 +432,15 @@ async def test_enrolment_without_models_is_503(
     publisher: RecordingPublisher,
     translator: Any,
     services_factory: Any,
+    tenancy_factory: Any,
+    login: Any,
 ) -> None:
+    await tenancy_factory(sessions)
     app = create_app(services_factory(settings, sessions, publisher, translator, None))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
+        await login(client, "manager@t.ro")
         r = await client.post(
             "/api/staff/photos", files=[("photo", ("a.jpg", bytes([2]), "image/jpeg"))]
         )
