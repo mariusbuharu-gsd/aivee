@@ -7,7 +7,7 @@ from collections.abc import Collection, Sequence
 from datetime import datetime, timedelta
 from typing import cast
 
-from aivee_contracts.events import AlertEvent
+from aivee_contracts.events import AlertEvent, Verification, VerificationStatus, before_snapshot_id
 from sqlalchemy import ColumnElement, Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,18 @@ from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.models import Camera, Device, EventRow
 
 STATE_FILTERS = ("opened", "acknowledged", "arrived", "closed", "open")
+
+
+def verification_of(row: EventRow) -> Verification | None:
+    if row.verification_status is None:
+        return None
+    return Verification(
+        status=cast("VerificationStatus", row.verification_status),
+        summary_ro=row.verification_summary_ro or "",
+        object_ro=row.verification_object_ro,
+        model=row.verification_model,
+        latency_ms=row.verification_latency_ms,
+    )
 
 
 def lifecycle(row: EventRow) -> Lifecycle:
@@ -60,6 +72,10 @@ def to_view(row: EventRow, location_id: str | None, zone_names: dict[str, str]) 
         device_id=row.device_id,
         snapshot=row.snapshot_path is not None,
         snapshot_url=f"/api/snapshots/{row.event_id}" if row.snapshot_path else None,
+        before_snapshot_url=f"/api/snapshots/{before_snapshot_id(row.event_id)}"
+        if row.before_snapshot_path
+        else None,
+        verification=verification_of(row),
     )
 
 
@@ -212,6 +228,51 @@ class AlertRepository:
             )
         return views
 
+    async def claim_verification(self, alert_id: str, at: datetime) -> bool:
+        """Mark the alert `pending` if it was never verified: at most one check per alert,
+        even with several ingest replicas (one atomic UPDATE ... WHERE status IS NULL)."""
+        claimed = await self.s.execute(
+            update(EventRow)
+            .where(
+                EventRow.event_id == alert_id,
+                EventRow.state == "opened",
+                EventRow.verification_status.is_(None),
+            )
+            .values(verification_status="pending", verified_at=at)
+            .returning(EventRow.id)
+        )
+        return claimed.first() is not None
+
+    async def save_verification(self, alert_id: str, v: Verification, at: datetime) -> None:
+        await self.s.execute(
+            update(EventRow)
+            .where(EventRow.event_id == alert_id, EventRow.state == "opened")
+            .values(
+                verification_status=v.status,
+                verification_summary_ro=v.summary_ro or None,
+                verification_object_ro=v.object_ro,
+                verification_model=v.model,
+                verification_latency_ms=v.latency_ms,
+                verified_at=at,
+            )
+        )
+
+    async def verification_counts(
+        self, location_ids: Collection[str] | None = None
+    ) -> list[tuple[str, str, int]]:
+        """(rule_id, status, alerts) over every verified alert: the false-alarm rate per rule."""
+        stmt = (
+            select(EventRow.rule_id, EventRow.verification_status, func.count())
+            .outerjoin(Device, Device.id == EventRow.device_id)
+            .where(EventRow.state == "opened", EventRow.verification_status.is_not(None))
+            .group_by(EventRow.rule_id, EventRow.verification_status)
+            .order_by(EventRow.rule_id, EventRow.verification_status)
+        )
+        if location_ids is not None:
+            stmt = stmt.where(Device.site_id.in_(location_ids))
+        rows = (await self.s.execute(stmt)).all()
+        return [(rule_id, status or "", n) for rule_id, status, n in rows]
+
     # -- api ---------------------------------------------------------------------------
 
     async def acknowledge(self, alert_id: str, user: CurrentUser, at: datetime) -> bool:
@@ -288,6 +349,13 @@ class AlertRepository:
 
     async def acknowledged_after(self, since: datetime | None) -> Sequence[tuple[str, datetime]]:
         return await self._stamped_after(EventRow.acknowledged_at, since)
+
+    async def latest_verification(self) -> datetime | None:
+        latest: datetime | None = await self.s.scalar(select(func.max(EventRow.verified_at)))
+        return latest
+
+    async def verified_after(self, since: datetime | None) -> Sequence[tuple[str, datetime]]:
+        return await self._stamped_after(EventRow.verified_at, since)
 
     async def latest_realert(self) -> datetime | None:
         latest: datetime | None = await self.s.scalar(select(func.max(EventRow.realerted_at)))

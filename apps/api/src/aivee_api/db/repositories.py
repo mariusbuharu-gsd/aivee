@@ -192,7 +192,11 @@ class EventRepository:
         self.s = session
 
     async def insert_if_new(
-        self, event: AlertEvent, device_id: str = "", snapshot_path: str | None = None
+        self,
+        event: AlertEvent,
+        device_id: str = "",
+        snapshot_path: str | None = None,
+        before_snapshot_path: str | None = None,
     ) -> bool:
         """Store the event once per event_id. True only when this call inserted it."""
         stmt = (
@@ -207,6 +211,7 @@ class EventRepository:
                 at=event.at,
                 summary_ro=event.summary_ro,
                 snapshot_path=snapshot_path,
+                before_snapshot_path=before_snapshot_path,
             )
             .on_conflict_do_nothing(index_elements=[EventRow.event_id])
             .returning(EventRow.id)

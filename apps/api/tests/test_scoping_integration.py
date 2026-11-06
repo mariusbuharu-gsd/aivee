@@ -119,6 +119,7 @@ async def test_another_locations_data_is_404(world: None, client_factory: Any, l
         "/api/rules?location_id=far",
         "/api/staff/suggestions?location_id=far",
         "/api/snapshots/ev-far",
+        "/api/snapshots/ev-far-before",
         "/api/snapshots/s-far",
     ):
         r = await manager.get(path)
@@ -193,6 +194,10 @@ async def test_snapshots_follow_the_event_location(
     assert r.content == JPEG
     assert (await staff.get("/api/snapshots/s-test")).status_code == 403  # staff.review
     assert (await manager.get("/api/snapshots/s-test")).status_code == 200
+    # The "before" image of an object change follows its event too.
+    assert (await staff.get("/api/snapshots/ev-test-before")).status_code == 404  # no file yet
+    (settings.snapshot_dir / "ev-test-before.jpg").write_bytes(JPEG)
+    assert (await staff.get("/api/snapshots/ev-test-before")).content == JPEG
     for bad in ("missing", "..%2F..%2Fetc%2Fpasswd", "a.b"):
         assert (await staff.get(f"/api/snapshots/{bad}")).status_code == 404
     for c in (staff, manager):

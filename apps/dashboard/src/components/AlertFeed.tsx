@@ -10,6 +10,13 @@ const CLOSED_BY_SYSTEM: Record<string, string> = {
   camera_deleted: 'camera a fost scoasă',
 };
 
+/** Badge per AI verification status; `unavailable` has none, the card stays a plain alert. */
+const VERIFICATION: Record<string, { label: string; tone: string }> = {
+  confirmed: { label: 'Confirmat de AI', tone: 'pill-live' },
+  rejected: { label: 'Neconfirmat', tone: 'pill-muted' },
+  pending: { label: 'Se verifică…', tone: 'pill-muted' },
+};
+
 const time = (iso: string) =>
   new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
 
@@ -44,9 +51,16 @@ export function AlertFeed({
       {items.map((a) => {
         const open = a.closed_at === null;
         const lifecycle = cases[a.key];
+        const verdict = a.verification ? VERIFICATION[a.verification.status] : undefined;
+        const aiSummary = verdict ? a.verification?.summary_ro?.trim() : undefined;
         return (
           <li key={a.key} className={`feed-item ${open ? 'is-open' : 'is-closed'}`}>
-            {showSnapshot && <Snapshot url={a.snapshot_url} />}
+            {showSnapshot &&
+              (verdict && a.before_snapshot_url ? (
+                <BeforeAfter before={a.before_snapshot_url} after={a.snapshot_url} />
+              ) : (
+                <Snapshot url={a.snapshot_url} />
+              ))}
             <div className="feed-body">
               <div className="feed-head">
                 <span className={`pill ${open ? 'pill-alert' : 'pill-muted'}`}>
@@ -58,6 +72,12 @@ export function AlertFeed({
                 </time>
               </div>
               <p className="feed-summary">{a.summary_ro}</p>
+              {verdict && (
+                <p className="feed-ai small">
+                  <span className={`pill pill-ai ${verdict.tone}`}>{verdict.label}</span>
+                  {aiSummary && aiSummary !== a.summary_ro && <span>{aiSummary}</span>}
+                </p>
+              )}
               <p className="muted small mono">
                 {open
                   ? `deschisă de ${waited(a)}`
@@ -87,19 +107,35 @@ export function AlertFeed({
 }
 
 /** The face-blurred JPEG; nothing at all when the edge sent none or it does not load. */
-function Snapshot({ url }: { url: string | null }) {
+function Snapshot({
+  url,
+  alt = 'Captură cu fețele estompate',
+}: {
+  url: string | null;
+  alt?: string;
+}) {
   const [failed, setFailed] = useState<string | null>(null);
   if (!url || failed === url) return null;
   return (
     <a className="snapshot snapshot-img" href={url} target="_blank" rel="noreferrer">
-      <img
-        src={url}
-        alt="Captură cu fețele estompate"
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(url)}
-      />
+      <img src={url} alt={alt} loading="lazy" decoding="async" onError={() => setFailed(url)} />
     </a>
+  );
+}
+
+/** `object_gone`: the table before and after, side by side. */
+function BeforeAfter({ before, after }: { before: string; after: string | null }) {
+  return (
+    <div className="snapshot-pair">
+      <figure>
+        <Snapshot url={before} alt="Înainte, cu fețele estompate" />
+        <figcaption className="mono">Înainte</figcaption>
+      </figure>
+      <figure>
+        <Snapshot url={after} alt="După, cu fețele estompate" />
+        <figcaption className="mono">După</figcaption>
+      </figure>
+    </div>
   );
 }
 

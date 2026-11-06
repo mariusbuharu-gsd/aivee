@@ -116,13 +116,19 @@ describe('HttpApi', () => {
     };
     mockFetch(
       json([
-        { ...ev, snapshot_url: '/api/snapshots/e-1' },
+        {
+          ...ev,
+          snapshot_url: '/api/snapshots/e-1',
+          before_snapshot_url: '/api/snapshots/e-1-before',
+        },
         { ...ev, event_id: 'e-2', snapshot: false, snapshot_url: null },
       ]),
     );
     const [a, b] = await api.listAlerts();
     expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/e-1');
+    expect(a?.before_snapshot_url).toBe('http://api:8000/api/snapshots/e-1-before');
     expect(b?.snapshot_url).toBeNull();
+    expect(b?.before_snapshot_url).toBeNull();
   });
 });
 

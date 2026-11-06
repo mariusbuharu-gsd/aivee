@@ -15,7 +15,7 @@
 | `make fake-edge SCENARIO=unattended SPEED=10` | scripted people through the real edge pipeline (`unattended`, `hand`, `queue`, `uncleared`); zones and rules come from the retained config |
 | `make test` / `make test-all` / `make lint` | unit / + integration (Docker) / ruff + mypy |
 | `make schema` | regenerate JSON Schema from contracts |
-| `make eval` | Romanian request → rule eval (20 cases, real API calls) |
+| `make eval` | Romanian request → rule eval (21 cases, real API calls) |
 | `make keys` / `make telegram-id` | paste API keys into `.env` / detect the Telegram group |
 | `make vapid` | generate the Web Push VAPID keys into `.env` (never printed; kept if already set) |
 
@@ -27,7 +27,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Who reads it | Names |
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` |
-| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `VAPID_*` |
+| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
 | Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR` |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
@@ -37,10 +37,10 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Service | Code | Role |
 |---|---|---|
 | edge | `apps/edge` | camera → YOLO11n + ByteTrack → pose (table zones; everyone while appearance is scored) → stance + behaviour + CLIP → role → situation engine (opened / arrived / closed) → blurred snapshot → MQTT; live boxes on `detections` |
-| ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners |
+| ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners |
 | api | `apps/api` | REST + WS; accounts, cookie sessions, roles per location, invites, audit; publishes retained edge state and staff commands; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
-| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0004` (`migrate` service) |
+| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0008` (`migrate` service) |
 | mediamtx | `infra/mediamtx` | RTSP in → WebRTC/WHEP out for the dashboard |
 
 API code map (`apps/api/src/aivee_api/`): `auth/` (passwords, tokens, sessions, rate limit, permission
@@ -75,9 +75,10 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET / PATCH / DELETE | `/api/rules/{id}` | `rules.manage` |
 | POST | `/api/rules/from-text` | `rules.manage`; `{camera_id, text, save?}` → `{rule, explanation_ro, saved}` |
 | GET | `/api/events` | `alerts.view`; raw AlertEvents + `device_id`, `snapshot_url` |
-| GET | `/api/snapshots/{id}` | `alerts.view` (event) or `staff.review` (suggestion); blurred JPEG |
+| GET | `/api/snapshots/{id}` | `alerts.view` (event) or `staff.review` (suggestion); blurred JPEG; `{event_id}-before` is an object change's before image, with the event's rights |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
 | POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed |
+| GET | `/api/metrics/verification` | `alerts.view`; `?location_id` → `{location_id, counts: [{rule_id, status, alerts}]}` |
 | GET | `/api/metrics/service` | `alerts.view`; `?from&to` → wait / reaction / travel `{count, median_s, p90_s}` |
 | GET | `/api/metrics` | `alerts.view`; FPS, CPU, verified ratio, events today, alert latency |
 | GET | `/api/devices` | `alerts.view` |
@@ -99,7 +100,7 @@ Root `aivee/<site>/<device>/…`, where `<site>` is the location id.
 | `events` | edge → | 1 | AlertEvent (`opened` / `arrived` / `closed`) |
 | `metrics` | edge → | 0 | Metrics (every 5 s) |
 | `suggestions` | edge → | 1 | StaffSuggestion |
-| `snapshots/<id>` | edge → | 1 | blurred JPEG bytes (event or suggestion id) |
+| `snapshots/<id>` | edge → | 1 | blurred JPEG bytes (event or suggestion id); `snapshots/<id>-before` (`Topics.snapshot_before`) for an `object_gone` alert |
 | `detections` | edge → | 0, not retained, ≤ 5 Hz | Detections `{camera_id, ts, tracks: [{track_id, bbox (x1,y1,x2,y2 normalised), role, staff_score, raised_hand}], objects}`; the API forwards them on `/ws/events` |
 | `rules` | → edge | 1, retained | RuleSet (complete) |
 | `config` | → edge | 1, retained | DeviceConfig: cameras + zones (complete) |
@@ -149,10 +150,24 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
 - `ROTATE=90` for a sideways phone (D13). Live alert time is wall clock.
 - Network sources (`rtsp://`, `http://`) decode on one FFmpeg thread (`Cv2Source._open`): frame threading held ~1 frame per core, ~2.4 s behind the camera at 5 fps on 12 cores. One thread still decodes 1280×720 at ~34 FPS.
 
+- `object_gone` (`domain/objects.py`): objects count by their box base (bottom-centre) inside the zone, per class;
+  the level is the highest count of the last `GONE_CONFIRM_S=3` s, so flicker does not count. A drop below the level
+  after `min_duration_s` (at least 3 s) holds until the object reappears or `GONE_HOLD_S=30` s pass: the alert opens
+  once and closes by itself. The pipeline keeps per zone the last frame that showed every object and sends it
+  blurred as `snapshots/<id>-before`; the event carries `object_change {kind: gone, objects, before_snapshot}`.
+
+## Alert verification (ingest, `VERIFY_ALERTS`, default off)
+`apps/ingest/.../verify.py`: `AlertVerifier` port, `ClaudeAlertVerifier` (`messages.parse`, `VERIFY_MODEL`, effort low,
+`VerificationAnswer`). The question is built from the rule's `prompt_ro`; `object_gone` sends before + after, other kinds
+the opened snapshot. Runs as a task (the handler never waits), once per alert (atomic `pending` claim), `VERIFY_TIMEOUT_S`
+(20 s). Confirmed → notify with the model's summary; rejected → no notification; unavailable (off, no key, error,
+timeout, no image) → normal alert. Results on the opened row (`verification_*`, `verified_at`, migration `0008`);
+`AlertView.verification`, `before_snapshot_url`. Design: `docs/plans/2026-11-06-object-change-design.md`.
+
 ## Request → rule
 `apps/api/.../rules/translator.py`: `messages.parse`, model `claude-opus-5-5`, effort low, `RuleDraft` output;
 fixed instructions first, camera zones last (cache-friendly). Handles refusal / max_tokens / SDK errors with
-Romanian messages. Eval: `evals/nl_to_rule` — 20/20, median 2.4 s.
+Romanian messages. Eval: `evals/nl_to_rule` — 20/20, median 2.4 s (21 cases since `gone-glass`, not re-run yet).
 
 ## Known gaps
 - Login rate limit is in memory: a restart clears it, and several API processes would count separately.

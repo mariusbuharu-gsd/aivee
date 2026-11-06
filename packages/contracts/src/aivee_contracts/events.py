@@ -3,6 +3,41 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+BEFORE_SUFFIX = "-before"
+
+
+def before_snapshot_id(event_id: str) -> str:
+    """Snapshot id of the "before" image of an object change (`snapshots/<id>-before`)."""
+    return f"{event_id}{BEFORE_SUFFIX}"
+
+
+class ObjectChange(BaseModel):
+    """What changed for an `object_gone` alert: the COCO classes that disappeared."""
+
+    kind: Literal["gone"] = "gone"
+    objects: list[str] = Field(description="COCO class names that disappeared")
+    before_snapshot: bool = Field(
+        default=False,
+        description="The last frame with the object was sent on `snapshots/<event_id>-before`",
+    )
+
+
+VerificationStatus = Literal["pending", "confirmed", "rejected", "unavailable"]
+
+
+class Verification(BaseModel):
+    """A vision model's second opinion on an opened alert (ingest, at most one per alert).
+
+    pending: being checked · confirmed / rejected: the model's answer · unavailable: not
+    checked (feature off, no key, timeout, error, no image); the alert is a normal one.
+    """
+
+    status: VerificationStatus
+    summary_ro: str = Field(default="", description='e.g. "Masa 1: a dispărut paharul de vin"')
+    object_ro: str | None = Field(default=None, description="Romanian name of the object, if any")
+    model: str | None = None
+    latency_ms: int | None = Field(default=None, ge=0)
+
 
 class AlertEvent(BaseModel):
     """Published by the edge when a rule's situation starts or stops holding, and once in
@@ -16,6 +51,9 @@ class AlertEvent(BaseModel):
     at: datetime
     summary_ro: str
     snapshot: bool = False
+    object_change: ObjectChange | None = Field(
+        default=None, description="Set on `opened` events of an `object_gone` rule"
+    )
 
 
 class DeviceStatus(BaseModel):

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from aivee_contracts.events import BEFORE_SUFFIX
+
 ROOT = "aivee"
 
 
@@ -51,6 +53,9 @@ class Topics:
 
     def snapshot(self, event_id: str) -> str:  # edge → QoS 1, JPEG bytes (event or suggestion id)
         return self._t(f"snapshots/{event_id}")
+
+    def snapshot_before(self, event_id: str) -> str:  # edge → QoS 1, JPEG, object change "before"
+        return self.snapshot(f"{event_id}{BEFORE_SUFFIX}")
 
     @staticmethod
     def any_device(leaf: str) -> str:

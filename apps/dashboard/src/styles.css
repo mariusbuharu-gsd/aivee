@@ -1028,6 +1028,32 @@ details summary {
   object-fit: cover;
   display: block;
 }
+/* AI verification: badge + summary, and the before/after pair for object_gone. */
+.feed-ai {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+}
+.pill-ai {
+  text-transform: none;
+}
+.snapshot-pair {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+.snapshot-pair figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.snapshot-pair figcaption {
+  font-size: 0.7rem;
+  color: var(--muted-2);
+}
 /* In the editor the frame must not be cropped: zone coordinates are relative to the full frame. */
 .editor .player video {
   object-fit: fill;

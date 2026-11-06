@@ -14,22 +14,31 @@ export interface AlertItem {
   snapshot_url: string | null;
   /** Set when the system, not a person arriving, closed it (camera offline, deleted…). */
   closed_reason?: AlertView['closed_reason'];
+  /** The vision model's second opinion, when the API sent one. */
+  verification?: AlertView['verification'];
+  /** `object_gone` only: the frame before the object disappeared (`snapshot_url` is after). */
+  before_snapshot_url?: string | null;
 }
 
 const situation = (e: AlertView) => `${e.camera_id}|${e.rule_id}|${e.zone_id}`;
 
 /**
  * Pair opened/closed events per (camera, rule, zone) into alerts, newest first.
- * Duplicate event ids are ignored, so replaying the socket after a reconnect is safe.
+ * Duplicate event ids are ignored, so replaying the socket after a reconnect is safe; a repeated
+ * `opened` event only refreshes the AI verification (pending → confirmed arrives that way).
  */
 export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
-  const seen = new Set<string>();
+  const byId = new Map<string, AlertItem | null>();
   const open = new Map<string, AlertItem>();
   const items: AlertItem[] = [];
   const sorted = [...events].sort((a, b) => a.at.localeCompare(b.at));
   for (const e of sorted) {
-    if (seen.has(e.event_id)) continue;
-    seen.add(e.event_id);
+    if (byId.has(e.event_id)) {
+      const known = byId.get(e.event_id);
+      if (known && e.state === 'opened') withVerification(known, e);
+      continue;
+    }
+    byId.set(e.event_id, null);
     const key = situation(e);
     if (e.state === 'opened') {
       if (open.has(key)) continue;
@@ -44,6 +53,8 @@ export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
         snapshot: e.snapshot ?? false,
         snapshot_url: e.snapshot_url ?? null,
       };
+      withVerification(item, e);
+      byId.set(e.event_id, item);
       open.set(key, item);
       items.push(item);
     } else if (e.state === 'closed') {
@@ -56,4 +67,9 @@ export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
     }
   }
   return items.reverse();
+}
+
+function withVerification(item: AlertItem, e: AlertView) {
+  if (e.verification) item.verification = e.verification;
+  if (e.before_snapshot_url) item.before_snapshot_url = e.before_snapshot_url;
 }

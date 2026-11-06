@@ -109,10 +109,16 @@ class MqttEdgeClient:
 
     # -- EventPublisher ------------------------------------------------------------
 
-    def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
         if snapshot_jpeg is not None:
             self._client.publish(self.topics.snapshot(event.event_id), snapshot_jpeg, qos=1)
             event = event.model_copy(update={"snapshot": True})
+        if before_jpeg is not None and event.object_change is not None:
+            self._client.publish(self.topics.snapshot_before(event.event_id), before_jpeg, qos=1)
+            change = event.object_change.model_copy(update={"before_snapshot": True})
+            event = event.model_copy(update={"object_change": change})
         self._client.publish(self.topics.events, event.model_dump_json(), qos=1)
 
     def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:

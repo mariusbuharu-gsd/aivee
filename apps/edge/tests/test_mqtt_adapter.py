@@ -6,7 +6,13 @@ from typing import Any
 import pytest
 from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import Detections
-from aivee_contracts.events import AlertEvent, DeviceStatus, Metrics, StaffSuggestion
+from aivee_contracts.events import (
+    AlertEvent,
+    DeviceStatus,
+    Metrics,
+    ObjectChange,
+    StaffSuggestion,
+)
 from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import RuleSet
 from aivee_edge.adapters.mqtt import MqttEdgeClient
@@ -48,6 +54,26 @@ def test_snapshot_is_published_before_its_event(client: Any) -> None:
     assert [t for t, _, _ in sent] == [edge.topics.snapshot("e1"), edge.topics.events]
     assert all(qos == 1 for _, _, qos in sent)
     assert AlertEvent.model_validate_json(sent[1][1]).snapshot is True
+
+
+def test_object_change_publishes_the_before_snapshot_too(client: Any) -> None:
+    edge, sent = client
+    event = _event().model_copy(update={"object_change": ObjectChange(objects=["cup"])})
+    edge.publish_alert(event, b"after", b"before")
+    assert [t for t, _, _ in sent] == [
+        edge.topics.snapshot("e1"),
+        edge.topics.snapshot_before("e1"),
+        edge.topics.events,
+    ]
+    published = AlertEvent.model_validate_json(sent[2][1])
+    assert published.snapshot is True
+    assert published.object_change is not None and published.object_change.before_snapshot
+
+
+def test_before_snapshot_is_ignored_without_an_object_change(client: Any) -> None:
+    edge, sent = client
+    edge.publish_alert(_event(), b"after", b"before")
+    assert [t for t, _, _ in sent] == [edge.topics.snapshot("e1"), edge.topics.events]
 
 
 def test_alert_without_snapshot_publishes_only_the_event(client: Any) -> None:

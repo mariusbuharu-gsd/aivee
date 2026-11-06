@@ -7,16 +7,21 @@ opening for that rule and zone) and closes when they stop holding.
 With `arrive_s` set, an open alert also reports `arrived` once, when a staff member has
 stayed in the zone for `arrive_s` since the alert opened. Staff walking past for less
 than that neither arrives nor counts as staff presence for the rule's conditions.
+
+`object_gone` is a momentary fact made to last: it holds from the moment an object has
+been missing for `GONE_CONFIRM_S` until it reappears or `GONE_HOLD_S` later, so its
+alert opens once, can be acknowledged and arrived at, and closes by itself.
 """
 
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal
 
-from aivee_contracts.events import AlertEvent
+from aivee_contracts.events import AlertEvent, ObjectChange
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Condition, Rule
 
+from aivee_edge.domain.objects import object_ro
 from aivee_edge.domain.observation import Frame
 from aivee_edge.domain.zone_state import ZoneState
 
@@ -43,16 +48,28 @@ def holds(cond: Condition, state: ZoneState, now: float) -> bool:
             return cond.pose == "raised_hand" and state.raised_hand(cond.role)
         case "objects_unattended":
             return _at_least(state.unattended_for(cond.objects, now), cond.min_duration_s)
+        case "object_gone":
+            return state.gone(cond.objects, cond.min_duration_s, now) is not None
+
+
+def object_change(rule: Rule, state: ZoneState, now: float) -> ObjectChange | None:
+    """What disappeared, for the opened event of a rule with an `object_gone` condition."""
+    for c in rule.all_of:
+        if c.kind == "object_gone" and (g := state.gone(c.objects, c.min_duration_s, now)):
+            return ObjectChange(objects=[g.label])
+    return None
 
 
 def _duration_ro(seconds: int) -> str:
     return f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s"
 
 
-def summary_ro(rule: Rule, state: ZoneState) -> str:
+def summary_ro(rule: Rule, state: ZoneState, now: float) -> str:
     """Short Romanian text, chosen by the most specific condition in the rule."""
     by_kind = {c.kind: c for c in rule.all_of}
     name = state.zone.name
+    if change := object_change(rule, state, now):
+        return f"{name}: a dispărut {object_ro(change.objects[0])}"
     if "pose" in by_kind:
         return f"{name}: un client cheamă"
     if c := by_kind.get("objects_unattended"):
@@ -106,6 +123,9 @@ class SituationEngine:
         }
         self._zone_names.update({z.id: z.name for z in zones})
 
+    def zone_states(self) -> dict[str, ZoneState]:
+        return dict(self._states)
+
     def step(self, frame: Frame) -> list[AlertEvent]:
         now = frame.ts
         for state in self._states.values():
@@ -129,7 +149,15 @@ class SituationEngine:
                     if last is None or now - last >= rule.cooldown_s:
                         self._open.add(key)
                         self._last_opened[key] = now
-                        events.append(self._event(key, "opened", now, summary_ro(rule, state)))
+                        events.append(
+                            self._event(
+                                key,
+                                "opened",
+                                now,
+                                summary_ro(rule, state, now),
+                                object_change(rule, state, now),
+                            )
+                        )
                 elif not ok and key in self._open:
                     events.append(self._close(key, now))
 
@@ -149,7 +177,12 @@ class SituationEngine:
         return self._event(key, "closed", now, f"{self._zone_names[key[1]]}: rezolvat")
 
     def _event(
-        self, key: AlertKey, state: Literal["opened", "arrived", "closed"], now: float, summary: str
+        self,
+        key: AlertKey,
+        state: Literal["opened", "arrived", "closed"],
+        now: float,
+        summary: str,
+        change: ObjectChange | None = None,
     ) -> AlertEvent:
         rule_id, zone_id = key
         return AlertEvent(
@@ -160,4 +193,5 @@ class SituationEngine:
             state=state,
             at=self._to_datetime(now),
             summary_ro=summary,
+            object_change=change,
         )

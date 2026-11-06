@@ -12,7 +12,7 @@ export type ZoneTag = string;
  * @minItems 1
  */
 export type AllOf = [Condition, ...Condition[]];
-export type Kind = 'present' | 'absent' | 'count' | 'pose' | 'objects_unattended';
+export type Kind = 'present' | 'absent' | 'count' | 'pose' | 'objects_unattended' | 'object_gone';
 export type Role = 'guest' | 'staff' | 'any';
 export type MinDurationS = number;
 export type MinCount = number;
@@ -50,6 +50,9 @@ export interface Rule {
  * - pose: someone with `role` in the zone shows `pose`
  * - objects_unattended: `objects` are in the zone and no person has been there
  *   for at least `min_duration_s`
+ * - object_gone: an object of `objects` was in the zone for at least `min_duration_s`
+ *   and has now been missing for a short confirm window (a few seconds, set by the
+ *   edge), so detector flicker does not count as a disappearance
  */
 export interface Condition {
   kind: Kind;

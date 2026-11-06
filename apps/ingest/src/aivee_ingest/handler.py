@@ -22,13 +22,14 @@ from aivee_api.alerts.schemas import AlertView
 from aivee_api.audit.repository import Actor, AuditRepository, Target
 from aivee_api.db.models import Device, Site
 from aivee_api.db.repositories import DeviceRepository, EventRepository, SuggestionRepository
-from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion
+from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion, before_snapshot_id
 from aivee_contracts.topics import ROOT, Topics
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_ingest.notify import Notifier
+from aivee_ingest.verify import UNAVAILABLE, AlertVerification, wait_for_file
 
 log = logging.getLogger(__name__)
 
@@ -47,12 +48,15 @@ class IngestHandler:
         notifier: Notifier,
         snapshot_wait_s: float = 2.0,
         audit: AuditWriter | None = None,
+        verification: AlertVerification | None = None,
     ) -> None:
         self._sessions = sessions
         self._audit = audit or LoggingAuditWriter()
         self._snapshots = snapshot_dir
         self._notifier = notifier
         self._snapshot_wait_s = snapshot_wait_s
+        self._verification = verification
+        self._verifying: set[asyncio.Task[object]] = set()
         self.handled_events: deque[str] = deque(maxlen=10_000)
         snapshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -79,13 +83,21 @@ class IngestHandler:
     async def _on_event(self, t: Topics, event: AlertEvent) -> None:
         self.handled_events.append(event.event_id)
         path = snapshot_name(event.event_id) if event.snapshot else None
+        change = event.object_change
+        before = (
+            snapshot_name(before_snapshot_id(event.event_id))
+            if change is not None and change.before_snapshot
+            else None
+        )
         view: AlertView | None = None
         async with self._sessions() as s:
-            inserted = await EventRepository(s).insert_if_new(event, t.device, path)
+            inserted = await EventRepository(s).insert_if_new(event, t.device, path, before)
             if inserted:
                 # Same transaction: the row, its alert's folded times and the audit entry.
                 alerts = AlertRepository(s)
                 alert_id, folded = await alerts.link_folded(event, t.device)
+                if event.state == "opened" and self._verification is None:
+                    await alerts.save_verification(event.event_id, UNAVAILABLE, datetime.now(UTC))
                 view = await alerts.view(alert_id) if alert_id and folded else None
                 entry = device_entry(view, event.state) if view else None
                 if entry is not None:
@@ -102,7 +114,12 @@ class IngestHandler:
             event.camera_id,
             event.zone_id,
         )
-        if event.state == "opened":
+        if event.state == "opened" and self._verification is not None:
+            # Verify, then notify, off the MQTT loop: never block the handler on the model.
+            task = asyncio.create_task(self._verify(event))
+            self._verifying.add(task)
+            task.add_done_callback(self._verifying.discard)
+        elif event.state == "opened":
             snapshot = await self._wait_snapshot(path) if path else None
             try:
                 await self._notifier.notify(event, snapshot)
@@ -114,16 +131,20 @@ class IngestHandler:
             except Exception:
                 log.exception("notifier failed for event %s", event.event_id)
 
+    async def _verify(self, event: AlertEvent) -> None:
+        assert self._verification is not None
+        try:
+            await self._verification.run(event)
+        except Exception:
+            log.exception("verification task failed for event %s", event.event_id)
+
+    async def drain(self) -> None:
+        """Wait for the verifications in flight (tests, shutdown)."""
+        while self._verifying:
+            await asyncio.gather(*self._verifying, return_exceptions=True)
+
     async def _wait_snapshot(self, name: str) -> Path | None:
-        file = self._snapshots / name
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._snapshot_wait_s
-        while not file.is_file():
-            if loop.time() >= deadline:
-                log.warning("snapshot %s did not arrive in time", name)
-                return None
-            await asyncio.sleep(0.1)
-        return file
+        return await wait_for_file(self._snapshots / name, self._snapshot_wait_s)
 
     async def _on_status(self, t: Topics, status: DeviceStatus) -> None:
         # The topic (enforced by the broker ACL) is the source of truth for the device id.

@@ -21,12 +21,14 @@ at the same time in that zone. Condition kinds:
 - pose: someone with `role` in the zone shows `pose` (only "raised_hand" exists).
 - objects_unattended: `objects` (COCO class names) are in the zone and no person has been there
   for at least `min_duration_s`.
+- object_gone: an object of `objects` (COCO class names) was in the zone for at least
+  `min_duration_s` and has disappeared (the system confirms it with the camera images).
 Roles are exactly "guest", "staff" or "any". Waiters, ospătari, chelneri, personal, angajați,
 barmani are "staff"; clienți, oaspeți, oameni la masă, cineva care așteaptă are "guest".
 Fields you do not need keep their neutral value: min_duration_s 0, min_count 1, pose null,
 objects [].
 
-## The four supported situations
+## The five supported situations
 1. Unattended table (masa nu a fost servită / nu a venit nimeni la masă):
    zone_tag of a table; all_of = [present guest min_duration_s 60,
    absent staff min_duration_s X]. X is the waiting time the owner states (default 300).
@@ -41,6 +43,12 @@ objects [].
    zone_tag of a table; all_of = [objects_unattended role "any" with objects
    ["cup", "bottle", "wine glass", "bowl", "fork", "knife", "spoon"] and min_duration_s X]
    (default X 300). If the owner names only some objects, still use this full list.
+5. Object disappeared from a table (dispare / a dispărut / ia cineva un pahar, o sticlă, o
+   ceașcă de pe masă): zone_tag of a table; all_of = [object_gone role "any" with the objects
+   the owner names, as COCO names: pahar → ["wine glass", "cup"], pahar de vin → ["wine glass"],
+   ceașcă / cană → ["cup"], sticlă → ["bottle"], bol / castron → ["bowl"]; nothing specific →
+   ["wine glass", "cup", "bottle", "bowl"]; min_duration_s 30 unless the owner says how long
+   it must have been there]; cooldown_s 60.
 
 ## Units and numbers
 - All durations are in seconds. "minut(e)" = 60 s each, "secunde" = 1 s, "oră" = 3600 s,
@@ -57,7 +65,7 @@ A rule always applies to every zone with that tag (you cannot pick a single tabl
 ## When not to produce a rule
 Set understood = false, leave all_of empty and write `clarification_ro` (Romanian, one or two
 short sentences, addressing the owner politely) when:
-- the request is not one of the four situations, or asks for something AiVee must not do:
+- the request is not one of the five situations, or asks for something AiVee must not do:
   recognising faces or identifying specific people, filming or tracking a named person,
   judging appearance, age, gender or ethnicity, counting money, or anything unrelated to
   serving guests (weather, fire, theft, music, ...);

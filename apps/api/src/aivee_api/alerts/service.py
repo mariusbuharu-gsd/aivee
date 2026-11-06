@@ -7,7 +7,12 @@ from aivee_api.alerts.audit import AuditWriter, acknowledged_entry
 from aivee_api.alerts.auth import Access
 from aivee_api.alerts.domain import Lifecycle, service_stats
 from aivee_api.alerts.repository import AlertRepository
-from aivee_api.alerts.schemas import AlertView, ServiceMetrics
+from aivee_api.alerts.schemas import (
+    AlertView,
+    ServiceMetrics,
+    VerificationCount,
+    VerificationMetrics,
+)
 from aivee_api.errors import Conflict, NotFound
 
 DEFAULT_PERIOD = timedelta(days=1)
@@ -93,3 +98,13 @@ async def service_metrics(
     )
     lives = [Lifecycle(v.opened_at, v.acknowledged_at, v.arrived_at, v.closed_at) for v in views]
     return ServiceMetrics.of(service_stats(lives), location_id, start, end)
+
+
+async def verification_metrics(
+    session: AsyncSession, access: Access, location_id: str | None
+) -> VerificationMetrics:
+    counts = await AlertRepository(session).verification_counts(_locations(access, location_id))
+    return VerificationMetrics(
+        location_id=location_id,
+        counts=[VerificationCount(rule_id=r, status=st, alerts=n) for r, st, n in counts],
+    )

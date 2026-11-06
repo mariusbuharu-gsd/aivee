@@ -31,7 +31,7 @@
       "type": "object"
     },
     "Condition": {
-      "description": "One fact about a zone that must hold for a rule to fire.\n\n- present: someone with `role` has been in the zone for at least `min_duration_s`\n- absent: nobody with `role` has been in the zone for at least `min_duration_s`\n  (counted from when guests sat down, so \"nobody came since they arrived\")\n- count: at least `min_count` people with `role` are in the zone\n- pose: someone with `role` in the zone shows `pose`\n- objects_unattended: `objects` are in the zone and no person has been there\n  for at least `min_duration_s`",
+      "description": "One fact about a zone that must hold for a rule to fire.\n\n- present: someone with `role` has been in the zone for at least `min_duration_s`\n- absent: nobody with `role` has been in the zone for at least `min_duration_s`\n  (counted from when guests sat down, so \"nobody came since they arrived\")\n- count: at least `min_count` people with `role` are in the zone\n- pose: someone with `role` in the zone shows `pose`\n- objects_unattended: `objects` are in the zone and no person has been there\n  for at least `min_duration_s`\n- object_gone: an object of `objects` was in the zone for at least `min_duration_s`\n  and has now been missing for a short confirm window (a few seconds, set by the\n  edge), so detector flicker does not count as a disappearance",
       "properties": {
         "kind": {
           "enum": [
@@ -39,7 +39,8 @@
             "absent",
             "count",
             "pose",
-            "objects_unattended"
+            "objects_unattended",
+            "object_gone"
           ],
           "title": "Kind",
           "type": "string"

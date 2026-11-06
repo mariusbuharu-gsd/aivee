@@ -91,13 +91,17 @@ class EchoDetector:
 class Recorder:
     def __init__(self) -> None:
         self.alerts: list[tuple[AlertEvent, bytes | None]] = []
+        self.befores: list[bytes | None] = []
         self.suggestions: list[StaffSuggestion] = []
         self.suggestions_with_snapshots: list[tuple[StaffSuggestion, bytes | None]] = []
         self.metrics: list[Metrics] = []
         self.detections: list[Detections] = []
 
-    def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
         self.alerts.append((event, snapshot_jpeg))
+        self.befores.append(before_jpeg)
 
     def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
         self.suggestions.append(suggestion)
@@ -548,3 +552,46 @@ def test_detections_carry_roles_hands_and_objects_with_clamped_boxes() -> None:
     assert by_id[1].bbox == hand.bbox
     assert by_id[2].bbox == (0.0, 0.5, 0.1, 1.0)
     assert [(o.label, o.bbox) for o in d.objects] == [("cup", cup.bbox)]
+
+
+class TimestampSnapshots(FakeSnapshots):
+    """The 'JPEG' names the frame it was made from."""
+
+    def make(self, image: Image) -> bytes | None:
+        assert isinstance(image, Frame)
+        return f"ts={image.ts:g}".encode()
+
+
+GLASS_GONE = rule(
+    "gone",
+    "table",
+    Condition(kind="object_gone", objects=["wine glass"], min_duration_s=10),
+)
+
+
+def glass(zone: Zone) -> ObjectObs:
+    x, y = centre(zone)
+    return ObjectObs("wine glass", (x - 0.01, y - 0.05, x + 0.01, y))
+
+
+def test_object_gone_publishes_the_last_frame_with_the_object_as_before() -> None:
+    frames = [Frame(ts=t / 2, objects=(glass(T1),)) for t in range(0, 40)]  # 0 .. 19.5 s
+    frames += [Frame(ts=20 + t / 2) for t in range(0, 20)]  # gone from 20 s
+    rec = Recorder()
+    p = pipeline(frames, Config([GLASS_GONE], ZONES), rec, snapshots=TimestampSnapshots())
+    p.run()
+
+    assert rec.states() == [("opened", "gone", "t1")]
+    (event, after), before = rec.alerts[0], rec.befores[0]
+    assert event.object_change is not None and event.object_change.objects == ["wine glass"]
+    assert before == b"ts=19.5"
+    assert after == f"ts={event.at.timestamp():g}".encode()
+
+
+def test_other_alerts_have_no_before_snapshot() -> None:
+    frames = [Frame(ts=float(ts), tracks=guests(ts)) for ts in range(0, 130)]
+    rec = Recorder()
+    p = pipeline(frames, Config([UNATTENDED], ZONES), rec, snapshots=TimestampSnapshots())
+    p.run()
+    assert rec.states()[0][0] == "opened"
+    assert rec.befores == [None]
