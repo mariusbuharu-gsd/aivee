@@ -123,6 +123,9 @@ class SituationEngine:
         }
         self._zone_names.update({z.id: z.name for z in zones})
 
+    def zone_states(self) -> dict[str, ZoneState]:
+        return dict(self._states)
+
     def step(self, frame: Frame) -> list[AlertEvent]:
         now = frame.ts
         for state in self._states.values():

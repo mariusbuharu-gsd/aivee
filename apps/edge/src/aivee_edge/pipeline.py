@@ -3,7 +3,8 @@
 source.read → detector.detect → (pose → raised hand at tables; stance from pose or box
 shape) → trajectory + stance ratio →
 behaviour features → (appearance vs staff profiles) → roles → situation engine →
-publish alerts (with snapshot on open), staff suggestions (with a person crop), live
+publish alerts (with snapshot on open; an object change also sends the last frame that
+still showed the object as its "before" image), staff suggestions (with a person crop), live
 detections (<= 5 Hz) and periodic metrics. Owner commands (confirm/reject staff) are
 applied at the start of every step.
 
@@ -173,6 +174,8 @@ class EdgePipeline:
         self._last_seen: dict[int, float] = {}
         self._appearance: dict[int, float | None] = {}
         self._embedded_at: dict[int, float] = {}
+        self._before: dict[str, Image] = {}
+        """Per zone: the latest frame showing every object the zone is believed to hold."""
 
     # -- config --------------------------------------------------------------------
 
@@ -264,17 +267,21 @@ class EdgePipeline:
 
         for event in events:
             snapshot = self._snapshots.make(image) if event.state == "opened" else None
-            self._publisher.publish_alert(event, snapshot)
+            before = self._before_snapshot(event)
+            self._publisher.publish_alert(event, snapshot, before)
             log.info(
-                "alert event_id=%s state=%s rule=%s camera=%s zone=%s snapshot=%s summary=%r",
+                "alert event_id=%s state=%s rule=%s camera=%s zone=%s snapshot=%s before=%s "
+                "summary=%r",
                 event.event_id,
                 event.state,
                 event.rule_id,
                 event.camera_id,
                 event.zone_id,
                 snapshot is not None,
+                before is not None,
                 event.summary_ro,
             )
+        self._keep_before(image)
         boxes = {t.track_id: t.bbox for t in frame.tracks}
         for suggestion in suggestions:
             # The crop lets the API learn this person's appearance if the owner confirms.
@@ -314,6 +321,21 @@ class EdgePipeline:
         return frames
 
     # -- stages --------------------------------------------------------------------
+
+    def _before_snapshot(self, event: AlertEvent) -> bytes | None:
+        if event.state != "opened" or event.object_change is None:
+            return None
+        before = self._before.get(event.zone_id)
+        return None if before is None else self._snapshots.make(before)
+
+    def _keep_before(self, image: Image) -> None:
+        """Remember, per zone, this frame if it shows all of the zone's objects. Called
+        after publishing, so a disappearance gets the frame from before it."""
+        for zone_id, state in self.engine.zone_states().items():
+            if state.objects.all_in_view():
+                self._before[zone_id] = image
+        for zone_id in set(self._before) - {z.id for z in self._zones}:
+            del self._before[zone_id]
 
     def _in_table(self, track: TrackObs) -> bool:
         p = foot_point(track.bbox)

@@ -470,10 +470,12 @@ class Recorder:
         self.suggestions: list[StaffSuggestion] = []
         self.metrics: list[Metrics] = []
 
-    def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
         self.alerts.append(event)
         if self.inner:
-            self.inner.publish_alert(event, snapshot_jpeg)
+            self.inner.publish_alert(event, snapshot_jpeg, before_jpeg)
 
     def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
         self.suggestions.append(suggestion)

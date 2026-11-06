@@ -30,7 +30,11 @@ class PersonDetector(Protocol):
 
 
 class EventPublisher(Protocol):
-    def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None: ...
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
+        """`before_jpeg`: the last frame that still showed the object of an object change."""
+        ...
 
     def publish_suggestion(
         self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None
