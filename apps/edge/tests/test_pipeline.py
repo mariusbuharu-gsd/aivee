@@ -89,13 +89,15 @@ class Recorder:
     def __init__(self) -> None:
         self.alerts: list[tuple[AlertEvent, bytes | None]] = []
         self.suggestions: list[StaffSuggestion] = []
+        self.suggestions_with_snapshots: list[tuple[StaffSuggestion, bytes | None]] = []
         self.metrics: list[Metrics] = []
 
     def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
         self.alerts.append((event, snapshot_jpeg))
 
-    def publish_suggestion(self, suggestion: StaffSuggestion) -> None:
+    def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
         self.suggestions.append(suggestion)
+        self.suggestions_with_snapshots.append((suggestion, snapshot_jpeg))
 
     def publish_metrics(self, metrics: Metrics) -> None:
         self.metrics.append(metrics)
@@ -283,8 +285,35 @@ def test_appearance_runs_only_with_profiles_and_at_most_every_interval() -> None
 
 
 class FakeSnapshots:
+    def __init__(self) -> None:
+        self.crops: list[BBox] = []
+
     def make(self, image: Image) -> bytes | None:
         return b"jpeg"
+
+    def crop(self, image: Image, bbox: BBox) -> bytes | None:
+        self.crops.append(bbox)
+        return b"crop"
+
+
+def test_suggestion_carries_the_face_blurred_person_crop() -> None:
+    frames = []
+    for ts in range(0, 60):
+        frames.append(Frame(ts=float(ts), tracks=(TrackObs(7, box_at(*walker_position(ts))),)))
+    rec, snaps = Recorder(), FakeSnapshots()
+    p = pipeline(frames, Config([], ZONES), rec, snapshots=snaps)
+    p.run()
+    assert [(s.track_id, snap) for s, snap in rec.suggestions_with_snapshots] == [(7, b"crop")]
+    assert len(snaps.crops) == 1  # only when a suggestion is made, not every frame
+
+
+def test_suggestion_without_snapshots_has_none() -> None:
+    frames = [
+        Frame(ts=float(t), tracks=(TrackObs(7, box_at(*walker_position(t))),)) for t in range(60)
+    ]
+    rec = Recorder()
+    pipeline(frames, Config([], ZONES), rec).run()
+    assert [snap for _, snap in rec.suggestions_with_snapshots] == [None]
 
 
 def test_snapshot_only_for_opened_alerts() -> None:

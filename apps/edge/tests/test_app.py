@@ -110,3 +110,33 @@ def test_snapshot_failure_does_not_block_the_alert() -> None:
             return image
 
     assert app.BlurredJpeg(Ok(), lambda img: b"jpeg").make(np.zeros((2, 2, 3))) == b"jpeg"
+
+
+def test_crop_blurs_the_whole_frame_then_cuts_the_padded_person_box() -> None:
+    blurred: list[tuple[int, ...]] = []
+    encoded: list[tuple[int, ...]] = []
+
+    class Ok:
+        def blur(self, image: Any) -> Any:
+            blurred.append(image.shape)
+            return image
+
+    def encode(img: Any) -> bytes:
+        encoded.append(img.shape)
+        return b"crop"
+
+    snaps = app.BlurredJpeg(Ok(), encode)
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    assert snaps.crop(image, (0.25, 0.2, 0.75, 0.8)) == b"crop"
+    assert blurred == [(100, 200, 3)]  # faces are found with the full frame as context
+    assert encoded == [(72, 120, 3)]  # 10% padding on every side
+    assert snaps.crop(image, (0.5, 0.5, 0.5, 0.5)) is None  # empty box
+
+
+def test_crop_failure_gives_none() -> None:
+    class Broken:
+        def blur(self, image: Any) -> Any:
+            raise RuntimeError("yunet")
+
+    snaps = app.BlurredJpeg(Broken(), lambda img: b"x")
+    assert snaps.crop(np.zeros((10, 10, 3)), (0, 0, 1, 1)) is None

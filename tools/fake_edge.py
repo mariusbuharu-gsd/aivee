@@ -309,10 +309,10 @@ class Recorder:
         if self.inner:
             self.inner.publish_alert(event, snapshot_jpeg)
 
-    def publish_suggestion(self, suggestion: StaffSuggestion) -> None:
+    def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
         self.suggestions.append(suggestion)
         if self.inner:
-            self.inner.publish_suggestion(suggestion)
+            self.inner.publish_suggestion(suggestion, snapshot_jpeg)
 
     def publish_metrics(self, metrics: Metrics) -> None:
         self.metrics.append(metrics)

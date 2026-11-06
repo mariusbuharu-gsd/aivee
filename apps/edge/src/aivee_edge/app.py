@@ -67,8 +67,12 @@ class CropEmbedder:
         return list(self._inner.embed(crop))
 
 
+CROP_PAD = 0.1
+"""Padding around a person crop, as a share of the box size on every side."""
+
+
 class BlurredJpeg:
-    """Pipeline `SnapshotMaker`: face blur, then JPEG."""
+    """Pipeline `SnapshotMaker`: face blur, then JPEG (whole frame or one person)."""
 
     def __init__(self, blurrer: Any, encode: Any) -> None:
         self._blurrer = blurrer
@@ -79,6 +83,22 @@ class BlurredJpeg:
             return bytes(self._encode(self._blurrer.blur(image)))
         except Exception:
             log.exception("snapshot failed; publishing the alert without one")
+            return None
+
+    def crop(self, image: Image, bbox: BBox) -> bytes | None:
+        h, w = image.shape[:2]  # type: ignore[attr-defined]
+        x1, y1, x2, y2 = bbox
+        px, py = (x2 - x1) * CROP_PAD, (y2 - y1) * CROP_PAD
+        left, top = max(0, int((x1 - px) * w)), max(0, int((y1 - py) * h))
+        right, bottom = min(w, int((x2 + px) * w)), min(h, int((y2 + py) * h))
+        if right <= left or bottom <= top or x2 <= x1 or y2 <= y1:
+            return None
+        try:
+            # Blur on the full frame: YuNet finds faces better with the context around them.
+            blurred = self._blurrer.blur(image)
+            return bytes(self._encode(blurred[top:bottom, left:right]))
+        except Exception:
+            log.exception("person crop failed; publishing the suggestion without one")
             return None
 
 

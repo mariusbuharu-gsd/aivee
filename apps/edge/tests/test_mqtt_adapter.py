@@ -59,9 +59,27 @@ def test_metrics_are_qos0_and_suggestions_qos1(client: Any) -> None:
     edge, sent = client
     edge.publish_metrics(Metrics(device="edge-01", fps=10, verified_ratio=0.1, cpu_percent=50))
     edge.publish_suggestion(
-        StaffSuggestion(suggestion_id="s", camera_id="c", track_id=1, staff_score=0.9, reason_ro="")
+        StaffSuggestion(
+            suggestion_id="s", camera_id="c", track_id=1, staff_score=0.9, reason_ro=""
+        ),
+        None,
     )
     assert [(t, q) for t, _, q in sent] == [(edge.topics.metrics, 0), (edge.topics.suggestions, 1)]
+    assert StaffSuggestion.model_validate_json(sent[1][1]).snapshot is False
+
+
+def test_suggestion_crop_is_published_before_the_suggestion(client: Any) -> None:
+    edge, sent = client
+    suggestion = StaffSuggestion(
+        suggestion_id="s9", camera_id="c", track_id=1, staff_score=0.9, reason_ro=""
+    )
+    edge.publish_suggestion(suggestion, b"\xff\xd8crop")
+    assert [(t, q) for t, _, q in sent] == [
+        (edge.topics.snapshot("s9"), 1),
+        (edge.topics.suggestions, 1),
+    ]
+    assert sent[0][1] == b"\xff\xd8crop"
+    assert StaffSuggestion.model_validate_json(sent[1][1]).snapshot is True
 
 
 def test_last_will_is_retained_offline_status() -> None:

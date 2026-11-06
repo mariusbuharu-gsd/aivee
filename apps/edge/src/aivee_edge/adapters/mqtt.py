@@ -2,7 +2,7 @@
 
 - LWT: `DeviceStatus(offline)` retained on `status`; `online` is published on every connect.
 - Persistent session (MQTT v5, `clean_start=False`) so QoS 1 messages survive short drops.
-- Snapshot JPEG is published before its AlertEvent so ingest can attach it.
+- Snapshot JPEG is published before its AlertEvent / StaffSuggestion so ingest can attach it.
 - Retained `rules`, `profiles` and `config` are cached; getters are thread-safe.
 - `camera()` prefers this device's camera from the retained `DeviceConfig` (matched by
   `camera_id`, else the first one) over the camera given at construction.
@@ -114,7 +114,11 @@ class MqttEdgeClient:
             event = event.model_copy(update={"snapshot": True})
         self._client.publish(self.topics.events, event.model_dump_json(), qos=1)
 
-    def publish_suggestion(self, suggestion: StaffSuggestion) -> None:
+    def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
+        if snapshot_jpeg is not None:
+            topic = self.topics.snapshot(suggestion.suggestion_id)
+            self._client.publish(topic, snapshot_jpeg, qos=1)
+            suggestion = suggestion.model_copy(update={"snapshot": True})
         self._client.publish(self.topics.suggestions, suggestion.model_dump_json(), qos=1)
 
     def publish_metrics(self, metrics: Metrics) -> None:

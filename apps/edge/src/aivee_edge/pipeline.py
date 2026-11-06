@@ -63,9 +63,16 @@ class SnapshotMaker(Protocol):
         """Face-blurred JPEG of the frame, or None."""
         ...
 
+    def crop(self, image: Image, bbox: BBox) -> bytes | None:
+        """Face-blurred JPEG of one person (normalised bbox, slightly padded), or None."""
+        ...
+
 
 class NoSnapshot:
     def make(self, image: Image) -> bytes | None:
+        return None
+
+    def crop(self, image: Image, bbox: BBox) -> bytes | None:
         return None
 
 
@@ -233,13 +240,17 @@ class EdgePipeline:
                 snapshot is not None,
                 event.summary_ro,
             )
+        boxes = {t.track_id: t.bbox for t in frame.tracks}
         for suggestion in suggestions:
-            self._publisher.publish_suggestion(suggestion)
+            # The crop lets the API learn this person's appearance if the owner confirms.
+            crop = self._snapshots.crop(image, boxes[suggestion.track_id])
+            self._publisher.publish_suggestion(suggestion, crop)
             log.info(
-                "staff_suggestion suggestion_id=%s track=%d score=%.2f reason=%r",
+                "staff_suggestion suggestion_id=%s track=%d score=%.2f snapshot=%s reason=%r",
                 suggestion.suggestion_id,
                 suggestion.track_id,
                 suggestion.staff_score,
+                crop is not None,
                 suggestion.reason_ro,
             )
 
