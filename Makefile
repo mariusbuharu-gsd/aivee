@@ -37,3 +37,12 @@ fake-edge:
 # Create bind-mounted dirs as the current user before `make up` (Docker would create them as root).
 data-dirs:
 	mkdir -p data/snapshots recordings
+
+.PHONY: record
+# Backup demo clip: make record SOURCE=http://PHONE:8080/video SECONDS=60 ROTATE=90 NAME=sala-1
+# Replay (already upright): make edge SOURCE=recordings/sala-1.mp4
+SECONDS ?= 30
+ROTATE ?= 0
+NAME ?= clip
+record:
+	uv run python tools/record_clip.py --source $(SOURCE) --seconds $(SECONDS) --rotate $(ROTATE) --out recordings/$(NAME).mp4
