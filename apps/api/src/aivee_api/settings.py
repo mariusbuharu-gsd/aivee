@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -9,7 +9,7 @@ class ApiSettings(BaseSettings):
     """Env: SITE, DEVICE, MQTT_HOST, MQTT_PORT, MQTT_API_USER, MQTT_API_PASSWORD, SNAPSHOT_DIR,
     CORS_ORIGINS (comma-separated), COOKIE_SECURE, SESSION_TTL_HOURS, DASHBOARD_URL,
     CLAUDE_MODEL, YOLO_WEIGHTS, VIDEO_DIR, VIDEO_PYTHON, MQTT_UPLOAD_USER, MQTT_UPLOAD_PASSWORD,
-    TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_TOKEN
+    TELEGRAM_BOT_USERNAME, TELEGRAM_BOT_TOKEN, STREAM_PUBLISH_USER, STREAM_PUBLISH_PASSWORD
     (+ POSTGRES_* via aivee_api.db.settings,
     ANTHROPIC_API_KEY read by the SDK itself)."""
 
@@ -51,6 +51,16 @@ class ApiSettings(BaseSettings):
     """For "Conectează Telegram" links; when empty, resolved once via getMe."""
     telegram_bot_token: str | None = None
     """Only for that getMe; the API never sends messages."""
+    stream_publish_user: str = ""
+    """Cloud mode: HTTP Basic user of `POST /api/ingest/frames/{camera}` (the connector). Shared
+    with MediaMTX publishing for now; per-device keys replace it after the freeze. Empty (user
+    or password): frame ingest answers 401 to everyone."""
+    stream_publish_password: str = Field(default="", repr=False)
+    frame_max_bytes: int = 500 * 1024
+    live_fps: float = 5.0
+    """Upper bound of `GET /api/cameras/{id}/live.mjpg` frames per second."""
+    live_idle_s: float = 30.0
+    """live.mjpg ends after this long without a new frame (the connector stopped)."""
     default_profile_id: str = "staff"
     default_profile_name: str = "Personal"
 

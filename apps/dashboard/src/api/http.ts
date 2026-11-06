@@ -169,6 +169,11 @@ export class HttpApi implements ApiClient {
   }
 
   /** Fetched (not a bare `<img src>`) to read `X-Frame-At` and to fail into a placeholder. */
+  /** A bare `<img src>`: the session cookie goes along, as with snapshot images. */
+  liveMjpegUrl(cameraId: string): string {
+    return `${this.base}${this.scoped(`/api/cameras/${encodeURIComponent(cameraId)}/live.mjpg`)}`;
+  }
+
   async captureFrame(cameraId: string): Promise<CameraFrame> {
     const path = this.scoped(`/api/cameras/${encodeURIComponent(cameraId)}/frame`);
     let res: Response;

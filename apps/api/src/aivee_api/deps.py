@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from aivee_api.auth.ratelimit import LoginRateLimiter
 from aivee_api.edge.live import LiveDetections
 from aivee_api.edge.sync import EdgeCommands, EdgeSync
+from aivee_api.frames.store import LiveFrames
 from aivee_api.locations.telegram import BotUsername
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.rules.translator import RuleTranslator
@@ -33,6 +34,8 @@ class Services:
     enroller: Enroller | None = None
     metrics: MetricsCache = field(default_factory=MetricsCache)
     live: LiveDetections = field(default_factory=LiveDetections)
+    frames: LiveFrames = field(default_factory=LiveFrames)
+    """Cloud mode: newest JPEG per camera posted over HTTPS (in memory, single replica)."""
     login_limiter: LoginRateLimiter = field(default_factory=LoginRateLimiter)
     videos: VideoJobs | None = None
     """Queue of uploaded clips to analyse (None: Analiză video is off)."""

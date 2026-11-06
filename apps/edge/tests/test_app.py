@@ -96,6 +96,37 @@ def test_build_vision_passes_rotation_to_the_capture_adapter(
     assert seen == {"rotate": 90}
 
 
+def test_build_vision_subscribes_to_cloud_frames_as_this_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class Frames:
+        @staticmethod
+        def open_frames_source(source: str, **kw: Any) -> object:
+            seen.update(kw, source=source)
+            return object()
+
+    class Yolo:
+        @staticmethod
+        def YoloDetector(model: str) -> object:
+            return object()
+
+    modules = {"capture": object(), "mqtt_frames": Frames, "yolo": Yolo}
+    monkeypatch.setattr(app, "_adapter", lambda name: modules[name])
+    settings = EdgeSettings(
+        source="mqtt-frames://cam-coleg-1",
+        mqtt_edge_user="vision-01",
+        site="demo",
+        pose_model="",
+        blur=False,
+        _env_file=None,
+    )  # type: ignore[call-arg]
+    app.build_vision(settings)
+    assert seen["source"] == "mqtt-frames://cam-coleg-1"
+    assert (seen["user"], seen["device"], seen["site"]) == ("vision-01", "vision-01", "demo")
+
+
 def test_missing_vision_adapter_gives_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
     real = importlib.import_module
 

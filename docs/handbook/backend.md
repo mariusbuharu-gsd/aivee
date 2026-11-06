@@ -79,6 +79,8 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/events` | `alerts.view`; raw AlertEvents + `device_id`, `snapshot_url` |
 | GET | `/api/snapshots/{id}` | `alerts.view` (event) or `staff.review` (suggestion); blurred JPEG; `{event_id}-before` is an object change's before image, with the event's rights |
 | GET | `/api/cameras/{id}/frame` | `alerts.view`; the camera's newest face-blurred still (today: its latest alert's whole-frame snapshot), time in `X-Frame-At`, `no-store`; 404 until one exists |
+| POST | `/api/ingest/frames/{camera_id}` | HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time); body one JPEG ≤ 500 KB → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
+| GET | `/api/cameras/{id}/live.mjpg` | `alerts.view`; `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
 | POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed |
 | GET | `/api/metrics/verification` | `alerts.view`; `?location_id` → `{location_id, counts: [{rule_id, status, alerts}]}` |
@@ -112,6 +114,7 @@ Root `aivee/<site>/<device>/…`, where `<site>` is the location id.
 | `config` | → edge | 1, retained | DeviceConfig: cameras + zones (complete) |
 | `profiles` | → edge | 1, retained | StaffProfiles (complete) |
 | `commands` | → edge | 1, not retained | EdgeCommand `{command_id, kind: confirm_staff | reject_staff, camera_id, track_id, suggestion_id, at}`; the edge drops a redelivered `command_id` |
+| `frames/<camera>` (`Topics.frames`) | api → vision worker | 0, not retained | JPEG bytes posted to `/api/ingest/frames/<camera>`; read by `SOURCE=mqtt-frames://<camera>` (ACL `pattern read aivee/+/%u/frames/#`) |
 
 Ingest: `$share/ingest/aivee/+/+/events` (split between replicas) plus `status`, `suggestions`, `snapshots/+`
 and `metrics` on every replica. ACL: each edge user writes only its own device topics (`%u`), so `DEVICE`

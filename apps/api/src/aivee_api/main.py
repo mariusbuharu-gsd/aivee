@@ -27,6 +27,8 @@ from aivee_api.edge.publisher import MqttEdgeLink, RecordingPublisher
 from aivee_api.edge.sync import EdgeCommands, EdgeSync, LoggingEdgeCommands, MqttEdgeCommands
 from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
+from aivee_api.frames.router import router as frames_router
+from aivee_api.frames.store import LiveFrames
 from aivee_api.locations.router import router as locations_router
 from aivee_api.locations.telegram import TelegramBotUsername
 from aivee_api.metrics.cache import MetricsCache
@@ -53,11 +55,13 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
     live = LiveDetections()
     task: asyncio.Task[None] | None = None
     commands: EdgeCommands
+    frames = LiveFrames()
     if settings.mqtt_enabled:
         link = MqttEdgeLink(settings, metrics, live=live)
         sync = EdgeSync(sessions, link, settings.site, settings.device)
         link.on_connect = sync.publish_all  # the broker gets the full state on every connect
         commands = MqttEdgeCommands(link, settings.site, settings.device)
+        frames = LiveFrames(link)
         task = asyncio.create_task(link.run())
     else:
         sync = EdgeSync(sessions, RecordingPublisher(), settings.site, settings.device)
@@ -79,6 +83,7 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
             enroller=build_enroller(settings.yolo_weights),
             metrics=metrics,
             live=live,
+            frames=frames,
             videos=videos,
             telegram_bot=TelegramBotUsername(
                 settings.telegram_bot_username, settings.telegram_bot_token
@@ -131,6 +136,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         push_router,
         alerts_router,
         videos_router,
+        frames_router,
     ):
         app.include_router(router)
 

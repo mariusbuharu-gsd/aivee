@@ -33,7 +33,8 @@ class EdgeSettings(BaseSettings):
     camera_id: str = "cam-01"
 
     source: str = "0"
-    """Camera URL (RTSP/HTTP), a webcam index ("0") or a video file path."""
+    """Camera URL (RTSP/HTTP), a webcam index ("0"), a video file path, or
+    `mqtt-frames://<camera_id>` (cloud mode: JPEGs the API relays over MQTT)."""
     target_fps: float = 10.0
     loop_file: bool = False
     rotate: int = 0

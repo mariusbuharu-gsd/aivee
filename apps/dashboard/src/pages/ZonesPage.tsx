@@ -4,6 +4,7 @@ import { useApi } from '../api/context';
 import { Icon } from '../components/Icon';
 import type { Zone } from '../contracts';
 import { LivePlayer, type PlayerStatus } from '../live/LivePlayer';
+import { isCloudFrames } from '../live/source';
 import { ZONE_TAGS, tagLabel } from '../rules/describe';
 import { useLiveData } from '../state/context';
 import { useLeaveGuard } from '../state/leaveGuard';
@@ -297,6 +298,8 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                 <LivePlayer
                   cameraId={camera.id}
                   label={camera.name}
+                  mjpegUrl={api.liveMjpegUrl(camera.id)}
+                  cloudFrames={isCloudFrames(camera.source)}
                   onStatus={setLive}
                   onFrameSize={(w, h) => w > 0 && h > 0 && setFrame([w, h])}
                 />

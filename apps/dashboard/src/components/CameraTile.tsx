@@ -5,6 +5,7 @@ import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
 import { detectionLabel } from '../live/detections';
 import { LivePlayer } from '../live/LivePlayer';
+import { isCloudFrames } from '../live/source';
 import { toSvgPoints } from '../zones/geometry';
 import { Icon } from './Icon';
 import './live.css';
@@ -56,7 +57,13 @@ export function CameraTile({
   return (
     <article className="tile" aria-label={`Camera ${camera.name}`}>
       <div className="tile-media">
-        <LivePlayer cameraId={camera.id} enabled label={camera.name} />
+        <LivePlayer
+          cameraId={camera.id}
+          enabled
+          label={camera.name}
+          mjpegUrl={api.liveMjpegUrl(camera.id)}
+          cloudFrames={isCloudFrames(camera.source)}
+        />
         <svg className="overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
           {(camera.zones ?? []).map((z) => (
             <polygon
