@@ -57,9 +57,17 @@
   margin-top: auto;
 }
 
+.device-tech {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.device-tech[open] > summary {
+  margin-bottom: 2px;
+}
 .device-health {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -117,8 +125,11 @@
   align-self: flex-start;
 }
 
+.device-system-tech {
+  margin-top: var(--gap);
+}
 .device-system {
-  margin: var(--gap) 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
 }

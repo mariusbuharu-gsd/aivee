@@ -18,6 +18,7 @@ import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
 import { EmptyState, Skeleton } from '../ui/controls';
+import { plural } from '../ui/plural';
 import { useToast } from '../ui/toast';
 import './DevicesPage.css';
 import { BusyLabel } from '../ui/Eyes';
@@ -84,7 +85,12 @@ export function DevicesPage() {
         ))}
       </ul>
 
-      {metrics && metrics.devices.length > 0 && <SystemLine metrics={metrics} />}
+      {metrics && metrics.devices.length > 0 && (
+        <details className="tech device-system-tech">
+          <summary>Detalii tehnice</summary>
+          <SystemLine metrics={metrics} />
+        </details>
+      )}
 
       {adding && (
         <Dialog title="Adaugă o cameră" icon="devices" onClose={() => setAdding(false)}>
@@ -179,40 +185,43 @@ function CameraCard({
         </div>
       </div>
       <p className="device-sub">
-        <span className="mono">{c.device}</span>
         {seen && (
           <>
-            {' · '}
             <span className={state === 'online' ? undefined : 'device-gone'}>{seen}</span>
+            {' · '}
           </>
         )}
+        {plural(c.zones?.length ?? 0, 'zonă', 'zone')}
       </p>
-      {state === 'online' ? (
-        <dl className="device-health">
-          <div>
-            <dt>FPS</dt>
-            <dd className="mono">{health ? health.fps.toFixed(1) : '—'}</dd>
-          </div>
-          <div>
-            <dt>CPU</dt>
-            <dd className="mono">{health ? `${Math.round(health.cpu_percent)}%` : '—'}</dd>
-          </div>
-          <div>
-            <dt>Zone</dt>
-            <dd className="mono">{c.zones?.length ?? 0}</dd>
-          </div>
-        </dl>
-      ) : (
-        <OfflineChecklist camera={c} stale={state === 'stale'} />
-      )}
-      <p className="device-source mono" title="Adresa completă apare la „Editează camera”">
-        <span className="visually-hidden">Sursă: </span>
-        {maskSource(c.source)}
-      </p>
+      {state !== 'online' && <OfflineChecklist camera={c} stale={state === 'stale'} />}
       <Link to={zonesPath(c.id)} className="btn">
         Editează zonele
       </Link>
       <StaffCaptureButton camera={c} />
+      {/* For whoever installs or debugs; the owner at the demo only needs the lines above. */}
+      <details className="tech device-tech">
+        <summary>Detalii tehnice</summary>
+        <p className="device-source mono">
+          <span className="visually-hidden">Dispozitiv: </span>
+          {c.device}
+        </p>
+        <p className="device-source mono" title="Adresa completă apare la „Editează camera”">
+          <span className="visually-hidden">Sursă: </span>
+          {maskSource(c.source)}
+        </p>
+        {state === 'online' && (
+          <dl className="device-health">
+            <div>
+              <dt>FPS</dt>
+              <dd className="mono">{health ? health.fps.toFixed(1) : '—'}</dd>
+            </div>
+            <div>
+              <dt>CPU</dt>
+              <dd className="mono">{health ? `${Math.round(health.cpu_percent)}%` : '—'}</dd>
+            </div>
+          </dl>
+        )}
+      </details>
     </li>
   );
 }
