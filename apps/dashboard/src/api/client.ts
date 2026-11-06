@@ -245,6 +245,20 @@ export interface Location {
   telegram_chat_id?: string | null;
 }
 
+/** "Conectează Telegram" deep links (`POST /api/locations/{id}/telegram/link`), single use. */
+export interface TelegramLink {
+  /** Adds the bot to a group (`?startgroup=`). */
+  url: string;
+  /** A private chat with the bot (`?start=`). */
+  private_url: string;
+  expires_at: string;
+}
+
+export interface TelegramStatus {
+  connected: boolean;
+  chat_title?: string | null;
+}
+
 export interface Member {
   user_id: string;
   name: string;
@@ -362,6 +376,9 @@ export interface AccountApi {
   createLocation(location: Location): Promise<Location>;
   updateLocation(id: string, patch: Partial<Omit<Location, 'id'>>): Promise<Location>;
   deleteLocation(id: string): Promise<void>;
+  /** A 15-minute single-use link; `locations.manage`. 503 when the server has no bot. */
+  createTelegramLink(locationId: string): Promise<TelegramLink>;
+  getTelegramStatus(locationId: string): Promise<TelegramStatus>;
   listMembers(locationId: string): Promise<Member[]>;
   updateMember(locationId: string, userId: string, role: Role): Promise<Member>;
   removeMember(locationId: string, userId: string): Promise<void>;

@@ -39,6 +39,11 @@ CASES = [
     ("location.created", {"actor": "Ana", "target": "Terasa"}, "Ana a creat locația Terasa"),
     ("location.updated", {"actor": "Ana", "target": "Terasa"}, "Ana a modificat locația Terasa"),
     ("location.deleted", {"actor": "Ana", "target": "Terasa"}, "Ana a șters locația Terasa"),
+    (
+        "location.telegram_connected",
+        {"actor": "Ana", "target": "Terasa", "chat": "Ospătari"},
+        "Ana a conectat grupul Telegram „Ospătari” la Terasa",
+    ),
     ("camera.created", {"actor": "Ana", "target": "Sala"}, "Ana a adăugat camera Sala"),
     ("camera.updated", {"actor": "Ana", "target": "Sala"}, "Ana a modificat camera Sala"),
     ("camera.deleted", {"actor": "Ana", "target": "Sala"}, "Ana a șters camera Sala"),

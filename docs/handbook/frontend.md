@@ -41,7 +41,7 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | `/video` | Analiză video | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
 | `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
 | `/echipa` | Echipă | `users.manage` | members, roles, invite link |
-| `/locatii` | Locații | `locations.manage` | the organization's locations (owner) |
+| `/locatii` | Locații | `locations.manage` | the organization's locations (owner); in the edit form "Conectează Telegram" opens the bot link in a new tab, polls the status every 3 s for up to 15 min and shows "Conectat: <grup>"; the manual chat id sits under "Avansat" (no QR: there is no QR library in the deps) |
 
 The sidebar has a location switcher when the user has more than one location; every page reads the current
 location. `can(permission)` hides actions and routes; the API is what enforces them.
@@ -63,6 +63,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | POST | `/api/auth/login` · `/register` · `/logout` | login / register return `Me` and set the cookie |
 | GET | `/api/auth/me` | `{user, org, is_owner, locations: [{id, name, type, role, permissions}]}` |
 | GET/POST · PATCH/DELETE | `/api/locations` · `/api/locations/{id}` | owner |
+| POST · GET | `/api/locations/{id}/telegram/link` · `/api/locations/{id}/telegram` | owner; `{url, private_url, expires_at}` · `{connected, chat_title}` |
 | GET · PATCH/DELETE | `/api/locations/{id}/members` · `.../members/{user_id}` | Echipă |
 | POST · GET · POST | `/api/invites` · `/api/invites/{token}` · `/api/invites/{token}/accept` | invite link, public preview, accept |
 | GET | `/api/audit` | `{items: [AuditEntry], next_before}`; filters `actor`, `kind`, `from`, `to`, `before` |

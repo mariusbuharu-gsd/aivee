@@ -79,6 +79,8 @@ class LocationService:
         for key, value in patch.model_dump(exclude_unset=True).items():
             if key != "telegram_chat_id" and value is None:
                 continue
+            if key == "telegram_chat_id" and value != row.telegram_chat_id:
+                row.telegram_chat_title = None  # the linked chat's title no longer applies
             setattr(row, key, value)
         await self._s.flush()
         await self._audit.append(

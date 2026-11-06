@@ -11,6 +11,8 @@ import {
   type Invite,
   type InviteInfo,
   type Location,
+  type TelegramLink,
+  type TelegramStatus,
   type Me,
   type Member,
   type RegisterInput,
@@ -357,6 +359,19 @@ export class HttpApi implements ApiClient {
 
   async deleteLocation(id: string) {
     await this.request<unknown>(`/api/locations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  createTelegramLink(locationId: string) {
+    return this.post<TelegramLink>(
+      `/api/locations/${encodeURIComponent(locationId)}/telegram/link`,
+      {},
+    );
+  }
+
+  getTelegramStatus(locationId: string) {
+    return this.request<TelegramStatus>(
+      `/api/locations/${encodeURIComponent(locationId)}/telegram`,
+    );
   }
 
   listMembers(locationId: string) {

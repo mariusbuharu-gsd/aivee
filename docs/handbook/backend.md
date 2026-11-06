@@ -26,8 +26,8 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 
 | Who reads it | Names |
 |---|---|
-| API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD` |
-| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
+| API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
+| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
 | Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
@@ -37,10 +37,10 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Service | Code | Role |
 |---|---|---|
 | edge | `apps/edge` | camera → YOLO11n + ByteTrack → pose (table zones; everyone while appearance is scored) → stance + behaviour + CLIP → role → situation engine (opened / arrived / closed) → blurred snapshot → MQTT; live boxes on `detections` |
-| ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners |
+| ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners; the "Conectează Telegram" getUpdates poller (`telegram_link.py`, one replica) |
 | api | `apps/api` | REST + WS; accounts, cookie sessions, roles per location, invites, audit; publishes retained edge state and staff commands; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
-| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0009` (`migrate` service) |
+| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0010` (`migrate` service) |
 | mediamtx | `infra/mediamtx` | RTSP in → WebRTC/WHEP out for the dashboard |
 
 API code map (`apps/api/src/aivee_api/`): `auth/` (passwords, tokens, sessions, rate limit, permission
@@ -62,6 +62,8 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/auth/me` | session → `Me` (org, `is_owner`, locations with role and permissions) |
 | GET / POST | `/api/locations` | visible locations / create (owner) |
 | PATCH / DELETE | `/api/locations/{id}` | `locations.manage` |
+| POST | `/api/locations/{id}/telegram/link` | `locations.manage` → `{url, private_url, expires_at}`: `https://t.me/<bot>?startgroup=<code>` / `?start=<code>`; single use, 15 min; 503 without a bot username |
+| GET | `/api/locations/{id}/telegram` | `locations.manage` → `{connected, chat_title}` |
 | GET | `/api/locations/{id}/members` | `users.manage` |
 | PATCH / DELETE | `/api/locations/{id}/members/{user_id}` | `users.manage` (managers: staff only) |
 | POST | `/api/invites` | `users.manage` → `{invite_url, expires_at}` (7 days) |
@@ -127,6 +129,27 @@ The auth, locations, members, invites, audit and alert endpoints are listed in
 
 A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 410
 `{detail: {code: "gone", message_ro: "Invitația a fost anulată."}}`. Neither the token nor its hash is returned.
+
+## Conectează Telegram (one-click chat link)
+
+`aivee_api/locations/telegram.py` + `aivee_ingest/telegram_link.py`, migration `0010_telegram_links`.
+- The API stores only the sha256 of a random 16-character code (`telegram_links`: location, creator,
+  `expires_at` = +15 min, `used_at`, `chat_id`). The bot username is `TELEGRAM_BOT_USERNAME`, else one
+  `getMe` with `TELEGRAM_BOT_TOKEN`, cached after success.
+- Ingest long-polls `getUpdates` (offset, timeout 25 s). `/start <code>` (private) or `/start@<bot> <code>`
+  (group, sent by Telegram after `?startgroup=`) → `consume_link`: saves `telegram_chat_id` and
+  `telegram_chat_title` on the location, marks the code used, audits `location.telegram_connected` (actor:
+  the user who created the link) and replies "✅ AiVee e conectat la «…». Aici vor veni alertele."
+  Expired / used / unknown codes get a Romanian reply; the same chat sending the same code again (a
+  redelivered update) gets none. `my_chat_member` updates carry no payload and are ignored.
+- **One poller.** Telegram allows one `getUpdates` caller per bot (a second one, or a webhook, gets 409).
+  Every ingest replica runs the loop, but only the holder of the Postgres session advisory lock
+  `POLL_LOCK_KEY` polls; the others retry every 30 s and take over when the holder's connection goes away.
+  `TELEGRAM_POLL=false` turns the loop off on an instance. A 409 is logged and retried after 60 s; other
+  errors after 5 s. The loop never stops the notifier.
+- While ingest polls, `make telegram-id` (also `getUpdates`) conflicts with it and sees no updates: use
+  "Conectează Telegram" instead, or set `TELEGRAM_POLL=false` and restart ingest first.
+- A manual chat id (PATCH `telegram_chat_id`) clears the stored title.
 
 ## Video analysis (uploaded clips)
 
