@@ -57,6 +57,16 @@ export type CameraPatch = Partial<Pick<NewCamera, 'name' | 'source' | 'device'>>
 /** `PATCH /api/rules/{id}`: fields left out stay as they are. */
 export type RulePatch = Partial<Omit<Rule, 'id' | 'camera_id'>>;
 
+/**
+ * A staff suggestion as the API serves it: `snapshot_url` (absolute, or null) is the edge's
+ * face-blurred crop of the person. Older APIs omit it; the card then shows a blurred stand-in.
+ */
+export interface SuggestionView extends StaffSuggestion {
+  device_id?: string;
+  status?: string;
+  snapshot_url?: string | null;
+}
+
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
   device_id?: string;
@@ -183,8 +193,8 @@ export interface ApiClient extends AccountApi {
   deleteRule(id: string): Promise<void>;
   listAlerts(): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
-  listSuggestions(): Promise<StaffSuggestion[]>;
-  subscribeSuggestions(cb: (s: StaffSuggestion) => void): Unsubscribe;
+  listSuggestions(): Promise<SuggestionView[]>;
+  subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe;
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe;
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;

@@ -444,6 +444,39 @@ describe('SuggestionCard', () => {
     await waitFor(() => expect(onResolved).toHaveBeenCalledWith('sug-1', 'rejected'));
     expect(screen.getByRole('button', { name: 'Da, #7 e din personal' })).toBeDisabled();
   });
+
+  it("shows the person's face-blurred photo when the API links one", () => {
+    renderWithApi(
+      <SuggestionCard
+        variant="question"
+        suggestion={{ ...suggestion, snapshot: true, snapshot_url: 'http://api/s/sug-1' }}
+      />,
+    );
+    const photo = screen.getByRole('img', { name: 'Persoana #7, fața estompată' });
+    expect(photo).toHaveAttribute('src', 'http://api/s/sug-1');
+    expect(screen.queryByRole('img', { name: 'Persoana #7, estompată' })).toBeNull();
+  });
+
+  it('falls back to the blurred stand-in when the photo does not load', () => {
+    renderWithApi(
+      <SuggestionCard
+        variant="question"
+        suggestion={{ ...suggestion, snapshot: true, snapshot_url: 'http://api/s/gone' }}
+      />,
+    );
+    fireEvent.error(screen.getByRole('img', { name: 'Persoana #7, fața estompată' }));
+    expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
+  });
+
+  it('shows the photo on the Live card too', () => {
+    renderWithApi(
+      <SuggestionCard suggestion={{ ...suggestion, snapshot_url: 'http://api/s/sug-1' }} />,
+    );
+    expect(screen.getByRole('img', { name: 'Persoana #7, fața estompată' })).toHaveAttribute(
+      'src',
+      'http://api/s/sug-1',
+    );
+  });
 });
 
 describe('StaffPhotoUpload', () => {
