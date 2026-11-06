@@ -280,7 +280,9 @@ def test_ws_events_needs_the_cookie_and_streams_only_own_locations(
         with client.websocket_connect("/ws/events") as ws:
             time.sleep(0.2)  # let the feed take its starting cursor
             asyncio.run(add_events(("ev-far-2", "edge-far"), ("ev-test-2", "edge-01")))
-            raw, folded = ws.receive_json(), ws.receive_json()
+            # Raw row and folded AlertView come from two polls, so either may arrive first.
+            first, second = ws.receive_json(), ws.receive_json()
+        folded, raw = sorted([first, second], key=lambda m: "location_id" not in m["data"])
         assert raw["type"] == "alert" and raw["data"]["event_id"] == "ev-test-2"
         # The folded AlertView of the same alert, also only of the user's location.
         assert folded["type"] == "alert" and folded["data"]["event_id"] == "ev-test-2"
