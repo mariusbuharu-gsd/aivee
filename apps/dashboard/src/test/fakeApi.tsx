@@ -103,6 +103,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     })),
     uploadVideo: vi.fn(),
     listVideos: vi.fn(async () => []),
+    getCapabilities: vi.fn(async () => ({ videos: true, enrol: true })),
     getVideo: vi.fn(),
     videoEvents: vi.fn(async () => []),
     getMetrics: vi.fn(async () => ({

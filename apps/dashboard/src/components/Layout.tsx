@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
-import type { Permission } from '../api/client';
+import type { Capabilities, Permission } from '../api/client';
 import { useApi } from '../api/context';
 import { OfflineBanner } from '../pwa/OfflineBanner';
 import { useAuth } from '../auth/context';
 import { locationTypeLabel, ROLE_LABEL } from '../auth/session';
 import { useLiveData, type LoadError } from '../state/context';
+import { useCapabilities } from '../state/capabilitiesContext';
 import { LeaveGuardContext, type LeaveGuard, type LeaveGuardApi } from '../state/leaveGuard';
 import { Banner } from '../ui/Banner';
 import { Dialog } from '../ui/Dialog';
@@ -26,6 +27,8 @@ interface NavItem {
   group: NavGroup;
   /** A link shows when the role holds any of these at the current location. */
   any: Permission[];
+  /** An optional server feature; the link hides once the server says it does not run it. */
+  needs?: keyof Capabilities;
 }
 
 type NavGroup = 'now' | 'setup' | 'admin' | 'more';
@@ -51,6 +54,7 @@ const NAV: NavItem[] = [
     icon: 'video',
     group: 'setup',
     any: ['devices.manage'],
+    needs: 'videos',
   },
   { to: '/echipa', label: 'Echipă', icon: 'team', group: 'admin', any: ['users.manage'] },
   {
@@ -99,7 +103,8 @@ export function Layout() {
     />
   );
   const locations = me?.locations ?? [];
-  const links = NAV.filter((n) => n.any.some(can));
+  const caps = useCapabilities();
+  const links = NAV.filter((n) => n.any.some(can) && !(n.needs && caps && !caps[n.needs]));
 
   const follow = useCallback(
     (to: string) => (e: MouseEvent<HTMLAnchorElement>) => {

@@ -208,11 +208,7 @@ const VISUAL_FIRE: Condition = {
     'a small open flame',
     'a hand holding a lit lighter',
   ],
-  negative: [
-    'a photo of a room',
-    'a blurry photo',
-    'a photo of a normal restaurant room',
-  ],
+  negative: ['a photo of a room', 'a blurry photo', 'a photo of a normal restaurant room'],
   threshold: 0.5,
   crop: 'frame',
   label_ro: 'foc',
@@ -995,6 +991,11 @@ export class MockApi implements ApiClient {
       finished_at: new Date().toISOString(),
     };
     return v;
+  }
+
+  /** The mock runs everything. */
+  getCapabilities() {
+    return this.delay({ videos: true, enrol: true });
   }
 
   async listVideos() {
