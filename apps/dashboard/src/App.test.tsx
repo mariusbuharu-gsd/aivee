@@ -29,7 +29,7 @@ describe('App with the mock API', () => {
     expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Alerte recente' })).toBeInTheDocument();
     expect(await screen.findAllByText('Închisă')).toHaveLength(2);
-    expect(screen.getAllByText(/angajat #7/).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/angajat #7/)).length).toBeGreaterThan(0);
   });
 
   it('navigates to the zone editor and lists the camera zones', async () => {
