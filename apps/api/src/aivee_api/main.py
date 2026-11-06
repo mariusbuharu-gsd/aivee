@@ -25,6 +25,7 @@ from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.metrics.router import router as metrics_router
+from aivee_api.push.router import router as push_router
 from aivee_api.rules.router import router as rules_router
 from aivee_api.rules.translator import ClaudeRuleTranslator
 from aivee_api.settings import ApiSettings
@@ -103,6 +104,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         devices_router,
         staff_router,
         metrics_router,
+        push_router,
     ):
         app.include_router(router)
 
