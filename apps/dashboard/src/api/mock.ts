@@ -26,9 +26,39 @@ function seedCameras(): CameraView[] {
       device: 'edge-sala',
       online: true,
       zones: [
-        { id: 'z-masa-1', name: 'Masa 1', tag: 'table', polygon: [[0.08, 0.52], [0.34, 0.5], [0.36, 0.82], [0.06, 0.84]] },
-        { id: 'z-masa-2', name: 'Masa 2', tag: 'table', polygon: [[0.44, 0.5], [0.7, 0.5], [0.72, 0.82], [0.42, 0.82]] },
-        { id: 'z-intrare', name: 'Intrare', tag: 'entrance', polygon: [[0.78, 0.18], [0.96, 0.18], [0.96, 0.62], [0.78, 0.62]] },
+        {
+          id: 'z-masa-1',
+          name: 'Masa 1',
+          tag: 'table',
+          polygon: [
+            [0.08, 0.52],
+            [0.34, 0.5],
+            [0.36, 0.82],
+            [0.06, 0.84],
+          ],
+        },
+        {
+          id: 'z-masa-2',
+          name: 'Masa 2',
+          tag: 'table',
+          polygon: [
+            [0.44, 0.5],
+            [0.7, 0.5],
+            [0.72, 0.82],
+            [0.42, 0.82],
+          ],
+        },
+        {
+          id: 'z-intrare',
+          name: 'Intrare',
+          tag: 'entrance',
+          polygon: [
+            [0.78, 0.18],
+            [0.96, 0.18],
+            [0.96, 0.62],
+            [0.78, 0.62],
+          ],
+        },
       ],
     },
     {
@@ -38,7 +68,17 @@ function seedCameras(): CameraView[] {
       device: 'edge-terasa',
       online: false,
       zones: [
-        { id: 'z-masa-3', name: 'Masa 3', tag: 'table', polygon: [[0.2, 0.4], [0.5, 0.4], [0.5, 0.75], [0.2, 0.75]] },
+        {
+          id: 'z-masa-3',
+          name: 'Masa 3',
+          tag: 'table',
+          polygon: [
+            [0.2, 0.4],
+            [0.5, 0.4],
+            [0.5, 0.75],
+            [0.2, 0.75],
+          ],
+        },
       ],
     },
   ];
@@ -154,11 +194,24 @@ interface Step {
 /** One demo loop; repeats every LOOP_MS. Times are milliseconds from loop start. */
 const LOOP_MS = 45_000;
 const TIMELINE: Step[] = [
-  { at: 4_000, run: (a) => a.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut') },
+  {
+    at: 4_000,
+    run: (a) =>
+      a.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut'),
+  },
   { at: 10_000, run: (a) => a.emitSuggestion() },
-  { at: 18_000, run: (a) => a.emitAlert('r-mana', 'z-masa-1', 'opened', 'Masa 1: un client a ridicat mâna') },
-  { at: 23_000, run: (a) => a.emitAlert('r-mana', 'z-masa-1', 'closed', 'Masa 1: clientul a fost servit') },
-  { at: 32_000, run: (a) => a.emitAlert('r-neservit', 'z-masa-2', 'closed', 'Masa 2: ospătarul a ajuns') },
+  {
+    at: 18_000,
+    run: (a) => a.emitAlert('r-mana', 'z-masa-1', 'opened', 'Masa 1: un client a ridicat mâna'),
+  },
+  {
+    at: 23_000,
+    run: (a) => a.emitAlert('r-mana', 'z-masa-1', 'closed', 'Masa 1: clientul a fost servit'),
+  },
+  {
+    at: 32_000,
+    run: (a) => a.emitAlert('r-neservit', 'z-masa-2', 'closed', 'Masa 2: ospătarul a ajuns'),
+  },
 ];
 
 export class MockApi implements ApiClient {

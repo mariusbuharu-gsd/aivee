@@ -1,0 +1,36 @@
+import { createContext, useContext } from 'react';
+import type { CameraView, DashboardMetrics } from '../api/client';
+import type { AlertItem } from '../alerts/fold';
+import type { AlertEvent, Rule, StaffSuggestion, Zone } from '../contracts';
+
+export interface LiveData {
+  cameras: CameraView[];
+  rules: Rule[];
+  events: AlertEvent[];
+  /** `events` folded into opened/closed alerts, newest first. */
+  alerts: AlertItem[];
+  suggestions: StaffSuggestion[];
+  metrics: DashboardMetrics | null;
+  error: string | null;
+  loading: boolean;
+  setZones: (cameraId: string, zones: Zone[]) => void;
+  addRule: (rule: Rule) => void;
+  dropSuggestion: (id: string) => void;
+}
+
+export const LiveDataContext = createContext<LiveData | null>(null);
+
+export function useLiveData(): LiveData {
+  const v = useContext(LiveDataContext);
+  if (!v) throw new Error('useLiveData must be used inside <LiveDataProvider>');
+  return v;
+}
+
+/** Zone name lookup across all cameras, falling back to the raw id. */
+export function zoneName(cameras: CameraView[], zoneId: string): string {
+  for (const c of cameras) {
+    const z = c.zones?.find((x) => x.id === zoneId);
+    if (z) return z.name;
+  }
+  return zoneId;
+}

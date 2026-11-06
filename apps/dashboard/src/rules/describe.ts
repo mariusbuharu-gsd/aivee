@@ -48,7 +48,8 @@ const ACTION: Record<Rule['action']['type'], string> = {
 
 /** Romanian one-liner for the "Ce am înțeles" panel. */
 export function describeRule(rule: Rule): string {
-  const where = ZONE_TAGS.find((t) => t.value === rule.zone_tag)?.plural ?? `zona „${rule.zone_tag}”`;
+  const where =
+    ZONE_TAGS.find((t) => t.value === rule.zone_tag)?.plural ?? `zona „${rule.zone_tag}”`;
   const when = rule.all_of.map(describeCondition).join(' și ');
   return `La ${where}, când ${when} → ${ACTION[rule.action.type]}.`;
 }

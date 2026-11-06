@@ -1,12 +1,6 @@
 // Thin client for the FastAPI service. Endpoint shapes follow the implementation plan;
 // adjust here only, the rest of the dashboard depends on ApiClient.
-import type {
-  AlertEvent,
-  DeviceStatus,
-  Rule,
-  StaffSuggestion,
-  Zone,
-} from '../contracts';
+import type { AlertEvent, DeviceStatus, Rule, StaffSuggestion, Zone } from '../contracts';
 import type { ApiClient, CameraView, DashboardMetrics, Detection, Unsubscribe } from './client';
 
 type WsMessage =
@@ -70,13 +64,13 @@ export class HttpApi implements ApiClient {
   }
 
   async confirmSuggestion(id: string) {
-    await this.request<void>(`/api/staff/suggestions/${encodeURIComponent(id)}/confirm`, {
+    await this.request<unknown>(`/api/staff/suggestions/${encodeURIComponent(id)}/confirm`, {
       method: 'POST',
     });
   }
 
   async rejectSuggestion(id: string) {
-    await this.request<void>(`/api/staff/suggestions/${encodeURIComponent(id)}/reject`, {
+    await this.request<unknown>(`/api/staff/suggestions/${encodeURIComponent(id)}/reject`, {
       method: 'POST',
     });
   }
@@ -84,7 +78,7 @@ export class HttpApi implements ApiClient {
   async uploadStaffPhoto(file: File) {
     const body = new FormData();
     body.append('photo', file);
-    await this.request<void>('/api/staff/photos', { method: 'POST', body });
+    await this.request<unknown>('/api/staff/photos', { method: 'POST', body });
   }
 
   getMetrics() {
