@@ -223,6 +223,11 @@ export function AlertsPage() {
                   {suggestions.length - QUESTIONS_SHOWN === 1 ? 'întrebare' : 'întrebări'}
                 </button>
               )}
+              {canEnrol && (
+                <Link to="/angajat-nou" className="btn btn-sm">
+                  <span aria-hidden="true">👔</span> Adaugă angajat de pe telefon
+                </Link>
+              )}
               {can('devices.manage') && (
                 <Link to="/dispozitive" className="link small">
                   Adaugă angajat → Camere

@@ -862,6 +862,19 @@ export class MockApi implements ApiClient {
     return { token, camera_id: cameraId, frames: 12, candidates, expires_in_s: 600 };
   }
 
+  async uploadStaffFrames(frames: Blob[]): Promise<StaffCapture> {
+    await wait(this.latency * 4);
+    if (frames.length === 0)
+      throw new ApiError('Nu am văzut pe nimeni în fața camerei.', 'invalid', 422);
+    const token = uid('cap');
+    const candidates = frames.slice(0, 8).map((_, index) => ({
+      index,
+      thumbnail: silhouette(200 + index * 5),
+    }));
+    this.captures.set(token, candidates.length);
+    return { token, camera_id: '', frames: frames.length, candidates, expires_in_s: 600 };
+  }
+
   async confirmStaffCapture(token: string, input: StaffCaptureConfirm): Promise<StaffEnrolResult> {
     await wait(this.latency);
     if (!this.captures.has(token))

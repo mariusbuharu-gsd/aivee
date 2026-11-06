@@ -198,3 +198,57 @@ async def test_capture_without_models_is_503(
     services.frames.put("cam1", bytes([2]))
     r = await api.post("/api/staff/capture", json={"camera_id": "cam1", "seconds": 5})
     assert r.status_code == 503 and r.json()["detail"]["code"] == "unavailable"
+
+
+def _frames(*first_bytes: int, content_type: str = "image/jpeg") -> list[tuple[str, Any]]:
+    """Phone frames; the fake decoder reads byte 0 (even = someone in the picture)."""
+    return [("frames", (f"f{i}.jpg", bytes([b]), content_type)) for i, b in enumerate(first_bytes)]
+
+
+async def test_phone_frames_give_candidates_that_the_same_confirm_finishes(
+    api: httpx.AsyncClient, publisher: RecordingPublisher
+) -> None:
+    r = await api.post("/api/staff/capture/frames", files=_frames(2, 3, 4, 6))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["frames"] == 4 and body["camera_id"] == ""
+    assert [c["index"] for c in body["candidates"]] == [0, 1, 2]
+    assert base64.b64decode(body["candidates"][2]["thumbnail"].split(",", 1)[1]).endswith(b"crop-6")
+
+    r = await api.post(
+        f"/api/staff/capture/{body['token']}/confirm", json={"keep": [0, 2], "name": "Maria"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["examples_added"] == 2 and r.json()["published"] is True
+    assert publisher.last(TOPICS.profiles) is not None
+
+
+async def test_phone_frames_errors_are_romanian(api: httpx.AsyncClient, services: Services) -> None:
+    r = await api.post("/api/staff/capture/frames", files=_frames(3, 5))
+    assert r.status_code == 422 and "nimeni" in r.json()["detail"]["message_ro"]
+
+    r = await api.post("/api/staff/capture/frames", files=_frames(2, content_type="text/plain"))
+    assert r.status_code == 422 and "JPEG" in r.json()["detail"]["message_ro"]
+
+    too_many = _frames(*([2] * 31))
+    r = await api.post("/api/staff/capture/frames", files=too_many)
+    assert r.status_code == 422 and "30" in r.json()["detail"]["message_ro"]
+
+    big = [("frames", ("big.jpg", bytes([2]) + b"x" * (3 * 1024 * 1024), "image/jpeg"))]
+    r = await api.post("/api/staff/capture/frames", files=big)
+    assert r.status_code == 413
+
+    r = await api.post("/api/staff/capture/frames")
+    assert r.status_code == 422
+
+    services.enroller = None
+    r = await api.post("/api/staff/capture/frames", files=_frames(2))
+    assert r.status_code == 503 and r.json()["detail"]["code"] == "unavailable"
+
+
+async def test_phone_frames_need_staff_enrol(
+    api: httpx.AsyncClient, services: Services, sessions: Any, login: Any
+) -> None:
+    async with _client(services, sessions, login, "staff@t.ro") as staff:
+        r = await staff.post("/api/staff/capture/frames", files=_frames(2))
+        assert r.status_code == 403
