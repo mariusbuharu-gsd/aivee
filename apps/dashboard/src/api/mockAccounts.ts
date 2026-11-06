@@ -736,11 +736,18 @@ export class MockAccounts {
     return out.reverse();
   }
 
-  listAlertCases(q: { location_id: string; state?: string; limit?: number }): AlertCase[] {
+  listAlertCases(q: {
+    location_id: string;
+    state?: string;
+    limit?: number;
+    before?: string;
+  }): AlertCase[] {
     this.require('alerts.view', q.location_id);
-    const rows = this.cases(q.location_id).filter((c) =>
-      !q.state ? true : q.state === 'open' ? c.closed_at === null : c.closed_at !== null,
-    );
+    const rows = this.cases(q.location_id)
+      .filter((c) => !q.before || c.opened_at < q.before)
+      .filter((c) =>
+        !q.state ? true : q.state === 'open' ? c.closed_at === null : c.closed_at !== null,
+      );
     return rows.slice(0, q.limit ?? 100);
   }
 

@@ -227,7 +227,11 @@ export interface ApiClient extends AccountApi {
   deleteRule(id: string): Promise<void>;
   /** Alerts per rule per day over the last `days` days (default 7), current location. */
   getRuleStats(days?: number): Promise<RuleStats>;
-  listAlerts(): Promise<AlertView[]>;
+  /**
+   * `GET /api/events`, newest first. `before` (an ISO time, usually the oldest `at` held) pages
+   * back; a page shorter than `limit` (API default 50) is the last.
+   */
+  listAlerts(query?: AlertPageQuery): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
   listSuggestions(): Promise<SuggestionView[]>;
   subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe;
@@ -369,6 +373,12 @@ export interface AuditEntry {
   after: unknown;
 }
 
+/** Paging of `GET /api/events`: rows strictly older than `before` (ISO time), at most `limit`. */
+export interface AlertPageQuery {
+  before?: string;
+  limit?: number;
+}
+
 export interface AuditQuery {
   location_id: string;
   actor?: string;
@@ -474,10 +484,12 @@ export interface AccountApi {
   /** Idempotent; the link then answers 410. */
   revokeInvite(id: string): Promise<void>;
   listAudit(query: AuditQuery): Promise<AuditPage>;
+  /** `GET /api/alerts`, newest first; `before` = only alerts opened before that ISO time. */
   listAlertCases(query: {
     location_id: string;
     state?: string;
     limit?: number;
+    before?: string;
   }): Promise<AlertCase[]>;
   /** "Merg eu". 409 when someone already took it. */
   ackAlert(eventId: string): Promise<AlertCase>;

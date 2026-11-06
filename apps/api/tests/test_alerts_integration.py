@@ -320,6 +320,31 @@ async def test_service_metrics(api: httpx.AsyncClient, sessions: Any) -> None:
     assert (m["alerts"], m["wait"]["median_s"]) == (2, 105)
 
 
+async def test_alerts_and_events_page_with_before(api: httpx.AsyncClient, sessions: Any) -> None:
+    """`before` (an ISO time) pages both lists: only rows strictly older than it."""
+    a = _event("opened", 0, zone="t1")
+    b = _event("opened", 10, zone="t2")
+    c = _event("opened", 20, zone="t3")
+    for e in (a, b, c):
+        await _ingest(sessions, e)
+    await _ingest(sessions, _event("closed", 30, zone="t1"))
+
+    def ids(r: httpx.Response) -> list[str]:
+        assert r.status_code == 200, r.text
+        return [v["event_id"] for v in r.json()]
+
+    first = (await api.get("/api/alerts?limit=2")).json()
+    assert [v["event_id"] for v in first] == [c.event_id, b.event_id]
+    older = await api.get("/api/alerts", params={"limit": 2, "before": first[-1]["opened_at"]})
+    assert ids(older) == [a.event_id]
+
+    page = (await api.get("/api/events?limit=2")).json()
+    assert [e["state"] for e in page] == ["closed", "opened"]
+    rest = await api.get("/api/events", params={"before": page[-1]["at"]})
+    assert ids(rest) == [b.event_id, a.event_id]
+    assert (await api.get("/api/events?before=yesterday")).status_code == 422
+
+
 async def test_service_heatmap(api: httpx.AsyncClient, client_as: Client, sessions: Any) -> None:
     for i, wait in enumerate([60, 100]):
         await _ingest(sessions, _event("opened", i * 200, zone=f"z{i}"))

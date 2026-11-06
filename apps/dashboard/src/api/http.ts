@@ -7,6 +7,7 @@ import {
   type AlertCase,
   type AlertView,
   type AuditPage,
+  type AlertPageQuery,
   type AuditQuery,
   type Invite,
   type InviteInfo,
@@ -227,8 +228,11 @@ export class HttpApi implements ApiClient {
     await this.request<undefined>(`/api/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
-  async listAlerts() {
-    return (await this.request<AlertView[]>('/api/events')).map(this.withSnapshot);
+  async listAlerts(q: AlertPageQuery = {}) {
+    const qs = query(q);
+    return (await this.request<AlertView[]>(`/api/events${qs ? `?${qs}` : ''}`)).map(
+      this.withSnapshot,
+    );
   }
 
   async listSuggestions() {
@@ -448,7 +452,7 @@ export class HttpApi implements ApiClient {
     return this.request<AuditPage>(`/api/audit?${query(q)}`);
   }
 
-  listAlertCases(q: { location_id: string; state?: string; limit?: number }) {
+  listAlertCases(q: { location_id: string; state?: string; limit?: number; before?: string }) {
     return this.request<AlertCase[]>(`/api/alerts?${query(q)}`);
   }
 

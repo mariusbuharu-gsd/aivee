@@ -25,3 +25,21 @@ export function ruleLimitS(rule: {
   const s = Math.max(0, ...waits.map((c) => c.min_duration_s ?? 0));
   return s > 0 ? s : null;
 }
+
+/**
+ * The duration bar's scale for each of `items`. An alert carries no threshold of its own, so the
+ * bar uses its rule's longest `min_duration_s`. Staff never load rules (403) and instant rules (a
+ * raised hand) have no duration; those bars measure against the longest of `items`.
+ */
+export function limitsFor(
+  items: AlertItem[],
+  ruleById: ReadonlyMap<string, { all_of: { kind?: string; min_duration_s?: number }[] }>,
+): (a: AlertItem) => AlertLimit | null {
+  const longest = Math.max(0, ...items.map((a) => openFor(a)));
+  return (a) => {
+    const rule = ruleById.get(a.rule_id);
+    const s = rule ? ruleLimitS(rule) : null;
+    if (s) return { seconds: s, ofRule: true };
+    return longest > 0 ? { seconds: longest, ofRule: false } : null;
+  };
+}

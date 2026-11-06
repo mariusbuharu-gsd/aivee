@@ -7,6 +7,7 @@ import {
   ApiError,
   MAX_VIDEO_BYTES,
   VIDEO_TYPES,
+  type AlertPageQuery,
   type AlertView,
   type ApiClient,
   type CameraFrame,
@@ -264,7 +265,47 @@ function seedAlerts(): AlertView[] {
       },
     },
     ev('e-6', 'r-pahar', 'z-masa-1', 'closed', 7, 'Masa 1: masa a fost verificată'),
+    ...seedEarlierShift(ev),
   ];
+}
+
+/**
+ * A busy service earlier today: 30 closed alerts between 1 h and about 6 h ago, so Alerte has
+ * more than its first page (20) and the events need more than one API page (50).
+ */
+function seedEarlierShift(
+  ev: (
+    id: string,
+    rule: string,
+    zone: string,
+    state: AlertEvent['state'],
+    ago: number,
+    summary: string,
+  ) => AlertEvent,
+): AlertEvent[] {
+  const out: AlertEvent[] = [];
+  for (let i = 0; i < 30; i++) {
+    const zone = i % 2 === 0 ? 'z-masa-1' : 'z-masa-2';
+    const table = zone === 'z-masa-1' ? 'Masa 1' : 'Masa 2';
+    const hand = i % 3 === 0;
+    const opened = 60 + i * 11;
+    // Waits of 1–4 min, a few past the 1 min threshold of r-neservit.
+    const lasted = 1 + (i % 4);
+    out.push(
+      hand
+        ? ev(`e-s${i}`, 'r-mana', zone, 'opened', opened, `${table}: un client a ridicat mâna`)
+        : ev(`e-s${i}`, 'r-neservit', zone, 'opened', opened, `${table}: nimeni de la personal`),
+      ev(
+        `e-s${i}c`,
+        hand ? 'r-mana' : 'r-neservit',
+        zone,
+        'closed',
+        opened - lasted,
+        `${table}: servită`,
+      ),
+    );
+  }
+  return out;
 }
 
 const DEMO_VIDEO = 'a1b2c3d4';
@@ -611,8 +652,13 @@ export class MockApi implements ApiClient {
     return this.delay(view);
   }
 
-  listAlerts() {
-    return this.delay(this.alerts);
+  /** Like `GET /api/events`: newest first, strictly before `before`, at most `limit` (50). */
+  listAlerts(q: AlertPageQuery = {}) {
+    const page = [...this.alerts]
+      .filter((e) => !q.before || e.at < q.before)
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, q.limit ?? 50);
+    return this.delay(page);
   }
 
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe {
@@ -912,7 +958,7 @@ export class MockApi implements ApiClient {
     return this.call(() => this.accounts.listAudit(query));
   }
 
-  listAlertCases(query: { location_id: string; state?: string; limit?: number }) {
+  listAlertCases(query: { location_id: string; state?: string; limit?: number; before?: string }) {
     return this.call(() => this.accounts.listAlertCases(query));
   }
 

@@ -78,10 +78,20 @@ def _locations(access: Access, location_id: str | None) -> list[str] | None:
 
 
 async def list_alerts(
-    session: AsyncSession, access: Access, location_id: str | None, state: str | None, limit: int
+    session: AsyncSession,
+    access: Access,
+    location_id: str | None,
+    state: str | None,
+    limit: int,
+    before: datetime | None = None,
 ) -> list[AlertView]:
+    """Newest first; `before` pages back (alerts opened strictly before it)."""
     return await AlertRepository(session).views(
-        location_ids=_locations(access, location_id), state=state, live_only=True, limit=limit
+        location_ids=_locations(access, location_id),
+        state=state,
+        opened_to=before,
+        live_only=True,
+        limit=limit,
     )
 
 
