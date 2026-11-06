@@ -12,7 +12,7 @@ seen for at least `confirm_s` before its disappearance counts at all.
 
 from collections import deque
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 GONE_CONFIRM_S = 3.0
 """An object missing this long is gone (shorter gaps are detector flicker)."""
@@ -78,6 +78,18 @@ class ObjectPresence:
         self._gone = [
             g for g in self._gone if counts.get(g.label, 0) < g.level and ts - g.last_seen <= expiry
         ]
+
+    def shift(self, dt: float) -> None:
+        """Move every stored time forward by `dt` (a capture gap): the confirm window and
+        the hold freeze during the gap instead of running out."""
+        self._history = {
+            label: deque((ts + dt, c) for ts, c in history)
+            for label, history in self._history.items()
+        }
+        for times in (*self._since.values(), *self._last.values()):
+            for k in times:
+                times[k] += dt
+        self._gone = [replace(g, last_seen=g.last_seen + dt) for g in self._gone]
 
     def gone(self, labels: Iterable[str], min_present_s: float, now: float) -> Gone | None:
         """The latest still-holding disappearance of one of `labels` that had been there

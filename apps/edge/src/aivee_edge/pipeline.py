@@ -10,6 +10,10 @@ applied at the start of every step.
 
 Rules and zones are re-read from the `ConfigSource` on every frame and applied when
 they change, so edits in the dashboard take effect without a restart.
+
+A capture gap longer than `stream_gap_s(grace_s)` (the stream stalled or reconnected)
+is bridged by the engine, so it does not count as everyone leaving (E26); each bridged
+gap is logged as `stream_gap seconds=...`.
 """
 
 import logging
@@ -28,7 +32,7 @@ from aivee_contracts.rules import Rule
 
 from aivee_edge.domain.appearance import HIGH_SIMILARITY, LOW_SIMILARITY, appearance_score
 from aivee_edge.domain.behaviour import BehaviourFeatures, TrajectoryBuffer
-from aivee_edge.domain.engine import SituationEngine, utc_from_timestamp
+from aivee_edge.domain.engine import SituationEngine, stream_gap_s, utc_from_timestamp
 from aivee_edge.domain.geometry import foot_point, point_in_polygon
 from aivee_edge.domain.observation import BBox, Frame, TrackObs
 from aivee_edge.domain.ports import (
@@ -160,6 +164,7 @@ class EdgePipeline:
             to_datetime=to_datetime,
             grace_s=grace_s,
             arrive_s=arrive_s,
+            gap_s=stream_gap_s(grace_s),
         )
         self.buffer = TrajectoryBuffer()
         weights = staff_weights or StaffWeights()
@@ -264,6 +269,8 @@ class EdgePipeline:
         }
         frame, suggestions = self.classifier.assign(frame, features, appearance)
         events = self.engine.step(frame)
+        if self.engine.last_gap_s is not None:
+            log.info("stream_gap seconds=%.1f", self.engine.last_gap_s)
 
         for event in events:
             snapshot = self._snapshots.make(image) if event.state == "opened" else None
