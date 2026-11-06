@@ -71,6 +71,13 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     listAlertCases: vi.fn(async () => []),
     ackAlert: vi.fn(),
     getServiceMetrics: vi.fn(),
+    getServiceHeatmap: vi.fn(async () => ({
+      location_id: null,
+      from: null,
+      to: null,
+      timezone: 'Europe/Bucharest',
+      cells: [],
+    })),
     uploadVideo: vi.fn(),
     listVideos: vi.fn(async () => []),
     getVideo: vi.fn(),
