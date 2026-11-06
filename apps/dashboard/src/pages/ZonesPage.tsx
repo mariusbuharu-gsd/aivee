@@ -204,8 +204,16 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
     setStill(URL.createObjectURL(file));
   }
 
-  // No live picture: one quiet line on the canvas offers a capture instead of a whole card.
-  const showSource = !!still || (live !== 'playing' && live !== 'connecting');
+  // One quiet line on the canvas says what the background is and offers the other sources.
+  const showSource = !!still || live !== 'connecting';
+  const sourceLabel = still
+    ? 'Captură încărcată'
+    : live === 'playing'
+      ? 'Imagine live'
+      : 'Imagine de probă';
+  // Back to the live frame (as the old "Fundal" card did): only while a capture replaces it
+  // and the camera is online, so there is a live frame to go back to.
+  const canUseLive = !!still && camera.online;
   const stillPicker = (
     <label className="zone-source-pick">
       {still ? 'Schimbă' : 'Încarcă o captură'}
@@ -346,7 +354,22 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
               })}
               {showSource && (
                 <p className="zone-source" role="status">
-                  {still ? 'Captură încărcată' : 'Imagine de probă'} · {stillPicker}
+                  {sourceLabel} · {stillPicker}
+                  {canUseLive && (
+                    <>
+                      {' · '}
+                      <button
+                        type="button"
+                        className="zone-source-pick"
+                        onClick={() => {
+                          setStill(null);
+                          setFrame(null);
+                        }}
+                      >
+                        Folosește imaginea live
+                      </button>
+                    </>
+                  )}
                 </p>
               )}
             </div>

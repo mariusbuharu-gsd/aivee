@@ -78,6 +78,39 @@ describe('ZonesPage', () => {
     );
   });
 
+  it('switches from a capture back to the live frame when the camera is online', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 });
+    expect(screen.queryByRole('button', { name: 'Folosește imaginea live' })).toBeNull();
+
+    const file = new File(['x'], 'sala.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Încarcă o imagine din cameră'), file);
+    expect(await screen.findByText(/Captură încărcată/)).toHaveTextContent(
+      'Captură încărcată · Schimbă · Folosește imaginea live',
+    );
+    expect(screen.getByAltText(/Imagine încărcată/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Folosește imaginea live' }));
+    expect(screen.queryByAltText(/Imagine încărcată/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Folosește imaginea live' })).toBeNull();
+    expect(await screen.findByText(/Imagine de probă/)).toHaveTextContent(
+      'Imagine de probă · Încarcă o captură',
+    );
+  });
+
+  it('offers no live frame for an offline camera', async () => {
+    const user = userEvent.setup();
+    renderApp('/camere/cam-terasa/zone');
+    await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 });
+    const file = new File(['x'], 'terasa.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Încarcă o imagine din cameră'), file);
+    expect(await screen.findByText(/Captură încărcată/)).toHaveTextContent(
+      'Captură încărcată · Schimbă',
+    );
+    expect(screen.queryByRole('button', { name: 'Folosește imaginea live' })).toBeNull();
+  });
+
   it('says saved with a way out, and asks to save only after a change', async () => {
     const user = userEvent.setup();
     renderApp();
