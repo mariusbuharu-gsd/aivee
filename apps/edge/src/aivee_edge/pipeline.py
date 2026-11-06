@@ -273,6 +273,8 @@ class EdgePipeline:
 
     def _forget_gone(self, frame: Frame, ts: float) -> None:
         for t in frame.tracks:
+            if t.track_id not in self._last_seen:
+                log.info("track_new track=%d role=%s", t.track_id, t.role)
             self._last_seen[t.track_id] = ts
         gone = [tid for tid, seen in self._last_seen.items() if ts - seen > self._forget_after_s]
         for tid in gone:
@@ -281,7 +283,7 @@ class EdgePipeline:
             self.classifier.forget(tid)
             self._appearance.pop(tid, None)
             self._embedded_at.pop(tid, None)
-            log.debug("track forgotten track=%d", tid)
+            log.info("track_gone track=%d", tid)
 
     def tracked_ids(self) -> set[int]:
         return set(self._last_seen)
