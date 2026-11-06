@@ -1,7 +1,7 @@
 """alert lifecycle: arrived events, acknowledgement and folded times on the opened row
 
 Revision ID: 0004_alert_lifecycle
-Revises: 0001
+Revises: 0002_push_subscriptions (to become 0003_auth_tenancy at merge)
 Create Date: 2026-11-06
 
 The opened event's row carries the folded alert: `acknowledged_*` (written by the API),
@@ -18,7 +18,9 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004_alert_lifecycle"
-down_revision: str | None = "0001"  # re-chained after the auth migrations at merge
+# TEMPORARY: the auth stream's "0003_auth_tenancy" does not exist on develop yet; the chain
+# becomes 0002_push_subscriptions → 0003_auth_tenancy → 0004_alert_lifecycle at merge.
+down_revision: str | None = "0002_push_subscriptions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

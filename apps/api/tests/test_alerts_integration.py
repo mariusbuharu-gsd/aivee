@@ -105,7 +105,7 @@ async def test_lifecycle_opened_ack_arrived_closed(
     assert r.status_code == 200, r.text
     acked = r.json()
     assert acked["state"] == "acknowledged"
-    assert acked["acknowledged_by"] == {"id": "demo-ana", "name": "Ana"}
+    assert (acked["acknowledged_by"], acked["acknowledged_by_id"]) == ("Ana", "demo-ana")
     assert acked["reaction_s"] is not None
     assert [e.kind for e in audit.entries] == ["alert.acknowledged"]
     assert audit.entries[0].summary_ro == "Ana a preluat alerta de la Masa Unu"
@@ -147,6 +147,14 @@ async def test_ack_of_a_closed_alert_is_409_and_unknown_is_404(
     assert r.status_code == 409
     assert r.json()["detail"] == {"code": "alert_closed", "message_ro": "Alerta s-a închis deja."}
     assert (await api.post("/api/alerts/nope/ack")).status_code == 404
+
+
+async def test_ack_in_another_location_is_404(api: httpx.AsyncClient, sessions: Any) -> None:
+    opened = _event("opened", 0)
+    await _ingest(sessions, opened)
+    url = f"/api/alerts/{opened.event_id}/ack"
+    assert (await api.post(url, params={"location_id": "other"})).status_code == 404
+    assert (await api.post(url, params={"location_id": "demo"})).status_code == 200
 
 
 async def test_arrival_without_ack_and_list_filters(api: httpx.AsyncClient, sessions: Any) -> None:

@@ -65,7 +65,7 @@ def get_audit_writer() -> AuditWriter:
 
 def arrival_ro(view: AlertView) -> str:
     """ "Ana a ajuns la Masa 4 după 2 min 10 s" (the acknowledger, else "Un angajat")."""
-    who = view.acknowledged_by.name if view.acknowledged_by else "Un angajat"
+    who = view.acknowledged_by or "Un angajat"
     after = f" după {duration_ro(view.wait_s)}" if view.wait_s is not None else ""
     return f"{who} a ajuns la {view.zone_name}{after}"
 

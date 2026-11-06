@@ -32,18 +32,24 @@ async def acknowledge(
     access: Access,
     event_id: str,
     audit: AuditWriter,
+    location_id: str | None = None,
     now: Callable[[], datetime] = _now,
 ) -> AlertView:
     """ "Merg eu": the user takes the alert. 409 once someone has, or once it is closed."""
     repo = AlertRepository(session)
     alert_id = await repo.resolve(event_id)
     before = await repo.view(alert_id) if alert_id else None
-    if alert_id is None or before is None or not access.allows(before.location_id):
+    if (
+        alert_id is None
+        or before is None
+        or not access.allows(before.location_id)
+        or (location_id is not None and before.location_id != location_id)
+    ):
         raise NotFound(_MISSING)
     if not await repo.acknowledge(alert_id, access.user, now()):
         if before.closed_at is not None:
             raise AlertClosed("Alerta s-a închis deja.")
-        who = before.acknowledged_by.name if before.acknowledged_by else "altcineva"
+        who = before.acknowledged_by or "altcineva"
         raise AlreadyAcknowledged(f"Alerta a fost deja preluată de {who}.")
     view = await repo.view(alert_id)
     assert view is not None

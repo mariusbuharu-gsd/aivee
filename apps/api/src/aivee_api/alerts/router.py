@@ -16,8 +16,14 @@ StateFilter = Literal["opened", "acknowledged", "arrived", "closed", "open"]
 
 
 @router.post("/api/alerts/{event_id}/ack")
-async def ack_alert(event_id: str, s: SessionDep, access: AckAccess, audit: AuditDep) -> AlertView:
-    return await acknowledge(s, access, event_id, audit)
+async def ack_alert(
+    event_id: str,
+    s: SessionDep,
+    access: AckAccess,
+    audit: AuditDep,
+    location_id: str | None = None,
+) -> AlertView:
+    return await acknowledge(s, access, event_id, audit, location_id)
 
 
 @router.get("/api/alerts")

@@ -6,13 +6,6 @@ from pydantic import BaseModel, Field
 from aivee_api.alerts.domain import AlertState, Measure, ServiceStats
 
 
-class AckBy(BaseModel):
-    """Who pressed "Merg eu": user id and the name at that moment (a snapshot)."""
-
-    id: str
-    name: str
-
-
 class AlertView(BaseModel):
     """One alert, folded from its events and the acknowledgement (spec: Alert lifecycle).
 
@@ -30,7 +23,10 @@ class AlertView(BaseModel):
     summary_ro: str
     opened_at: datetime
     acknowledged_at: datetime | None = None
-    acknowledged_by: AckBy | None = None
+    acknowledged_by: str | None = Field(
+        None, description='Who pressed "Merg eu": their name at that moment (a snapshot)'
+    )
+    acknowledged_by_id: str | None = None
     arrived_at: datetime | None = None
     closed_at: datetime | None = None
     wait_s: float | None = Field(None, description="arrived (or closed) - opened")

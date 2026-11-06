@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.alerts.auth import CurrentUser
 from aivee_api.alerts.domain import Lifecycle, zone_name_from_summary
-from aivee_api.alerts.schemas import AckBy, AlertView
+from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.models import Camera, Device, EventRow
 
 STATE_FILTERS = ("opened", "acknowledged", "arrived", "closed", "open")
@@ -23,11 +23,6 @@ def lifecycle(row: EventRow) -> Lifecycle:
 
 def to_view(row: EventRow, location_id: str | None, zone_names: dict[str, str]) -> AlertView:
     life = lifecycle(row)
-    ack = (
-        AckBy(id=row.acknowledged_by_id or "", name=row.acknowledged_by_name or "")
-        if row.acknowledged_at is not None
-        else None
-    )
     zone_name = zone_names.get(row.zone_id) or zone_name_from_summary(row.summary_ro) or row.zone_id
     return AlertView(
         event_id=row.event_id,
@@ -39,7 +34,8 @@ def to_view(row: EventRow, location_id: str | None, zone_names: dict[str, str]) 
         summary_ro=row.summary_ro,
         opened_at=row.at,
         acknowledged_at=row.acknowledged_at,
-        acknowledged_by=ack,
+        acknowledged_by=row.acknowledged_by_name if row.acknowledged_at else None,
+        acknowledged_by_id=row.acknowledged_by_id if row.acknowledged_at else None,
         arrived_at=row.arrived_at,
         closed_at=row.closed_at,
         wait_s=life.wait_s,

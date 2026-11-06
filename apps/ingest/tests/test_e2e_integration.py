@@ -83,6 +83,8 @@ UNATTENDED = {
 class QuietNotifier:
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None: ...
 
+    async def send_text(self, text: str, tag: str | None = None) -> None: ...
+
 
 def _free_port() -> int:
     with socket.socket() as s:
@@ -205,22 +207,29 @@ async def test_fake_edge_alert_reaches_events_and_the_websocket(stack: Stack) ->
             layout=layout,
         )
         published = [(e.event_id, e.state) for e in rec.alerts]
-        assert [s for _, s in published] == ["opened", "closed"]
+        assert [s for _, s in published] == ["opened", "arrived", "closed"]
 
+        # Raw opened/closed events (what the feed folds) and folded AlertViews (opened_at).
         pushed: list[dict[str, Any]] = []
+        views: list[dict[str, Any]] = []
         deadline = time.monotonic() + 15
-        while len(pushed) < 2 and time.monotonic() < deadline:
+        while (len(pushed) < 2 or not views or views[-1]["state"] != "closed") and (
+            time.monotonic() < deadline
+        ):
             message = json.loads(await asyncio.wait_for(ws.recv(), 15))
             if message["type"] == "alert":
-                pushed.append(message["data"])
+                (views if "opened_at" in message["data"] else pushed).append(message["data"])
 
-    expected = {(eid, state, rule_id, "cam-sala", "masa-geam") for eid, state in published}
+    raw = [(eid, state) for eid, state in published if state != "arrived"]
+    expected = {(eid, state, rule_id, "cam-sala", "masa-geam") for eid, state in raw}
     got = {(e["event_id"], e["state"], e["rule_id"], e["camera_id"], e["zone_id"]) for e in pushed}
     assert got == expected
+    assert {v["event_id"] for v in views} == {published[0][0]}
+    assert views[-1]["arrived_at"] is not None and views[-1]["wait_s"] is not None
 
     events = (await stack.http.get("/api/events")).json()
     stored = {(e["event_id"], e["state"], e["zone_id"], e["device_id"]) for e in events}
-    assert stored == {(eid, s, "masa-geam", stack.device) for eid, s in published}
+    assert stored == {(eid, s, "masa-geam", stack.device) for eid, s in raw}
 
 
 async def test_snapshot_published_with_an_event_is_served_by_the_api(stack: Stack) -> None:
