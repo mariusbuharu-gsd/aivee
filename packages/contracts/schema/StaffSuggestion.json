@@ -22,6 +22,12 @@
     "reason_ro": {
       "title": "Reason Ro",
       "type": "string"
+    },
+    "snapshot": {
+      "default": false,
+      "description": "A face-blurred person crop was sent on `snapshots/{suggestion_id}`",
+      "title": "Snapshot",
+      "type": "boolean"
     }
   },
   "required": [

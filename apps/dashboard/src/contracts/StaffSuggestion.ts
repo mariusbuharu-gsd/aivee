@@ -5,6 +5,10 @@ export type CameraId = string;
 export type TrackId = number;
 export type StaffScore = number;
 export type ReasonRo = string;
+/**
+ * A face-blurred person crop was sent on `snapshots/{suggestion_id}`
+ */
+export type Snapshot = boolean;
 
 /**
  * The edge thinks a tracked person is staff and asks the owner to confirm.
@@ -15,4 +19,5 @@ export interface StaffSuggestion {
   track_id: TrackId;
   staff_score: StaffScore;
   reason_ro: ReasonRo;
+  snapshot?: Snapshot;
 }

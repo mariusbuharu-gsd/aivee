@@ -5,6 +5,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import (
     AlertEvent,
     DeviceStatus,
@@ -26,6 +28,8 @@ MODELS: list[type[BaseModel]] = [
     Metrics,
     StaffSuggestion,
     StaffProfiles,
+    EdgeCommand,
+    Detections,
 ]
 
 OUT = Path(__file__).resolve().parents[2] / "schema"

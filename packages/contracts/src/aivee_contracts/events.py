@@ -41,6 +41,10 @@ class StaffSuggestion(BaseModel):
     track_id: int
     staff_score: float = Field(ge=0, le=1)
     reason_ro: str
+    snapshot: bool = Field(
+        default=False,
+        description="A face-blurred person crop was sent on `snapshots/{suggestion_id}`",
+    )
 
 
 class StaffProfile(BaseModel):

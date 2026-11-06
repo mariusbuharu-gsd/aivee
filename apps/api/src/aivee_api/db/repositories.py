@@ -196,7 +196,8 @@ class SuggestionRepository:
     async def insert_if_new(self, suggestion: StaffSuggestion, device_id: str = "") -> bool:
         stmt = (
             insert(SuggestionRow)
-            .values(device_id=device_id, **suggestion.model_dump())
+            # The snapshot itself is a file in SNAPSHOT_DIR named after the suggestion id.
+            .values(device_id=device_id, **suggestion.model_dump(exclude={"snapshot"}))
             .on_conflict_do_nothing(index_elements=[SuggestionRow.suggestion_id])
             .returning(SuggestionRow.id)
         )
