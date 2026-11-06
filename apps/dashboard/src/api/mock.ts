@@ -460,6 +460,16 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
       { kind: 'count', role: 'guest', min_count: Math.max(1, n) },
       { kind: 'absent', role: 'staff', min_duration_s: 0 },
     ];
+  } else if (/dispar|dispăr|lipse[sș]te|ia cineva/.test(t) && /pahar|sticl|cea[sș]c/.test(t)) {
+    name = 'A dispărut un obiect';
+    allOf = [
+      {
+        kind: 'object_gone',
+        role: 'any',
+        objects: /vin/.test(t) ? ['wine glass'] : ['wine glass', 'cup'],
+        min_duration_s: 60,
+      },
+    ];
   } else if (/debaras|pahar|farfur|sticl|strâns|strans/.test(t)) {
     name = 'Masă nedebarasată';
     allOf = [
