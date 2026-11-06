@@ -13,6 +13,9 @@ screen names, button labels and alert texts are copied from the code.
 
 ## Set-up the demo assumes
 
+- **The laptop plays both roles.** The standard offer is cloud-first (D25): cameras stream to our EU cloud,
+  video is analysed and discarded. In the demo, the laptop stands in for that cloud server, and the fact
+  that it runs on a plain laptop CPU is the edge option. Say this once, in step 1; don't claim a real cloud.
 - Location `demo` ("Terasa demo"), camera `cam-01` on device `edge-01` (D15), zones **Masa 1**, **Masa 2**
   (tag `table`) and **Intrare** (tag `entrance`) drawn on the camera still.
 - Two rules already created and confirmed on Reguli (created the evening before, not live):
@@ -49,7 +52,9 @@ Istoric and Metrici.
 - **Vasi:** at 0:15, walk into the frame and sit at Masa 1.
 - **Expected:** the camera tile with the live video, the zone outlines, a white box on Vasi (guest) and a light
   blue box on Radu (staff) standing near the bar.
-- **Say:** "A normal camera, a laptop CPU, no cloud. AiVee sees roles, not faces."
+- **Say:** "A normal camera, nothing to buy. In the demo this laptop stands in for our cloud server. And because
+  it is just a laptop CPU, the same software can run on the customer's own PC: that is the edge option. AiVee
+  sees roles, not faces."
 - **Fallback:** no video or no boxes → in a second terminal `make edge SOURCE=recordings/sala-1.mp4`
   (the recorded clip, already upright). Still nothing → `make fake-edge SCENARIO=unattended SPEED=2`
   and say "this is the same pipeline fed by a scripted scene". Login fails → `make seed` was not run or
@@ -64,8 +69,8 @@ Istoric and Metrici.
   (Eval: this exact request → `pose guest raised_hand`, 3.6 s; all 20 eval requests median 2.4 s.)
 - **Marius:** **Confirmă și salvează**. The rule appears in the list and is pushed to the edge (retained MQTT).
 - **Say:** "The model only proposes; the owner confirms. Ask it to recognise a person and it refuses."
-- **Fallback:** no internet / Claude error (Romanian error message) → say "creating rules needs the internet,
-  running them does not", and show the two pre-created rules. Step 5 then has no hand rule: use
+- **Fallback:** no internet / Claude error (Romanian error message) → say "creating rules needs the internet;
+  rules that already exist keep running here", and show the two pre-created rules. Step 5 then has no hand rule: use
   `uv run python tools/fake_edge.py --scenario hand --speed 2 --demo` (built-in demo rules, ignores the
   retained ones).
 
@@ -98,7 +103,7 @@ Istoric and Metrici.
 
 - **Radu:** step out of Masa 1. **Vasi:** raise a hand clearly above the shoulder, 2–3 s.
 - **Expected:** alert **"Masa 1: un client cheamă"** within a few seconds, Telegram + push.
-- **Say:** "That is the rule we wrote two minutes ago, running on the edge."
+- **Say:** "That is the rule we wrote two minutes ago, already running."
 - **Fallback:** `make fake-edge SCENARIO=hand SPEED=2` (the scripted guest is at Masa 2). Pose only runs inside
   table zones: Vasi must be fully in Masa 1.
 
@@ -126,8 +131,8 @@ Istoric and Metrici.
 
 ### Close (3:40–4:00)
 
-"AiVee: the staff's extra pair of eyes, configured in Romanian, private by design, on hardware you already have.
-Marius, Vasi, Radu — thank you."
+"AiVee: the staff's extra pair of eyes, configured in Romanian, private by design, with the cameras you already
+have. In our EU cloud as standard, or on your own PC if the video must never leave. Marius, Vasi, Radu — thank you."
 
 ## Pre-demo checklist (T−30 min)
 
@@ -153,39 +158,47 @@ Marius, Vasi, Radu — thank you."
 ## Elevator pitch (60 s, Romanian)
 
 > Oamenii află prea târziu ce se întâmplă în fața camerelor lor, pentru că nimeni nu are timp să se uite la ele.
-> Într-un restaurant asta înseamnă un client care așteaptă zece minute și nu mai revine.
+> Într-un restaurant asta înseamnă un client care așteaptă la masă și nu e văzut.
 >
-> AiVee e perechea de ochi în plus a personalului. Folosește camera pe care o ai deja și un laptop obișnuit,
-> fără cloud. Desenezi mesele, scrii o regulă în română — „Anunță ospătarul dacă la o masă nu a venit nimeni
-> de un minut" — și AiVee o transformă într-o regulă pe care tu o confirmi. Când clientul așteaptă, ospătarul
-> primește alerta pe telefon, apasă „Merg eu", iar camera vede când a ajuns la masă. Proprietarul vede cât au
-> așteptat clienții, cât de repede a reacționat echipa și tot istoricul, care nu poate fi modificat.
+> AiVee e perechea de ochi în plus a personalului. Nu cumperi nimic: conectezi camerele pe care le ai deja,
+> iar imaginea e analizată în cloud-ul nostru, cu servere în UE, și aruncată, nu e salvată niciodată. În demo,
+> laptopul ține locul serverului din cloud. Desenezi mesele, scrii o regulă în română — „Anunță ospătarul dacă
+> la o masă nu a venit nimeni de un minut" — și AiVee o transformă într-o regulă pe care tu o confirmi. Când
+> clientul așteaptă, ospătarul primește alerta pe telefon, apasă „Merg eu", iar camera vede când a ajuns la
+> masă. Proprietarul vede cât au așteptat clienții, cât de repede a reacționat echipa și tot istoricul, care
+> nu poate fi modificat.
 >
 > AiVee recunoaște rolul, nu persoana: angajat sau client, după uniformă și comportament. Fețele sunt
-> estompate pe dispozitiv, iar video-ul nu pleacă din locație. Merge pentru restaurante, terase, evenimente
-> și magazine — orice loc unde contează cât așteaptă un om.
+> blurate în orice poză. Și pentru că totul merge pe procesorul unui laptop obișnuit, cine vrea ca video-ul
+> să nu plece din locație alege varianta edge, pe calculatorul lui.
 
 ## Likely jury questions
 
 **1. Privacy and GDPR — you film guests.**
 AiVee does no face recognition and stores no identity: it decides only "guest" or "staff", from uniform and
-movement (ADR 5). Faces are blurred on the device before a snapshot leaves it; video stays on site; the rule
+movement (ADR 5). Faces are blurred in every snapshot, in both modes. In the cloud (standard), video is analysed
+in memory and discarded, never stored, on EU servers; in edge mode, video never leaves the location. The rule
 request sends text only. Requests like "recognise Ion" are refused by design (eval case 17). The camera is the
-venue's existing one, under the venue's existing notice; AiVee adds no biometric processing.
+venue's existing one, under the venue's existing notice; AiVee adds no biometric processing. Cloud processing
+of guest video still needs a DPIA and a lawyer's review before launch; we say so.
 
-**2. Why not the cloud?**
-Video of guests should not leave the room, venues rarely have upload bandwidth for it, and alerts must work
-when the internet is slow. On a laptop CPU (i7-1355U) we measured about 20 FPS detection and 12 FPS with pose;
-the phone camera, at 8–11 FPS, is the limit, not the model (ADR 1). Only rule creation needs the internet.
+**2. Why cloud first, and why also edge?**
+Cloud removes the hardware barrier: a restaurant starts with the cameras it has, nothing to install on site but
+the cameras (or a small connector). Edge is for venues that want video to never leave, or that need to keep
+working offline. The pipeline is cheap enough for both: on a laptop CPU (i7-1355U, no GPU) we measured about
+20 FPS detection and 12 FPS with pose, per stream; the phone camera, at 8–11 FPS, is the limit, not the model.
+Decision D25, `docs/adr/0011-cloud-or-edge-analysis.md`. Today's demo runs everything on this laptop.
 
 **3. What does it cost per location?**
-One small x86 box per location next to an existing camera; no GPU and no per-frame cloud cost (ADR 1). The only
-paid API call is turning a request into a rule, and rules are created rarely (ADR 6). We have not priced
-hardware or a subscription yet, so we give no figure.
+In the cloud, no hardware for the customer. Our cost per camera stream is not measured yet: we will measure it
+in the pilot and price above it, so we give no figure. Edge runs on a PC the customer already has, or on our box;
+no GPU needed (numbers above). The only paid API call is turning a request into a rule, and rules are created
+rarely (ADR 6).
 
 **4. How does it scale to 100 locations?**
-Video is processed where it is filmed, so a new location adds a box, not load on a central server. Between
-sites only alerts, metrics and small blurred JPEGs travel over MQTT. Ingest workers share the event stream
+In the cloud, analysis scales by stream: the plan is one vision worker per camera stream, reusing the same
+domain code (roadmap P5.2, not built yet). In edge mode a new location adds a PC or a box, not load on a central
+server. Either way, only alerts, metrics and small blurred JPEGs travel over MQTT. Ingest workers share the event stream
 (`$share`), inserts are idempotent, each edge gets its complete rules and config as retained messages on
 connect, and each device has its own MQTT user and ACL. Accounts are already organization → location →
 devices with roles per location. Today's limits: one broker, one Postgres and one API per deployment
@@ -197,3 +210,15 @@ not measured yet, so we do not quote a number. False alarms are kept down by des
 duration (one minute, not one frame), a 1.5 s grace for flicker, role hysteresis (staff above 0.7, guest
 below 0.4), arrival only after 5 s in the zone, a cooldown per rule, and the owner confirms staff suggestions.
 Rules stay drafts until a human confirms them.
+
+**6. Ultralytics YOLO is AGPL. Can you run it in a cloud?**
+Yes, if we comply. Our own code is MIT; the detector, Ultralytics YOLO, is AGPL-3.0 (D26). AGPL also covers
+network use, so when it runs in our cloud, or ships on an edge box or a customer's PC, the full source of what
+runs, including our changes, must be available to its users. Our code is already public, so that is how we
+comply; the alternative is an Ultralytics Enterprise licence.
+
+**7. What if the internet goes down?**
+In cloud mode, honestly: no alerts until it is back, and the app should show the location as offline (planned,
+roadmap P5.5). That is why edge exists: with the analysis on site, detection and rules keep running locally.
+But today alerts reach phones through Telegram and Web Push, which need the internet. A local alarm in the room
+(a tablet that sounds and lists open alerts when the internet is down) is on the roadmap (P3.6), not built today.
