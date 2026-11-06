@@ -13,6 +13,8 @@ import type {
 import { MockAccounts } from './mockAccounts';
 import {
   ApiError,
+  MAX_VIDEO_BYTES,
+  VIDEO_TYPES,
   type AlertView,
   type ApiClient,
   type CameraView,
@@ -267,8 +269,6 @@ function seedVideos(): { upload: VideoUpload; alerts: VideoAlert[] }[] {
 /** A new mock upload waits this long, then "analyses" for VIDEO_RUN_MS. */
 const VIDEO_QUEUE_MS = 1_500;
 const VIDEO_RUN_MS = 6_000;
-const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
-export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 
 /** Very small Romanian keyword parser so the mock returns a plausible rule for any request. */
 export function mockRuleFromText(text: string, cameraId: string): Rule {

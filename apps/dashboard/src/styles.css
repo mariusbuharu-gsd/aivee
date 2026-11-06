@@ -2734,3 +2734,100 @@ label.btn:focus-within {
 .terms {
   margin-top: 20px;
 }
+
+/* ---------- Video analysis ---------- */
+.pill-ok {
+  color: var(--ok);
+}
+.video-grid {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.video-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.video-form {
+  gap: 14px;
+}
+.video-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.video-item {
+  width: 100%;
+  min-height: var(--tap);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.video-item:hover {
+  border-color: var(--border);
+}
+.video-item[aria-pressed='true'] {
+  border-color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+.video-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.video-name {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.video-item .feed-head .pill,
+.video-pills {
+  margin-left: auto;
+}
+.video-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.video-at {
+  font-weight: 600;
+}
+.video-timeline .snapshot {
+  align-self: flex-start;
+}
+.progress {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-soft);
+  overflow: hidden;
+}
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--live);
+  transition: width 0.4s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress > span {
+    transition: none;
+  }
+}
+@media (max-width: 1100px) {
+  .video-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

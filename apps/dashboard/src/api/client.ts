@@ -142,6 +142,10 @@ export interface VideoAlert {
   snapshot_url: string | null;
 }
 
+/** Same limits as `POST /api/videos`; the dashboard checks the size before uploading. */
+export const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
+export const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+
 /** What "Analizează un video" sends; the location is the current one (`setLocation`). */
 export interface NewVideoUpload {
   file: File;

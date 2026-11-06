@@ -27,6 +27,7 @@ const NAV: NavItem[] = [
   { to: '/alerte', label: 'Alerte', icon: 'alerts', any: ['alerts.view'] },
   { to: '/reguli', label: 'Reguli', icon: 'rules', any: ['rules.manage'] },
   { to: '/dispozitive', label: 'Dispozitive', icon: 'devices', any: ['devices.manage'] },
+  { to: '/video', label: 'Analiză video', icon: 'video', any: ['devices.manage'] },
   { to: '/metrici', label: 'Metrici', icon: 'metrics', any: ['alerts.view'] },
   { to: '/istoric', label: 'Istoric', icon: 'history', any: ['audit.view', 'audit.view.own'] },
   { to: '/echipa', label: 'Echipă', icon: 'team', any: ['users.manage'] },

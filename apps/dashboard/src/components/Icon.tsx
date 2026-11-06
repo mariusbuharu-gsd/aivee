@@ -28,6 +28,7 @@ const PATHS = {
   warn: 'M12 3l10 18H2zM12 10v5M12 18h.01',
   errorCircle: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9 9l6 6M15 9l-6 6',
   plus: 'M12 5v14M5 12h14',
+  video: 'M3 5h18v14H3zM10 9l5 3-5 3z',
 } as const;
 
 export type IconName = keyof typeof PATHS;
