@@ -8,6 +8,8 @@ topic read aivee/#
 topic read $share/ingest/aivee/#
 
 # Edge devices: %u = MQTT username = device id. A device can only touch its own topics.
+# The uploaded-clip runner (MQTT_UPLOAD_USER, e.g. upload-01) is one such device: its
+# username starts with `upload-`, which ingest reads as "never notify staff".
 pattern write aivee/+/%u/status
 pattern write aivee/+/%u/events
 pattern write aivee/+/%u/metrics
