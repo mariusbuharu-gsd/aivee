@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from aivee_contracts.events import AlertEvent, DeviceStatus, Metrics, StaffSuggestion
+from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import RuleSet
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 
@@ -84,3 +85,54 @@ def test_rules_are_empty_until_retained_ruleset_arrives() -> None:
     assert edge.rules() == []
     Msg.payload = b"not json"
     edge._on_message(edge._client, None, Msg())  # type: ignore[arg-type]  # ignored, no raise
+
+
+def _config_msg(edge: MqttEdgeClient, config: DeviceConfig | bytes) -> Any:
+    class Msg:
+        topic = edge.topics.config
+        payload = config if isinstance(config, bytes) else config.model_dump_json().encode()
+
+    return Msg()
+
+
+def _cam(cam_id: str) -> CameraConfig:
+    zone = Zone(id="t1", name="Masa 1", tag="table", polygon=[(0, 0), (1, 0), (1, 1)])
+    return CameraConfig(id=cam_id, name=cam_id, source="0", zones=[zone])
+
+
+def test_retained_device_config_selects_this_camera() -> None:
+    edge = MqttEdgeClient("localhost", 1883, "u", "pw", "s1", "edge-01", camera_id="cam-02")
+    assert edge.device_config() is None
+    config = DeviceConfig(device="edge-01", cameras=[_cam("cam-01"), _cam("cam-02")])
+    edge._on_message(edge._client, None, _config_msg(edge, config))
+    assert edge.device_config() == config
+    assert edge.camera().id == "cam-02"
+    assert [z.name for z in edge.camera().zones] == ["Masa 1"]
+
+
+def test_device_config_without_camera_id_uses_first_and_falls_back() -> None:
+    fallback = _cam("local")
+    edge = MqttEdgeClient("localhost", 1883, "u", "pw", "s1", "edge-01", camera=fallback)
+    assert edge.camera() == fallback
+    other = DeviceConfig(device="edge-01", cameras=[_cam("cam-09")])
+    edge._on_message(edge._client, None, _config_msg(edge, other))
+    assert edge.camera() == fallback  # camera_id "local" is not in the config
+
+    edge = MqttEdgeClient("localhost", 1883, "u", "pw", "s1", "edge-01")
+    edge._on_message(edge._client, None, _config_msg(edge, other))
+    assert edge.camera().id == "cam-09"
+    edge._on_message(edge._client, None, _config_msg(edge, b"{bad"))  # ignored
+    assert edge.camera().id == "cam-09"
+
+
+def test_subscribes_to_config_on_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    edge = MqttEdgeClient("localhost", 1883, "u", "pw", "s1", "edge-01")
+    subs: list[Any] = []
+    monkeypatch.setattr(edge._client, "subscribe", lambda topics: subs.append(topics))
+    monkeypatch.setattr(edge._client, "publish", lambda *a, **k: _Info())
+
+    class Ok:
+        is_failure = False
+
+    edge._on_connect(edge._client, None, None, Ok(), None)  # type: ignore[arg-type]
+    assert edge.topics.config in [t for t, _ in subs[0]]

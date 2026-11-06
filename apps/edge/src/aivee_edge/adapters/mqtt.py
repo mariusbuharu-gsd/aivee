@@ -3,7 +3,9 @@
 - LWT: `DeviceStatus(offline)` retained on `status`; `online` is published on every connect.
 - Persistent session (MQTT v5, `clean_start=False`) so QoS 1 messages survive short drops.
 - Snapshot JPEG is published before its AlertEvent so ingest can attach it.
-- Retained `rules` and `profiles` are cached; getters are thread-safe.
+- Retained `rules`, `profiles` and `config` are cached; getters are thread-safe.
+- `camera()` prefers this device's camera from the retained `DeviceConfig` (matched by
+  `camera_id`, else the first one) over the camera given at construction.
 """
 
 import logging
@@ -18,7 +20,7 @@ from aivee_contracts.events import (
     StaffProfiles,
     StaffSuggestion,
 )
-from aivee_contracts.geometry import CameraConfig
+from aivee_contracts.geometry import CameraConfig, DeviceConfig
 from aivee_contracts.rules import Rule, RuleSet
 from aivee_contracts.topics import Topics
 from paho.mqtt.enums import CallbackAPIVersion
@@ -45,6 +47,7 @@ class MqttEdgeClient:
         device: str,
         *,
         camera: CameraConfig | None = None,
+        camera_id: str | None = None,
         version: str = "0.1.0",
         keepalive: int = 30,
     ) -> None:
@@ -53,6 +56,8 @@ class MqttEdgeClient:
         self._device, self._version = device, version
         self._lock = threading.Lock()
         self._camera = camera
+        self._camera_id = camera_id or (camera.id if camera else None)
+        self._config: DeviceConfig | None = None
         self._rules: RuleSet | None = None
         self._profiles: StaffProfiles | None = None
         self.connected = threading.Event()
@@ -117,9 +122,22 @@ class MqttEdgeClient:
 
     def camera(self) -> CameraConfig:
         with self._lock:
-            if self._camera is None:
-                raise LookupError("no camera config set for this device")
-            return self._camera
+            camera = self._configured_camera() or self._camera
+        if camera is None:
+            raise LookupError("no camera config set for this device")
+        return camera
+
+    def device_config(self) -> DeviceConfig | None:
+        with self._lock:
+            return self._config
+
+    def _configured_camera(self) -> CameraConfig | None:
+        if self._config is None or not self._config.cameras:
+            return None
+        cameras = self._config.cameras
+        if self._camera_id is None:
+            return cameras[0]
+        return next((c for c in cameras if c.id == self._camera_id), None)
 
     def set_camera(self, camera: CameraConfig) -> None:
         with self._lock:
@@ -133,7 +151,8 @@ class MqttEdgeClient:
 
     def _status(self, state: str) -> str:
         with self._lock:
-            cameras = [self._camera.id] if self._camera else []
+            camera = self._configured_camera() or self._camera
+            cameras = [camera.id] if camera else []
         return DeviceStatus.model_validate(
             {"device": self._device, "state": state, "version": self._version, "cameras": cameras}
         ).model_dump_json()
@@ -149,7 +168,9 @@ class MqttEdgeClient:
         if reason.is_failure:
             log.error("MQTT connect refused: %s", reason)
             return
-        client.subscribe([(self.topics.rules, 1), (self.topics.profiles, 1)])
+        client.subscribe(
+            [(self.topics.rules, 1), (self.topics.profiles, 1), (self.topics.config, 1)]
+        )
         client.publish(self.topics.status, self._status("online"), qos=1, retain=True)
         self.connected.set()
         log.info("edge %s connected to MQTT", self._device)
@@ -164,5 +185,9 @@ class MqttEdgeClient:
                 profiles = StaffProfiles.model_validate_json(msg.payload)
                 with self._lock:
                     self._profiles = profiles
+            elif msg.topic == self.topics.config:
+                config = DeviceConfig.model_validate_json(msg.payload)
+                with self._lock:
+                    self._config = config
         except ValidationError:
             log.exception("ignoring invalid payload on %s", msg.topic)
