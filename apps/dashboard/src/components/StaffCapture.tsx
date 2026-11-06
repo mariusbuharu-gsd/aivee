@@ -24,7 +24,7 @@ export function StaffCaptureButton({ camera }: { camera: CameraView }) {
   if (!can('staff.enrol')) return null;
   return (
     <>
-      <button type="button" className="btn" onClick={() => setOpen(true)}>
+      <button type="button" className="btn staff-capture-open" onClick={() => setOpen(true)}>
         <span aria-hidden="true">👔</span> Adaugă angajat
       </button>
       {open && <StaffCaptureDialog camera={camera} onClose={() => setOpen(false)} />}

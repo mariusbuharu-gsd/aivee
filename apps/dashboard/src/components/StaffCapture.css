@@ -23,7 +23,11 @@
   width: 100%;
   accent-color: var(--live);
 }
-.staff-capture-grid {
+/* The camera card pushes its last button down; this one sits right under "Editează zonele". */
+.device-card > .btn.staff-capture-open {
+  margin-top: 0;
+}
+.dialog-body .staff-capture-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 8px;
