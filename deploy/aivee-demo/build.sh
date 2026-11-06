@@ -28,7 +28,7 @@ build() { # name dockerfile [extra docker build args...]
 
 for svc in "${@:-${ALL[@]}}"; do
   case "$svc" in
-    api) build api apps/api/Dockerfile --build-arg UV_EXTRAS="${API_UV_EXTRAS:-}" ;;
+    api) build api apps/api/Dockerfile --build-arg UV_EXTRAS="${API_UV_EXTRAS---extra ml}" ;;
     ingest) build ingest apps/ingest/Dockerfile ;;
     dashboard) build dashboard apps/dashboard/Dockerfile --build-arg VITE_API_URL="$APP_URL" ;;
     site) build site apps/site/Dockerfile ;;

@@ -32,6 +32,7 @@ services:
       SOURCE: mqtt-frames://cam-coleg-1
       TARGET_FPS: "5"
       ROTATE: "0"
+      APPEARANCE: "true"  # staff recognised by uniform (CLIP vs the enrolled profiles)
       HF_HOME: /tmp/hf  # CLIP weights (uniform + visual rules) download here on first use
       DETECTOR_MODEL: /app/models/yolo11n_int8_openvino_model
       POSE_MODEL: /app/models/yolo11n-pose_int8_openvino_model
@@ -56,3 +57,23 @@ services:
       CAMERA_ID: cam-coleg-3
       SOURCE: mqtt-frames://cam-coleg-3
     entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_COLEG_3_PASSWORD" exec python -m aivee_edge']
+
+  # Phone slot 1: the camera "Telefon 1" fed by the dashboard's /telefon page.
+  vision-cam-telefon-1:
+    <<: *vision
+    environment:
+      <<: *vision-env-1
+      MQTT_EDGE_USER: edge-telefon-1
+      CAMERA_ID: cam-telefon-1
+      SOURCE: mqtt-frames://cam-telefon-1
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_TELEFON_1_PASSWORD" exec python -m aivee_edge']
+
+  # Phone slot 2: the camera "Telefon 2" fed by the dashboard's /telefon page.
+  vision-cam-telefon-2:
+    <<: *vision
+    environment:
+      <<: *vision-env-1
+      MQTT_EDGE_USER: edge-telefon-2
+      CAMERA_ID: cam-telefon-2
+      SOURCE: mqtt-frames://cam-telefon-2
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_TELEFON_2_PASSWORD" exec python -m aivee_edge']

@@ -15,11 +15,11 @@ cluster with every other dev project, so touch only `aivee-demo_*` services and 
 | Service | Image | Notes |
 |---|---|---|
 | `postgres` | `pgvector/pgvector:pg17` | volume `aivee-demo_pg-data` |
-| `mosquitto` | `aivee/mosquitto` | `infra/mosquitto` entrypoint + ACL, `mosquitto.conf` here (1883 internal, 9001 websockets); accounts api, ingest, `edge-01`, `edge-coleg-1..3` (`MQTT_EXTRA_DEVICES`) |
-| `api` | `aivee/api` (slim) | `SITE=demo`, `DEVICE=edge-01`, `COOKIE_SECURE=true` |
+| `mosquitto` | `aivee/mosquitto` | `infra/mosquitto` entrypoint + ACL, `mosquitto.conf` here (1883 internal, 9001 websockets); accounts api, ingest, `edge-01`, `edge-coleg-1..3`, `edge-telefon-1..2` (`MQTT_EXTRA_DEVICES`) |
+| `api` | `aivee/api` (`ml` extra: staff enrolment) | `SITE=demo`, `DEVICE=edge-01`, `COOKIE_SECURE=true` |
 | `ingest` | `aivee/ingest` | 1 replica, `TELEGRAM_POLL=false` |
 | `dashboard`, `site` | `aivee/dashboard`, `aivee/site` | nginx:alpine |
-| (later) `vision-cam-coleg-1..3` | `aivee/vision` | `vision.yml`: cloud vision workers, see "Rules on the server" |
+| `vision-cam-coleg-1..3`, `vision-cam-telefon-1..2` | `aivee/vision` | `vision.yml`: cloud vision workers, see "Rules on the server" |
 
 All pinned to `dev-worker-1`: the database, the broker's retained state and the snapshots volume
 (shared by api and ingest) live there, and dev-worker-2 crashes now and then. Traefik routes by the
@@ -42,7 +42,7 @@ manager has no GitHub key).
 | — | `aivee.env`: every secret, mode 600, never in git |
 
 `aivee.env` holds (names only): `POSTGRES_DB/USER/PASSWORD`, `MQTT_API_*`, `MQTT_INGEST_*`,
-`MQTT_EDGE_USER/PASSWORD` (edge-01), `EDGE_COLEG_1..3_PASSWORD`, `MQTT_EXTRA_DEVICES`,
+`MQTT_EDGE_USER/PASSWORD` (edge-01), `EDGE_COLEG_1..3_PASSWORD`, `EDGE_TELEFON_1..2_PASSWORD`, `MQTT_EXTRA_DEVICES`,
 `VAPID_PUBLIC_KEY/PRIVATE_KEY/SUBJECT`, `DEMO_PASSWORD`, `PUBLIC_DASHBOARD_URL`,
 `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`. The generated values are
 the server's own (not the laptop's). Read one without printing the file:

@@ -28,7 +28,7 @@ services:
       resources: { limits: { memory: 1g } }
 
   # Same entrypoint and ACL as local (infra/mosquitto), plus the WebSockets listener :9001 and
-  # the extra device accounts from MQTT_EXTRA_DEVICES (edge-coleg-1..3).
+  # the extra device accounts from MQTT_EXTRA_DEVICES (edge-coleg-1..3, edge-telefon-1..2).
   mosquitto:
     image: docker-hub.gsd.com.ro/aivee/mosquitto:${TAG:?set TAG}
     env_file: aivee.env
@@ -61,19 +61,22 @@ services:
       # Video upload is off on the server: without MQTT_UPLOAD_PASSWORD POST /api/videos
       # answers 503 (the clip runner needs the edge + models inside this image).
       MQTT_UPLOAD_PASSWORD: ""
+      # Staff enrolment (photos, 👔 capture, /angajat-nou) needs the `ml` image: build.sh builds
+      # api with `--extra ml` by default. YOLO and CLIP weights download to /tmp on first use.
+      YOLO_WEIGHTS: /tmp/yolo11n.pt
+      HF_HOME: /tmp/hf
     volumes:
       - snapshots:/data/snapshots
       - videos:/data/videos
     networks: [internal]
     deploy:
       <<: *pin
-      resources: { limits: { memory: 1g } }
+      resources: { limits: { memory: 3g } }
       update_config: { order: stop-first, failure_action: rollback }
 
-  # One replica. TELEGRAM_POLL=false: the laptop's ingest already long-polls the same bot and
-  # Telegram allows one getUpdates caller per bot (a second one gets 409). Sending still works.
-  # "Conectează Telegram" and "Preiau ✋" need the poller: give the server its own bot
-  # (TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME in aivee.env) and drop this override.
+  # One replica, and the server is the bot's only poller: "Conectează Telegram" and "Preiau ✋"
+  # are written to the server's database. Telegram allows one getUpdates caller per bot (a
+  # second one gets 409), so a laptop stack sharing the bot sets TELEGRAM_POLL=false in .env.
   ingest:
     image: docker-hub.gsd.com.ro/aivee/ingest:${TAG:?set TAG}
     env_file: aivee.env
@@ -83,7 +86,7 @@ services:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
       SNAPSHOT_DIR: /data/snapshots
-      TELEGRAM_POLL: "false"
+      TELEGRAM_POLL: "true"
       PUBLIC_DASHBOARD_URL: https://app-aivee.earth.sv.gsd.com.ro
     volumes: [snapshots:/data/snapshots]
     networks: [internal]
