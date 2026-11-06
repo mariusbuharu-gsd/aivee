@@ -115,3 +115,22 @@ describe('MockApi videos', () => {
     await expect(api.uploadVideo({ file })).rejects.toMatchObject({ status: 422 });
   });
 });
+
+describe('MockApi setup data', () => {
+  it('starts without staff photos, so the setup checklist has work left', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    expect(await api.listStaffProfiles()).toEqual([]);
+    await api.uploadStaffPhoto(new File(['x'], 'a.jpg', { type: 'image/jpeg' }));
+    await api.uploadStaffPhoto(new File(['x'], 'b.jpg', { type: 'image/jpeg' }));
+    expect(await api.listStaffProfiles()).toEqual([
+      expect.objectContaining({ id: 'uniforma', examples: 2 }),
+    ]);
+  });
+
+  it('has an online camera with zones and an active rule (a mix of done and to do)', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const cameras = await api.listCameras();
+    expect(cameras.some((c) => c.online && (c.zones?.length ?? 0) > 0)).toBe(true);
+    expect((await api.listRules()).some((r) => r.enabled !== false)).toBe(true);
+  });
+});

@@ -47,6 +47,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     confirmSuggestion: vi.fn(async () => undefined),
     rejectSuggestion: vi.fn(async () => undefined),
     uploadStaffPhoto: vi.fn(async () => undefined),
+    listStaffProfiles: vi.fn(async () => []),
     me: vi.fn(async () => FAKE_ME),
     login: vi.fn(async () => FAKE_ME),
     register: vi.fn(async () => FAKE_ME),

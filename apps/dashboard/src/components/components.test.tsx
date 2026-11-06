@@ -292,3 +292,34 @@ describe('StaffPhotoUpload', () => {
     expect(await screen.findByText('Poza a fost adăugată ca exemplu.')).toBeInTheDocument();
   });
 });
+
+describe('RuleComposer examples', () => {
+  const examples = ['Anunță-mă dacă un client ridică mâna', 'Anunță-mă dacă la intrare e coadă'];
+
+  it('a chip fills the text; nothing is translated or saved until "Creează regula"', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => ({ rule, explanation_ro: '' })) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" examples={examples} />, api);
+
+    const chips = screen.getByRole('group', { name: 'Exemple' });
+    await user.click(within(chips).getByRole('button', { name: examples[0] }));
+    const input = screen.getByLabelText('Spune-i camerei ce să vadă');
+    expect(input).toHaveValue(examples[0]);
+    expect(input).toHaveFocus();
+    expect(api.draftRuleFromText).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Creează regula' }));
+    expect(api.draftRuleFromText).toHaveBeenCalledWith(examples[0], 'cam-sala');
+    await screen.findByRole('region', { name: 'Ce am înțeles' });
+    expect(api.createRule).not.toHaveBeenCalled();
+  });
+
+  it('a camera without rules shows the examples as a start list', async () => {
+    const user = userEvent.setup();
+    renderWithApi(<RuleComposer cameraId="cam-sala" examples={examples} startHere />);
+    expect(screen.queryByRole('group', { name: 'Exemple' })).not.toBeInTheDocument();
+    const start = screen.getByRole('group', { name: /Pornește de la un exemplu/ });
+    await user.click(within(start).getByRole('button', { name: examples[1] }));
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveValue(examples[1]);
+  });
+});

@@ -27,6 +27,16 @@ export interface Detection {
   raised_hand?: boolean;
 }
 
+/** A staff appearance profile built from uniform photos (`GET /api/staff/profiles`). */
+export interface StaffProfile {
+  id: string;
+  name: string;
+  description_ro: string;
+  /** How many photos (or video frames) the profile was built from. */
+  examples: number;
+  has_centroid: boolean;
+}
+
 /** A camera plus the online state of the device that serves it. */
 export interface CameraView extends CameraConfig {
   device: string;
@@ -179,6 +189,8 @@ export interface ApiClient extends AccountApi {
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;
   uploadStaffPhoto(file: File): Promise<void>;
+  /** `GET /api/staff/profiles` (`staff.enrol`): enrolled uniform profiles, shared by every location. */
+  listStaffProfiles(): Promise<StaffProfile[]>;
   getMetrics(): Promise<DashboardMetrics>;
   /** `POST /api/videos` (multipart). 422 for a bad type, size or length. */
   uploadVideo(input: NewVideoUpload): Promise<VideoUpload>;

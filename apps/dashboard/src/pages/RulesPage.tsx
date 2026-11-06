@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useApi } from '../api/context';
 import { RuleComposer, RuleDraftEditor } from '../components/RuleComposer';
 import type { Rule } from '../contracts';
+import { useAuth } from '../auth/context';
 import { describeRule } from '../rules/describe';
+import { ruleTemplates } from '../rules/templates';
 import { useLiveData } from '../state/context';
 import { Banner } from '../ui/Banner';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
@@ -13,6 +15,7 @@ import { useToast } from '../ui/toast';
 
 export function RulesPage() {
   const { rules, cameras, addRule } = useLiveData();
+  const { location } = useAuth();
   const [cameraId, setCameraId] = useState<string>('');
   const selected = cameraId || cameras[0]?.id || '';
   const picker =
@@ -35,13 +38,20 @@ export function RulesPage() {
       <header className="page-head">
         <h1>Reguli</h1>
       </header>
-      {selected && <RuleComposer cameraId={selected} onCreated={addRule} camera={picker} />}
+      {selected && (
+        <RuleComposer
+          cameraId={selected}
+          onCreated={addRule}
+          camera={picker}
+          examples={ruleTemplates(location?.type)}
+          startHere={!rules.some((r) => r.camera_id === selected)}
+        />
+      )}
       <section aria-labelledby="rules-h" className="rule-groups">
         <h2 id="rules-h">Regulile tale</h2>
         {rules.length === 0 && (
           <EmptyState icon="rules" title="Nicio regulă încă">
-            Scrie mai sus, în română, ce să urmărească: de exemplu „anunță-mă dacă la o masă nu vine
-            nimeni de 2 minute”.
+            Scrie mai sus, în română, ce să urmărească, sau pornește de la unul dintre exemple.
           </EmptyState>
         )}
         {groups.map((g) => (
