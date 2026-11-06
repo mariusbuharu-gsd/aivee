@@ -1,0 +1,28 @@
+# AiVee on site: "Edge on the customer's PC" and "Edge box" (ADR 0011).
+# The vision pipeline runs in the restaurant and sends only events and blurred snapshots to the
+# AiVee cloud over MQTT. Video never leaves the restaurant.
+#
+# On the restaurant machine (Docker installed), in a folder holding this file, `edge.env` and
+# a `models/` folder:
+#   cp edge.env.example edge.env   # fill in the values from the AiVee dashboard
+#   docker compose -f compose.yml up -d
+#
+# One service = one camera. For a second camera, copy the `camera-1` block, change its
+# CAMERA_ID and SOURCE.
+x-edge: &edge
+  image: ${AIVEE_EDGE_IMAGE:-aivee-edge:dev}
+  env_file: edge.env
+  volumes:
+    - ./models:/app/models:ro
+  restart: unless-stopped
+  logging:
+    driver: local
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  camera-1:
+    <<: *edge
+    environment:
+      CAMERA_ID: "${CAMERA_ID:-cam-01}"
+      SOURCE: "${SOURCE:?set SOURCE to the camera URL, e.g. rtsp://user:pass@192.168.1.20:554/stream1}"
+      ROTATE: "${ROTATE:-0}"
