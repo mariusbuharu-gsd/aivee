@@ -109,6 +109,11 @@ def test_command_and_detections_topics() -> None:
     assert t.detections == "aivee/demo/edge-01/detections"
 
 
+def test_frames_topic_is_per_device_and_camera() -> None:
+    t = Topics(site="demo", device="vision-01")
+    assert t.frames("cam-coleg-1") == "aivee/demo/vision-01/frames/cam-coleg-1"
+
+
 def test_edge_command_kind_is_constrained() -> None:
     data = {
         "command_id": "c1",

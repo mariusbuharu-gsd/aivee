@@ -51,6 +51,11 @@ class Topics:
     def detections(self) -> str:  # edge → QoS 0, not retained, <= 5 Hz (Detections)
         return self._t("detections")
 
+    def frames(self, camera_id: str) -> str:  # api → vision worker, QoS 0, not retained, JPEG
+        """Cloud mode: JPEG frames a connector POSTed over HTTPS, relayed to the device (the
+        cloud vision worker) that serves `camera_id`."""
+        return self._t(f"frames/{camera_id}")
+
     def snapshot(self, event_id: str) -> str:  # edge → QoS 1, JPEG bytes (event or suggestion id)
         return self._t(f"snapshots/{event_id}")
 
