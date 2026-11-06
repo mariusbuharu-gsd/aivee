@@ -59,6 +59,10 @@ class DeviceRepository:
     async def list_all(self) -> Sequence[Device]:
         return (await self.s.scalars(select(Device).order_by(Device.id))).all()
 
+    async def ids_for_site(self, site_id: str) -> list[str]:
+        rows = await self.s.scalars(select(Device.id).where(Device.site_id == site_id))
+        return list(rows)
+
 
 class CameraRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -73,6 +77,39 @@ class CameraRepository:
         }
         stmt = insert(Camera).values(id=camera.id, **values)
         await self.s.execute(stmt.on_conflict_do_update(index_elements=[Camera.id], set_=values))
+
+    async def insert(self, camera: CameraConfig, device_id: str | None = None) -> bool:
+        """Create the camera; False (and nothing written) when the id is already taken."""
+        stmt = (
+            insert(Camera)
+            .values(
+                id=camera.id,
+                name=camera.name,
+                source=camera.source,
+                zones=[z.model_dump(mode="json") for z in camera.zones],
+                device_id=device_id,
+            )
+            .on_conflict_do_nothing(index_elements=[Camera.id])
+            .returning(Camera.id)
+        )
+        return (await self.s.execute(stmt)).first() is not None
+
+    async def update(
+        self,
+        camera_id: str,
+        *,
+        name: str | None = None,
+        source: str | None = None,
+        device_id: str | None = None,
+    ) -> None:
+        """Change only the given fields; zones are untouched."""
+        values = {
+            k: v
+            for k, v in {"name": name, "source": source, "device_id": device_id}.items()
+            if v is not None
+        }
+        if values:
+            await self.s.execute(update(Camera).where(Camera.id == camera_id).values(**values))
 
     async def get(self, camera_id: str) -> Camera | None:
         return await self.s.get(Camera, camera_id)

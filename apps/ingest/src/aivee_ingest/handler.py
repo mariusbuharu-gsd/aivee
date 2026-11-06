@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import re
+import uuid
 from collections import deque
 from pathlib import Path
 
@@ -117,6 +118,7 @@ class IngestHandler:
             log.warning("ignoring snapshot with unsafe id %r", event_id)
             return
         final = self._snapshots / snapshot_name(event_id)
-        tmp = final.with_suffix(f".{os.getpid()}.{id(payload)}.tmp")
+        # Replicas share the dir and may all be pid 1: the temp name must be unique per write.
+        tmp = final.with_suffix(f".{uuid.uuid4().hex}.tmp")
         tmp.write_bytes(payload)
         os.replace(tmp, final)  # atomic: every worker writes the same bytes

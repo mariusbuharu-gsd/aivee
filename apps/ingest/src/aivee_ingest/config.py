@@ -14,6 +14,7 @@ class IngestSettings(BaseSettings):
     mqtt_ingest_user: str = "aivee-ingest"
     mqtt_ingest_password: str = ""
     mqtt_client_id: str | None = None
-    snapshot_dir: Path = Path("snapshots")
+    snapshot_dir: Path = Path("data/snapshots")
+    """Relative to the repo root (where `make api` runs); compose bind-mounts the same dir."""
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None

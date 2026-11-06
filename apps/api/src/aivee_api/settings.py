@@ -17,7 +17,8 @@ class ApiSettings(BaseSettings):
     mqtt_api_user: str = "aivee-api"
     mqtt_api_password: str = ""
     mqtt_enabled: bool = True
-    snapshot_dir: Path = Path("snapshots")
+    snapshot_dir: Path = Path("data/snapshots")
+    """Relative to the repo root (where `make api` runs); compose bind-mounts the same dir."""
     cors_origins: list[str] = ["http://localhost:5173"]
     claude_model: str = "claude-opus-5-5"
     yolo_weights: str = "models/yolo11n.pt"

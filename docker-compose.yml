@@ -46,8 +46,12 @@ services:
       MQTT_HOST: mosquitto
       MQTT_PORT: "1883"
       SNAPSHOT_DIR: /data/snapshots
+    # Same dir as the host API's default SNAPSHOT_DIR (data/snapshots). Runs as the host
+    # user so the files stay readable and the dir writable: `mkdir -p data/snapshots` first,
+    # otherwise Docker creates it owned by root.
+    user: "${AIVEE_UID:-1000}:${AIVEE_GID:-1000}"
     volumes:
-      - snapshots:/data/snapshots
+      - ./data/snapshots:/data/snapshots
     depends_on:
       migrate: { condition: service_completed_successfully }
       mosquitto: { condition: service_started }
@@ -66,7 +70,9 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      args: { UV_EXTRAS: "--extra ml" }
+      # Slim by default (~0.5 GB): photo enrolment then answers 503 with a Romanian message.
+      # API_UV_EXTRAS="--extra ml" adds the enrolment models (CPU torch; ~2.6 GB image).
+      args: { UV_EXTRAS: "${API_UV_EXTRAS:-}" }
     image: aivee-api:dev
     env_file: .env
     environment:
@@ -78,7 +84,7 @@ services:
       YOLO_WEIGHTS: /app/models/yolo11n.pt
       HF_HOME: /home/aivee/.cache/huggingface
     volumes:
-      - snapshots:/data/snapshots
+      - ./data/snapshots:/data/snapshots
       - ./models:/app/models:ro
       - hf-cache:/home/aivee/.cache/huggingface
     ports: ["8000:8000"]
@@ -90,5 +96,4 @@ services:
 volumes:
   mosquitto-data: {}
   pg-data: {}
-  snapshots: {}
   hf-cache: {}
