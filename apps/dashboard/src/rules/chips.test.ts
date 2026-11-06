@@ -137,7 +137,7 @@ describe('shortRule', () => {
     const rule = with_([{ kind: 'present', role: 'any', min_duration_s: 30 }], {
       zone_tag: 'staff',
     });
-    expect(shortRule(rule)).toBe('zona personalului · cineva stă de 30 s → mesaj pe Telegram');
+    expect(shortRule(rule)).toBe('zona angajaților · cineva stă de 30 s → mesaj pe Telegram');
   });
 });
 

@@ -8,7 +8,7 @@ import './live.css';
 
 /**
  * Open alerts as dark bands at the top of Live: a ring that fills while the table waits, who is
- * on the way, and "Merg eu". The button only tells colleagues someone goes; the camera closes the
+ * on the way, and "Preiau". The button only tells colleagues someone goes; the camera closes the
  * alert when staff reach the table.
  */
 export function OpenAlerts({
@@ -69,7 +69,7 @@ function GoButton({ zone, onAck }: { zone: string; onAck: () => Promise<void> })
         type="button"
         className="btn btn-accent"
         disabled={busy}
-        aria-label={`Merg eu la ${zone}`}
+        aria-label={`Preiau ${zone}`}
         onClick={async () => {
           setBusy(true);
           setError(null);
@@ -85,7 +85,7 @@ function GoButton({ zone, onAck }: { zone: string; onAck: () => Promise<void> })
           }
         }}
       >
-        Merg eu
+        Preiau
       </button>
       {error && (
         <p className="error small" role="alert">

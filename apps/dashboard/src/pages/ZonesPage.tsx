@@ -31,10 +31,8 @@ import { BusyLabel } from '../ui/Eyes';
 const newId = () => `z-${Date.now().toString(36)}`;
 
 const BASE_NAME: Record<string, string> = { table: 'Masa', entrance: 'Intrare' };
-/** Short labels for the toolbar on the image; the kinds come from ZONE_TAGS. */
-const TOOL_LABEL: Record<string, string> = { staff: 'Personal' };
 
-/** "Masa 3", "Intrare 2", "Zonă personal": the next free name for a zone of this kind. */
+/** "Masa 3", "Intrare 2", "Zonă angajați": the next free name for a zone of this kind. */
 function defaultName(zones: Zone[], tag: string): string {
   const base = BASE_NAME[tag] ?? tagLabel(tag);
   const n = zones.filter((z) => z.tag === tag).length;
@@ -390,7 +388,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                   onClick={() => startDrawing(null, t.value)}
                 >
                   <span className={`swatch zone-${t.value}`} aria-hidden="true" />
-                  {TOOL_LABEL[t.value] ?? t.label}
+                  {t.label}
                 </button>
               ))}
               {draft && (
@@ -430,7 +428,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
           </div>
           <p className="zones-hint muted small" aria-live="polite">
             {!draft
-              ? 'Alege Masă, Intrare sau Personal, apoi dă click pe colțurile zonei.'
+              ? 'Alege Masă, Intrare sau Zonă angajați, apoi dă click pe colțurile zonei.'
               : draft.closed
                 ? 'Poligon închis. Pune-i un nume în dreapta și adaug-o.'
                 : `${draft.points.length} puncte · click pe primul punct sau „Închide” pentru a termina`}

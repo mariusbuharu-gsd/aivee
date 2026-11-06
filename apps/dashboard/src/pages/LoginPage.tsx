@@ -14,7 +14,7 @@ import { BusyLabel } from '../ui/Eyes';
 const DEMO_ROLES: Record<Role, { label: string; can: string }> = {
   owner: { label: 'Proprietar', can: 'vede tot, setează reguli' },
   manager: { label: 'Manager', can: 'reguli, camere, tură' },
-  staff: { label: 'Ospătar', can: 'alertele și „Merg eu”' },
+  staff: { label: 'Ospătar', can: 'alertele și „Preiau”' },
 };
 const roleOf = (email: string) => email.split('@')[0] as Role;
 

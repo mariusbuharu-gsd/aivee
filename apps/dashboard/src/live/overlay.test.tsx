@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CameraView, Detection } from '../api/client';
 import { HttpApi } from '../api/http';
@@ -68,12 +68,13 @@ describe('CameraTile overlay', () => {
         { track_id: 12, role: 'guest', box: [0.5, 0.4, 0.1, 0.3], raised_hand: true },
       ]),
     );
-    const staff = screen.getByText('angajat #7').parentElement as HTMLElement;
+    const staff = screen.getByTitle('angajat #7') as HTMLElement;
     expect(staff).toHaveClass('det', 'det-staff');
     expect(staff).not.toHaveClass('det-hand');
     expect(staff.style.left).toBe('10%');
-    const guest = screen.getByText('mână ridicată #12').parentElement as HTMLElement;
+    const guest = screen.getByTitle('mână ridicată #12') as HTMLElement;
     expect(guest).toHaveClass('det-guest', 'det-hand');
+    expect(within(staff).getByText('angajat')).toBeInTheDocument();
     expect(screen.getByText(/2 persoane/)).toBeInTheDocument();
   });
 });

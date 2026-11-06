@@ -315,7 +315,7 @@ describe('AlertFeed', () => {
     expect(screen.getByText('Nicio alertă încă.')).toBeInTheDocument();
   });
 
-  it('hero: an open alert large, with snapshot, running clock, rule and optional "Merg eu"', async () => {
+  it('hero: an open alert large, with snapshot, running clock, rule and optional "Preiau"', async () => {
     const onAck = vi.fn(async () => undefined);
     renderWithApi(
       <AlertFeed
@@ -338,7 +338,7 @@ describe('AlertFeed', () => {
       'http://api/api/snapshots/e-2',
     );
     expect(within(card).getByText(/Opțional: colegii văd că vii/)).toBeInTheDocument();
-    await userEvent.click(within(card).getByRole('button', { name: 'Merg eu la Masa 2' }));
+    await userEvent.click(within(card).getByRole('button', { name: 'Preiau Masa 2' }));
     expect(onAck).toHaveBeenCalledWith('e-2');
   });
 
@@ -407,7 +407,7 @@ describe('SuggestionCard', () => {
     const { api } = renderWithApi(
       <SuggestionCard suggestion={suggestion} cameraName="Sala" onResolved={onResolved} />,
     );
-    const card = screen.getByRole('article', { name: '#7 pare să fie din personal?' });
+    const card = screen.getByRole('article', { name: 'Persoana asta e din personal?' });
     expect(card).toHaveClass('suggestion-q', 'suggestion-q-side');
     expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
     expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
@@ -437,7 +437,7 @@ describe('SuggestionCard', () => {
       />,
     );
     expect(
-      screen.getByRole('heading', { name: '#7 pare să fie din personal?' }),
+      screen.getByRole('heading', { name: 'Persoana asta e din personal?' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
     expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
