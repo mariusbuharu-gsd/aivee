@@ -2,11 +2,14 @@ import { Link } from 'react-router';
 import { AlertFeed } from '../components/AlertFeed';
 import { CameraTile } from '../components/CameraTile';
 import { Icon } from '../components/Icon';
-import { LiveSummary } from '../components/LiveSummary';
+import { OpenAlerts } from '../components/OpenAlerts';
+import { RoomStatus } from '../components/RoomStatus';
 import { SetupChecklist } from '../components/SetupChecklist';
 import { SuggestionCard } from '../components/SuggestionCard';
 import { useAuth } from '../auth/context';
 import { useLiveData, zoneName } from '../state/context';
+import { openAlerts, elapsed, tick } from '../live/room';
+import { useNow } from '../live/useNow';
 import { EmptyState, Skeleton } from '../ui/controls';
 
 /** What is happening now. Writing rules lives on Reguli, device numbers on Dispozitive. */
@@ -14,10 +17,16 @@ export function LivePage() {
   const { cameras, alerts, suggestions, metrics, loading, dropSuggestion, cases, ack } =
     useLiveData();
   const { can } = useAuth();
-  // Open alerts first, so the sidebar never hides one under older closed ones.
-  const recent = [...alerts]
-    .sort((a, b) => Number(a.closed_at !== null) - Number(b.closed_at !== null))
-    .slice(0, 8);
+  // Open alerts lead the page as bands; the side column keeps the ones already closed.
+  const open = openAlerts(alerts);
+  const recent = alerts.filter((a) => a.closed_at !== null).slice(0, 8);
+  const now = useNow(open.length > 0);
+  const hotFor = (cameraId: string) =>
+    Object.fromEntries(
+      open.filter((a) => a.camera_id === cameraId).map((a) => [a.zone_id, tick(elapsed(a, now))]),
+    );
+  // Cameras that see come first; an offline one is a single row after them.
+  const ordered = [...cameras].sort((a, b) => Number(b.online) - Number(a.online));
   return (
     <div className="page page-live">
       <header className="page-head">
@@ -28,8 +37,19 @@ export function LivePage() {
           </Link>
         )}
       </header>
+      <RoomStatus
+        open={open.length}
+        cameras={cameras}
+        alertsToday={metrics ? metrics.events_today : null}
+      />
+      <OpenAlerts
+        items={open}
+        cases={cases}
+        zoneName={(id) => zoneName(cameras, id)}
+        cameraName={(id) => cameras.find((c) => c.id === id)?.name ?? id}
+        onAck={can('alerts.ack') ? ack : undefined}
+      />
       <SetupChecklist />
-      <LiveSummary alerts={alerts} cameras={cameras} metrics={metrics} />
       <div className="live-grid">
         <section aria-label="Camere" className="cameras">
           {loading && cameras.length === 0 && <Skeleton rows={2} label="Se încarcă camerele" />}
@@ -48,8 +68,8 @@ export function LivePage() {
               Leagă o cameră din sală, apoi desenează mesele pe imagine.
             </EmptyState>
           )}
-          {cameras.map((c) => (
-            <CameraTile key={c.id} camera={c} />
+          {ordered.map((c) => (
+            <CameraTile key={c.id} camera={c} hot={hotFor(c.id)} />
           ))}
         </section>
         <aside className="side-col" aria-labelledby="recent-h">
@@ -76,8 +96,8 @@ export function LivePage() {
             cases={cases}
             onAck={can('alerts.ack') ? ack : undefined}
             empty={
-              <EmptyState icon="alerts" title="Nicio alertă încă">
-                Când cineva așteaptă prea mult, alerta apare aici și pe telefoanele echipei.
+              <EmptyState icon="alerts" title="Nicio alertă închisă încă">
+                Când cineva așteaptă prea mult, alerta apare sus și pe telefoanele echipei.
               </EmptyState>
             }
           />

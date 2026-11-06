@@ -12,26 +12,53 @@ import { Dialog } from '../ui/Dialog';
 import { Select } from '../ui/Select';
 import { useToast } from '../ui/toast';
 import { PHONE, useMedia } from '../ui/useMedia';
+import { openAlerts } from '../live/room';
+import { zoneName } from '../state/context';
 import { Icon, Logo, type IconName } from './Icon';
+import { RoomPulse } from './RoomPulse';
+import './live.css';
 
 interface NavItem {
   to: string;
   label: string;
   icon: IconName;
+  /** Sidebar group: what is happening, how it is set up, who has access. */
+  group: NavGroup;
   /** A link shows when the role holds any of these at the current location. */
   any: Permission[];
 }
 
+type NavGroup = 'now' | 'setup' | 'admin';
+
+const GROUP_LABEL: Record<NavGroup, string | null> = {
+  now: null,
+  setup: 'Configurare',
+  admin: 'Administrare',
+};
+
+// Grouped in sidebar order; the phone's bottom bar shows the first TABS links the role can see.
 const NAV: NavItem[] = [
-  { to: '/', label: 'Live', icon: 'live', any: ['alerts.view'] },
-  { to: '/alerte', label: 'Alerte', icon: 'alerts', any: ['alerts.view'] },
-  { to: '/reguli', label: 'Reguli', icon: 'rules', any: ['rules.manage'] },
-  { to: '/dispozitive', label: 'Dispozitive', icon: 'devices', any: ['devices.manage'] },
-  { to: '/video', label: 'Analiză video', icon: 'video', any: ['devices.manage'] },
-  { to: '/metrici', label: 'Metrici', icon: 'metrics', any: ['alerts.view'] },
-  { to: '/istoric', label: 'Istoric', icon: 'history', any: ['audit.view', 'audit.view.own'] },
-  { to: '/echipa', label: 'Echipă', icon: 'team', any: ['users.manage'] },
-  { to: '/locatii', label: 'Locații', icon: 'location', any: ['locations.manage'] },
+  { to: '/', label: 'Live', icon: 'live', group: 'now', any: ['alerts.view'] },
+  { to: '/alerte', label: 'Alerte', icon: 'alerts', group: 'now', any: ['alerts.view'] },
+  { to: '/metrici', label: 'Metrici', icon: 'metrics', group: 'now', any: ['alerts.view'] },
+  { to: '/reguli', label: 'Reguli', icon: 'rules', group: 'setup', any: ['rules.manage'] },
+  {
+    to: '/dispozitive',
+    label: 'Dispozitive',
+    icon: 'devices',
+    group: 'setup',
+    any: ['devices.manage'],
+  },
+  { to: '/video', label: 'Analiză video', icon: 'video', group: 'setup', any: ['devices.manage'] },
+  {
+    to: '/istoric',
+    label: 'Istoric',
+    icon: 'history',
+    group: 'admin',
+    any: ['audit.view', 'audit.view.own'],
+  },
+  { to: '/echipa', label: 'Echipă', icon: 'team', group: 'admin', any: ['users.manage'] },
+  { to: '/locatii', label: 'Locații', icon: 'location', group: 'admin', any: ['locations.manage'] },
 ];
 
 /** Tabs that fit the phone's bottom bar; the rest go under "Mai mult". */
@@ -40,7 +67,7 @@ const TABS = 4;
 export function Layout() {
   const api = useApi();
   const { me, location, setLocation, can, logout } = useAuth();
-  const { error, retry, suggestions, alerts } = useLiveData();
+  const { error, retry, suggestions, alerts, cameras, cases } = useLiveData();
   const toast = useToast();
   const navigate = useNavigate();
   const phone = useMedia(PHONE);
@@ -59,7 +86,16 @@ export function Layout() {
     [],
   );
 
-  const openCount = alerts.filter((a) => a.closed_at === null).length;
+  const open = openAlerts(alerts);
+  const openCount = open.length;
+  const pulse = (compact: boolean) => (
+    <RoomPulse
+      open={open}
+      compact={compact}
+      zoneName={(id) => zoneName(cameras, id)}
+      takenBy={(key) => cases[key]?.acknowledged_by ?? null}
+    />
+  );
   const badge = openCount + (can('staff.review') ? suggestions.length : 0);
   const locations = me?.locations ?? [];
   const links = NAV.filter((n) => n.any.some(can));
@@ -94,6 +130,11 @@ export function Layout() {
       {n.to === '/alerte' && badge > 0 && (
         <span className="nav-count" aria-label={`${badge} noi`}>
           {badge}
+        </span>
+      )}
+      {n.to === '/' && !tab && openCount > 0 && (
+        <span className="nav-count" aria-label={`${openCount} deschise`}>
+          {openCount}
         </span>
       )}
     </NavLink>
@@ -138,25 +179,35 @@ export function Layout() {
 
   return (
     <LeaveGuardContext.Provider value={guardApi}>
-      <div className={`app ${phone ? 'is-phone' : ''}`}>
+      <div className={`app ${phone ? 'is-phone' : ''}${phone && openCount > 0 ? ' has-dock' : ''}`}>
         <a href="#main" className="skip">
           Sari la conținut
         </a>
         <aside className="sidebar">
           <span title={api.kind === 'mock' ? 'Date demo (mock)' : 'Conectat la API'}>
-            <Logo />
+            <Logo watching={openCount > 0 && !phone} />
           </span>
           {switcher}
           {!phone && (
             <>
               <nav aria-label="Principal">
                 <ul className="nav">
-                  {links.map((n) => (
-                    <li key={n.to}>{link(n)}</li>
-                  ))}
+                  {links.map((n, i) => {
+                    const label = GROUP_LABEL[n.group];
+                    const starts = label && links[i - 1]?.group !== n.group;
+                    return (
+                      <li key={n.to}>
+                        {starts && <span className="nav-group">{label}</span>}
+                        {link(n)}
+                      </li>
+                    );
+                  })}
                 </ul>
               </nav>
-              <div className="sidebar-foot">{account}</div>
+              <div className="sidebar-foot">
+                {can('alerts.view') && pulse(false)}
+                {account}
+              </div>
             </>
           )}
         </aside>
@@ -165,6 +216,7 @@ export function Layout() {
           {error && <LoadBanner error={error} onRetry={retry} />}
           <Outlet />
         </main>
+        {phone && can('alerts.view') && <div className="pulse-dock">{pulse(true)}</div>}
         {phone && (
           <nav aria-label="Principal" className="tabbar">
             <ul>
