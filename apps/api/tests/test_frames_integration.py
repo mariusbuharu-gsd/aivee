@@ -81,3 +81,49 @@ async def test_frames_need_an_existing_camera_and_stream_to_its_location(
     assert (await other.get("/api/cameras/cam1/live.mjpg")).status_code == 404
     await owner.aclose()
     await other.aclose()
+
+
+async def test_a_dashboard_session_can_push_frames_to_a_cloud_camera(
+    app_parts: tuple[Any, Services], publisher: RecordingPublisher, login: Any
+) -> None:
+    """The phone page posts with the session cookie and no Basic header."""
+    app, svc = app_parts
+    owner = await _client(app, login, "owner@t.ro")
+    cloud = {"id": "phone1", "name": "Telefon", "source": "mqtt-frames://phone1"}
+    assert (await owner.post("/api/cameras", json=cloud)).status_code == 201
+    r = await owner.post("/api/cameras", json={"id": "rtsp1", "name": "Sala", "source": "rtsp://x"})
+    assert r.status_code == 201
+
+    r = await owner.post("/api/ingest/frames/phone1", content=JPEG)
+    assert r.status_code == 204, r.text
+    assert publisher.last("aivee/test/edge-01/frames/phone1") is not None
+    assert svc.frames.latest("phone1") is not None
+
+    manager = await _client(app, login, "manager@t.ro")
+    assert (await manager.post("/api/ingest/frames/phone1", content=JPEG)).status_code == 204
+
+    r = await owner.post("/api/ingest/frames/rtsp1", content=JPEG)
+    assert r.status_code == 409  # only cloud cameras take frames from a browser
+    assert svc.frames.latest("rtsp1") is None
+
+    r = await owner.post("/api/ingest/frames/phone1", content=b"\x89PNG\r\n\x1a\n")
+    assert r.status_code == 415
+    r = await owner.post(
+        "/api/ingest/frames/phone1", content=JPEG + b"x" * svc.settings.frame_max_bytes
+    )
+    assert r.status_code == 413
+
+    staff = await _client(app, login, "staff@t.ro")
+    r = await staff.post("/api/ingest/frames/phone1", content=JPEG)
+    assert r.status_code == 403
+
+    other = await _client(app, login, "other@t.ro")  # manager of another location
+    assert (await other.post("/api/ingest/frames/phone1", content=JPEG)).status_code == 404
+
+    anon = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+    assert (await anon.post("/api/ingest/frames/phone1", content=JPEG)).status_code == 401
+    assert (
+        await anon.post("/api/ingest/frames/phone1", content=JPEG, headers=AUTH)
+    ).status_code == 204
+    for c in (owner, manager, staff, other, anon):
+        await c.aclose()
