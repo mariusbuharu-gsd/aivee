@@ -30,7 +30,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
 
 [tool.mypy]
 strict = true
-packages = ["aivee_contracts", "aivee_edge.domain"]
+packages = ["aivee_contracts", "aivee_edge.domain", "aivee_api.auth", "aivee_api.audit"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages", "apps"]
