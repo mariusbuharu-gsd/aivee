@@ -54,6 +54,14 @@ describe('Live', () => {
     expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
   });
 
+  it('the Alerte nav count is the number of open alerts, like the Deschise filter', async () => {
+    const api = renderLive('manager@aivee.demo');
+    api.emitSuggestion();
+    const nav = await screen.findByRole('link', { name: /Alerte/ });
+    await waitFor(() => expect(within(nav).getByLabelText('1 deschise')).toHaveTextContent('1'));
+    expect(screen.getAllByLabelText(/^\d+ (deschise|noi)$/)).toHaveLength(1);
+  });
+
   it('"Merg eu" on the band tells colleagues who goes, the alert stays open', async () => {
     const user = userEvent.setup();
     renderLive('staff@aivee.demo');
