@@ -29,3 +29,27 @@ describe('LocationsPage Telegram', () => {
     });
   });
 });
+
+describe('LocationsPage cards and the new-location dialog', () => {
+  it('turns what a location lacks into buttons', async () => {
+    const api = fakeApi({ listLocations: vi.fn(async () => [DEMO]) });
+    renderWithApi(<LocationsPage />, api);
+    expect(await screen.findByRole('button', { name: 'Adaugă prima cameră' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Conectează Telegram' })).toBeVisible();
+    expect(screen.queryByText(/fără Telegram/)).toBeNull();
+  });
+
+  it('adds a location from a dialog, its id made from the name and never shown', async () => {
+    const createLocation = vi.fn(async (l: typeof DEMO) => l);
+    const api = fakeApi({ listLocations: vi.fn(async () => [DEMO]), createLocation });
+    renderWithApi(<LocationsPage />, api);
+    await userEvent.click(await screen.findByRole('button', { name: '+ Locație nouă' }));
+    const dialog = screen.getByRole('dialog', { name: 'Locație nouă' });
+    expect(within(dialog).queryByText(/Avansat/)).toBeNull();
+    await userEvent.type(within(dialog).getByLabelText('Nume'), 'Bistro Centru');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Adaugă locația' }));
+    expect(createLocation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'bistro-centru', name: 'Bistro Centru' }),
+    );
+  });
+});

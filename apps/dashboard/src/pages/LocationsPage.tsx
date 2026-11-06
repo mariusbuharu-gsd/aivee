@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import type { Location } from '../api/client';
+import { useNavigate } from 'react-router';
+import type { CameraView, Location } from '../api/client';
 import { useApi } from '../api/context';
 import { TelegramConnect } from '../components/TelegramConnect';
 import { useAuth } from '../auth/context';
 import { LOCATION_TYPES, locationTypeLabel as typeLabel } from '../auth/session';
 import { Banner } from '../ui/Banner';
-import { ConfirmDialog } from '../ui/Dialog';
+import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
 import { Select } from '../ui/Select';
 import { EmptyState } from '../ui/controls';
 import { useToast } from '../ui/toast';
+import './LocationsPage.css';
 
 const slug = (s: string) =>
   s
@@ -20,6 +22,22 @@ const slug = (s: string) =>
     .replace(/^-|-$/g, '')
     .slice(0, 40);
 
+/** The id comes from the name and is never shown; a short suffix keeps it valid and unique. */
+function locationId(name: string, taken: readonly string[]) {
+  const base = slug(name).slice(0, 34).replace(/-$/, '');
+  const ok = (id: string) => /^[a-z0-9-]{2,40}$/.test(id) && !taken.includes(id);
+  if (ok(base)) return base;
+  for (let n = 2; n < 100; n++) {
+    const id = base ? `${base}-${n}` : `locatie-${n}`;
+    if (ok(id)) return id;
+  }
+  return `locatie-${Date.now().toString(36)}`;
+}
+
+const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 export function LocationsPage() {
   const api = useApi();
   const { me, location, setLocation, refresh } = useAuth();
@@ -27,7 +45,13 @@ export function LocationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Location | null>(null);
+  const [adding, setAdding] = useState(false);
+  /** Cameras are listed for the current location only. */
+  const [cameras, setCameras] = useState<CameraView[] | null>(null);
+  /** Alerts opened today, by location; missing when the API refuses or fails. */
+  const [alertsToday, setAlertsToday] = useState<Record<string, number>>({});
   const toast = useToast();
+  const navigate = useNavigate();
   const first = me?.locations.length === 0;
 
   const load = useCallback(
@@ -40,6 +64,58 @@ export function LocationsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const currentId = location?.id;
+  useEffect(() => {
+    if (!currentId) return;
+    let live = true;
+    api.listCameras().then(
+      (c) => live && setCameras(c),
+      () => live && setCameras(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, currentId]);
+
+  const ids = locations.map((l) => l.id).join(',');
+  useEffect(() => {
+    let live = true;
+    for (const id of ids ? ids.split(',') : []) {
+      api.listAlertCases({ location_id: id, limit: 200 }).then(
+        (cases) =>
+          live &&
+          setAlertsToday((a) => ({ ...a, [id]: cases.filter((c) => isToday(c.opened_at)).length })),
+        () => undefined,
+      );
+    }
+    return () => {
+      live = false;
+    };
+  }, [api, ids]);
+
+  function addFirstCamera(l: Location) {
+    if (location?.id !== l.id) setLocation(l.id);
+    navigate('/dispozitive');
+  }
+
+  async function create(v: Location) {
+    await run(async () => {
+      const created = await api.createLocation({
+        ...v,
+        telegram_chat_id: v.telegram_chat_id || null,
+      });
+      setAdding(false);
+      await refresh();
+      setLocation(created.id);
+      toast({
+        title: `„${created.name}” a fost adăugată`,
+        text: 'Acum leagă dispozitivul și camerele ei din Dispozitive.',
+      });
+    });
+  }
+
+  const taken = locations.map((l) => l.id);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -54,20 +130,31 @@ export function LocationsPage() {
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Locații</h1>
-        <p className="muted">
-          {first
-            ? 'Începe cu prima locație. Apoi conectezi dispozitivul și camerele ei.'
-            : `Toate locațiile firmei ${me?.org.name ?? ''}. Fiecare are camerele, regulile și echipa ei.`}
-        </p>
+        <div className="locations-intro">
+          <h1>Locații</h1>
+          <p className="muted">
+            {first
+              ? 'Începe cu prima locație. Apoi conectezi dispozitivul și camerele ei.'
+              : `Toate locațiile firmei ${me?.org.name ?? ''}. Fiecare are camerele, regulile și echipa ei.`}
+          </p>
+        </div>
+        {!first && (
+          <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
+            + Locație nouă
+          </button>
+        )}
       </header>
-      <div className="two-col">
+      <div className="locations-page">
         <section aria-labelledby="loc-h">
-          <h2 id="loc-h">Locațiile tale</h2>
+          <h2 id="loc-h">{first ? 'Prima locație' : 'Locațiile tale'}</h2>
           {error && <Banner tone="error" title={error} />}
-          {locations.length === 0 ? (
+          {first ? (
+            <div className="card locations-first">
+              <LocationForm taken={taken} submitLabel="Adaugă locația" onSubmit={create} />
+            </div>
+          ) : locations.length === 0 ? (
             <EmptyState icon="location" title="Nicio locație încă">
-              Adaug-o pe prima din dreapta: restaurantul, terasa sau evenimentul unde pui camerele.
+              Adaugă restaurantul, terasa sau evenimentul unde pui camerele, din „Locație nouă”.
             </EmptyState>
           ) : (
             <ul className="locations">
@@ -76,6 +163,7 @@ export function LocationsPage() {
                   <li key={l.id} className="location-row">
                     <LocationForm
                       initial={l}
+                      taken={taken}
                       submitLabel="Salvează"
                       onCancel={() => setEditing(null)}
                       onTelegramConnected={() => void load()}
@@ -98,7 +186,7 @@ export function LocationsPage() {
                 ) : (
                   <li
                     key={l.id}
-                    className={`location-row ${location?.id === l.id ? 'is-current' : ''}`}
+                    className={`location-row location-card ${location?.id === l.id ? 'is-current' : ''}`}
                   >
                     <button
                       type="button"
@@ -109,8 +197,20 @@ export function LocationsPage() {
                     >
                       <strong>{l.name}</strong>
                       <span className="small muted">
-                        {typeLabel(l.type)}
-                        {l.telegram_chat_id ? ' · Telegram conectat' : ' · fără Telegram'}
+                        {[
+                          typeLabel(l.type),
+                          location?.id === l.id && cameras
+                            ? cameras.length === 0
+                              ? 'nicio cameră'
+                              : `${cameras.filter((c) => c.online).length}/${plural(cameras.length, 'cameră', 'camere')} online`
+                            : null,
+                          l.id in alertsToday
+                            ? plural(alertsToday[l.id] ?? 0, 'alertă azi', 'alerte azi')
+                            : null,
+                          l.telegram_chat_id ? 'Telegram conectat' : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </span>
                     </button>
                     {location?.id === l.id && <span className="pill pill-live">curentă</span>}
@@ -124,35 +224,44 @@ export function LocationsPage() {
                         { label: 'Șterge locația…', danger: true, onSelect: () => setDeleting(l) },
                       ]}
                     />
+                    {(!l.telegram_chat_id || (location?.id === l.id && cameras?.length === 0)) && (
+                      <div className="location-needs">
+                        {location?.id === l.id && cameras?.length === 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => addFirstCamera(l)}
+                          >
+                            Adaugă prima cameră
+                          </button>
+                        )}
+                        {!l.telegram_chat_id && (
+                          <TelegramConnect locationId={l.id} onConnected={() => void load()} />
+                        )}
+                      </div>
+                    )}
                   </li>
                 ),
               )}
             </ul>
           )}
         </section>
-        <aside className="side-col">
-          <div className="card">
-            <h2 className="h3">{first ? 'Prima locație' : 'Locație nouă'}</h2>
-            <LocationForm
-              submitLabel="Adaugă locația"
-              onSubmit={(v) =>
-                run(async () => {
-                  const created = await api.createLocation({
-                    ...v,
-                    telegram_chat_id: v.telegram_chat_id || null,
-                  });
-                  await refresh();
-                  setLocation(created.id);
-                  toast({
-                    title: `„${created.name}” a fost adăugată`,
-                    text: 'Acum leagă dispozitivul și camerele ei din Dispozitive.',
-                  });
-                })
-              }
-            />
-          </div>
-        </aside>
       </div>
+      {adding && (
+        <Dialog
+          title="Locație nouă"
+          icon="location"
+          className="dialog-sheet"
+          onClose={() => setAdding(false)}
+        >
+          <LocationForm
+            taken={taken}
+            submitLabel="Adaugă locația"
+            onSubmit={create}
+            onCancel={() => setAdding(false)}
+          />
+        </Dialog>
+      )}
       {deleting && (
         <ConfirmDialog
           title={`Ștergi definitiv locația „${deleting.name}”?`}
@@ -179,20 +288,20 @@ export function LocationsPage() {
 
 function LocationForm({
   initial,
+  taken,
   submitLabel,
   onSubmit,
   onCancel,
   onTelegramConnected,
 }: {
   initial?: Location;
+  taken: readonly string[];
   submitLabel: string;
   onSubmit: (v: Location) => Promise<void> | void;
   onCancel?: () => void;
   onTelegramConnected?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [id, setId] = useState(initial?.id ?? '');
-  const [idTouched, setIdTouched] = useState(!!initial);
   const [type, setType] = useState(initial?.type ?? 'restaurant');
   const [telegram, setTelegram] = useState(initial?.telegram_chat_id ?? '');
   const [telegramTouched, setTelegramTouched] = useState(false);
@@ -202,13 +311,9 @@ function LocationForm({
   function submit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) return setError('Scrie numele locației.');
-    const finalId = idTouched ? id : slug(name);
-    if (!/^[a-z0-9-]{2,40}$/.test(finalId)) {
-      return setError('Id-ul poate avea litere mici, cifre și cratimă (2–40).');
-    }
     setError(null);
     void onSubmit({
-      id: finalId,
+      id: initial?.id ?? locationId(name, taken),
       name: name.trim(),
       type,
       telegram_chat_id: telegramTouched || !initial ? telegram.trim() : undefined,
@@ -225,25 +330,9 @@ function LocationForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="ex. Terasa din parc"
+          data-autofocus={initial ? undefined : true}
         />
       </label>
-      {!initial && (
-        <details className="tech">
-          <summary>Avansat: id {idTouched ? id : slug(name) || '—'}</summary>
-          <label className="field">
-            <span>Id (apare în configurarea dispozitivului)</span>
-            <input
-              id={`${prefix}-id`}
-              className="input mono"
-              value={idTouched ? id : slug(name)}
-              onChange={(e) => {
-                setIdTouched(true);
-                setId(e.target.value);
-              }}
-            />
-          </label>
-        </details>
-      )}
       <Select
         id={`${prefix}-type`}
         label="Tip"
