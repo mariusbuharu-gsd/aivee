@@ -48,7 +48,7 @@ async def create_camera(
     authorize_at(p, DEVICES_MANAGE, loc, "Locația nu există.")
     if loc != svc.sync.site:
         raise Invalid(NO_DEVICE_HERE)
-    await _check_device(s, loc, data.device)
+    await _check_device(s, loc, data.device or svc.sync.device)
     camera = await CameraService(s, svc.sync).create(data)
     await _record(s, p, "camera.created", loc, camera, after=camera)
     return camera

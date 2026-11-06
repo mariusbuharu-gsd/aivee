@@ -24,6 +24,7 @@ import httpx
 import pytest
 import uvicorn
 import websockets
+from aivee_api.db.repositories import DeviceRepository
 from aivee_api.deps import Services
 from aivee_api.edge.publisher import MqttEdgeLink
 from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
@@ -106,8 +107,9 @@ OWNER = "owner@e2e.ro"
 PASSWORD = "parola-e2e-1"
 
 
-async def _owner_of(sessions: Any, site: str) -> None:
-    """An organization that owns the test's location, and its owner (who logs in)."""
+async def _owner_of(sessions: Any, site: str, device: str) -> None:
+    """An organization that owns the test's location and device, and its owner (who logs
+    in)."""
     from aivee_api.accounts.models import Organization, User
     from aivee_api.auth.passwords import hash_password
     from aivee_api.db.models import Site
@@ -126,6 +128,8 @@ async def _owner_of(sessions: Any, site: str) -> None:
                 is_owner=True,
             )
         )
+        await s.flush()
+        await DeviceRepository(s).ensure_device(site, device)
         await s.commit()
 
 
@@ -143,6 +147,9 @@ async def stack(broker: Any, sessions: Any, site: str, tmp_path: Path) -> AsyncI
     device = broker.edge[0]
     snapshots = tmp_path / "data" / "snapshots"  # one dir, as in compose + `make api`
     tasks: list[asyncio.Task[Any]] = []
+    # Before ingest subscribes: retained statuses of earlier tests' sites must not claim
+    # edge-01 (a device keeps the location it was first seen at).
+    await _owner_of(sessions, site, device)
 
     # ingest
     ingest_ready = asyncio.Event()
@@ -182,8 +189,6 @@ async def stack(broker: Any, sessions: Any, site: str, tmp_path: Path) -> AsyncI
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     tasks.append(asyncio.create_task(server.serve()))
-
-    await _owner_of(sessions, site)
 
     edge = MqttEdgeClient(broker.host, broker.port, device, broker.edge[1], site, device)
     try:
