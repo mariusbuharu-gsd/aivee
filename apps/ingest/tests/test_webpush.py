@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 from aivee_api.db.repositories import CameraRepository
 from aivee_api.push.repository import PushSubscriptionRepository
-from aivee_api.push.sender import Subscription
+from aivee_api.push.sender import PushKind, Subscription
 from aivee_api.push.settings import VapidSettings
 from aivee_contracts.events import AlertEvent
 from aivee_contracts.geometry import CameraConfig, Zone
@@ -48,9 +48,9 @@ class Recording:
             raise RuntimeError("boom")
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
-        self.calls.append(f"{tag}:{text}")
+        self.calls.append(f"{kind}:{tag}:{text}")
         if self.fail:
             raise RuntimeError("boom")
 
@@ -71,8 +71,10 @@ async def test_composite_sends_follow_up_text_to_every_notifier(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     broken, ok = Recording(fail=True), Recording()
-    await CompositeNotifier([broken, ok]).send_text("Ana a ajuns la Masa 1 după 40 s", "e1")
-    assert broken.calls == ok.calls == ["e1:Ana a ajuns la Masa 1 după 40 s"]
+    await CompositeNotifier([broken, ok]).send_text(
+        "Ana a ajuns la Masa 1 după 40 s", "e1", kind="arrived"
+    )
+    assert broken.calls == ok.calls == ["arrived:e1:Ana a ajuns la Masa 1 după 40 s"]
     assert "Recording failed" in caplog.text
 
 
@@ -138,10 +140,14 @@ async def test_web_push_sends_summary_and_zone_name_and_opens_alerts(sessions: A
     assert msg["title"] == "Alertă AiVee · Masa 1"
     assert msg["body"] == "Masa așteaptă de 5 minute"
     assert msg["url"] == "/alerte" and msg["tag"] == "e1"
+    assert msg["kind"] == "alert"
 
     note = "edge-01 s-a deconectat — o alertă închisă"
-    await WebPushNotifier(sessions, sender).send_text(note, "e1", title="AiVee · Dispozitiv")
+    await WebPushNotifier(sessions, sender).send_text(
+        note, "e1", title="AiVee · Dispozitiv", kind="device"
+    )
     assert sender.sent[-1][1]["title"] == "AiVee · Dispozitiv"
+    assert sender.sent[-1][1]["kind"] == "device"
 
 
 @pytest.mark.integration
@@ -176,9 +182,12 @@ async def test_web_push_without_subscriptions_sends_nothing(sessions: Any) -> No
 async def test_web_push_follow_up_replaces_the_alert_notification(sessions: Any) -> None:
     await _seed(sessions, "https://p/1")
     sender = FakeSender()
-    await WebPushNotifier(sessions, sender).send_text("Ana a ajuns la Masa 1 după 40 s", "e1")
+    await WebPushNotifier(sessions, sender).send_text(
+        "Ana a ajuns la Masa 1 după 40 s", "e1", kind="arrived"
+    )
     [(_, msg)] = sender.sent
     assert msg["title"] == "AiVee · Angajat sosit"
+    assert msg["kind"] == "arrived"
     assert msg["body"] == "Ana a ajuns la Masa 1 după 40 s"
     assert msg["url"] == "/alerte" and msg["tag"] == "e1"
 

@@ -72,8 +72,15 @@ async def test_public_key_without_vapid_is_503_in_romanian(
 
 
 def test_message_payload_is_json_with_romanian_text() -> None:
-    payload = json.loads(PushMessage(title="Alertă", body="Masa 1 așteaptă").payload())
-    expected = {"title": "Alertă", "body": "Masa 1 așteaptă", "url": "/alerte", "tag": "aivee"}
+    message = PushMessage(title="Alertă", body="Masa 1 așteaptă", kind="alert")
+    payload = json.loads(message.payload())
+    expected = {
+        "title": "Alertă",
+        "body": "Masa 1 așteaptă",
+        "kind": "alert",
+        "url": "/alerte",
+        "tag": "aivee",
+    }
     assert payload == expected
 
 
@@ -180,7 +187,7 @@ async def test_subscription_belongs_to_the_user_and_alerts_reach_only_the_locati
         await repo.upsert(Subscription("https://p/anon", "k", "a"))
         await s.commit()
 
-    msg = PushMessage(title="t", body="b")
+    msg = PushMessage(title="t", body="b", kind="test")
     await push_to_location(sessions, sender, msg, "test")
     assert {e for e, _ in sender.sent} == {SUB["endpoint"], "https://p/owner"}
     sender.sent.clear()
@@ -191,6 +198,7 @@ async def test_subscription_belongs_to_the_user_and_alerts_reach_only_the_locati
     sender.sent.clear()
     assert (await staff.post("/api/push/test")).json()["sent"] == 1
     assert [e for e, _ in sender.sent] == [SUB["endpoint"]]
+    assert sender.sent[0][1]["kind"] == "test"
     r = await staff.request("DELETE", "/api/push/subscribe", json={"endpoint": "https://p/owner"})
     assert r.status_code == 204
     async with sessions() as s:
@@ -205,7 +213,7 @@ async def test_push_to_all_drops_gone_subscriptions(sessions: Any) -> None:
             await repo.upsert(Subscription(endpoint, "k", "a"))
         await s.commit()
     sender = FakeSender({"https://p/gone": 410, "https://p/expired": 404, "https://p/err": 500})
-    report = await push_to_all(sessions, sender, PushMessage(title="t", body="b"))
+    report = await push_to_all(sessions, sender, PushMessage(title="t", body="b", kind="test"))
     assert (report.sent, report.removed, report.failed) == (1, 2, 1)
     async with sessions() as s:
         left = {sub.endpoint for sub in await PushSubscriptionRepository(s).all()}
@@ -215,5 +223,5 @@ async def test_push_to_all_drops_gone_subscriptions(sessions: Any) -> None:
 @pytest.mark.integration
 async def test_push_to_all_without_subscriptions_sends_nothing(sessions: Any) -> None:
     sender = FakeSender()
-    report = await push_to_all(sessions, sender, PushMessage(title="t", body="b"))
+    report = await push_to_all(sessions, sender, PushMessage(title="t", body="b", kind="test"))
     assert report.sent == 0 and sender.sent == []

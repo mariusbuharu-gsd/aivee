@@ -17,6 +17,7 @@ from aivee_api.audit.models import AuditRow
 from aivee_api.db.models import EventRow
 from aivee_api.db.repositories import DeviceRepository
 from aivee_api.db.session import make_engine, make_session_factory
+from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent
 from aivee_ingest.realert import Realerter
 from sqlalchemy import select
@@ -30,15 +31,15 @@ AFTER_S = 120
 
 class Notifier:
     def __init__(self) -> None:
-        self.texts: list[tuple[str, str | None, str | None]] = []
+        self.texts: list[tuple[str, str | None, str | None, PushKind]] = []
 
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         raise AssertionError("a re-alert is a follow-up, not a new alert")
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
-        self.texts.append((text, tag, title))
+        self.texts.append((text, tag, title, kind))
 
 
 async def _seed(sessions: Any) -> None:
@@ -116,6 +117,7 @@ async def test_selects_only_unfulfilled_acks_older_than_the_delay_and_only_once(
             "Masa 4: Ana a confirmat acum 2 min, încă nu a ajuns nimeni",
             due,
             "AiVee · Nu a ajuns nimeni",
+            "realert",
         )
     ]
     assert await realerter.tick() == []  # once
@@ -147,5 +149,5 @@ async def test_two_replicas_racing_notify_exactly_once(sessions: Any, db_url: st
             await e.dispose()
 
     texts = [t for n in notifiers for t in n.texts]
-    assert [tag for _, tag, _ in texts] == [due]
+    assert [tag for _, tag, _, _ in texts] == [due]
     assert len(await _audits(sessions)) == 1

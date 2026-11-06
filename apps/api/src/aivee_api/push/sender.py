@@ -7,12 +7,16 @@ those rows are deleted; other failures are only counted.
 
 import json
 from dataclasses import asdict, dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from aivee_api.push.settings import VapidSettings
 
 GONE = frozenset({404, 410})
 TTL_S = 15 * 60  # an alert older than 15 minutes is not worth waking a phone for
+
+# What a push is about; the service worker rings again (renotify) only for "alert" and
+# "realert". Mirrored by `PushKind` in apps/dashboard/src/push/payload.ts.
+PushKind = Literal["alert", "ack", "arrived", "realert", "device", "test"]
 
 
 @dataclass(frozen=True)
@@ -27,10 +31,12 @@ class Subscription:
 
 @dataclass(frozen=True)
 class PushMessage:
-    """What the service worker shows. `url` opens on tap; `tag` replaces an older one."""
+    """What the service worker shows. `url` opens on tap; `tag` replaces an older one;
+    `kind` decides whether the replacement rings."""
 
     title: str
     body: str
+    kind: PushKind
     url: str = "/alerte"
     tag: str = "aivee"
 

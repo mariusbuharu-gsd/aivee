@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { notificationFromPush } from './payload';
+import { notificationFromPush, type PushKind } from './payload';
 import { PushError, PushService, urlBase64ToBytes, type PushDeps } from './service';
 
 const json = (body: unknown, status = 200) =>
@@ -172,14 +172,25 @@ describe('notificationFromPush', () => {
     });
   });
 
-  it('rings again for a re-alert but replaces the alarm quietly on ack', () => {
+  it('rings for a new alert and a re-alert, replaces quietly for everything else', () => {
+    const renotify = (kind: PushKind) => notificationFromPush({ tag: 'e1', kind }).options.renotify;
+    expect(renotify('alert')).toBe(true);
+    expect(renotify('realert')).toBe(true);
+    expect(renotify('ack')).toBe(false);
+    expect(renotify('arrived')).toBe(false);
+    expect(renotify('device')).toBe(false);
+    expect(renotify('test')).toBe(false);
+  });
+
+  it('trusts the kind over the title', () => {
+    const ack = notificationFromPush({ title: 'AiVee · Nu a ajuns nimeni', kind: 'ack' });
+    expect(ack.options.renotify).toBe(false);
+  });
+
+  it('falls back to the re-alert title for a payload without kind', () => {
     const realert = notificationFromPush({ title: 'AiVee · Nu a ajuns nimeni', tag: 'e1' });
     expect(realert.options).toMatchObject({ tag: 'e1', renotify: true });
     const ack = notificationFromPush({ title: 'AiVee · Preluată', tag: 'e1' });
     expect(ack.options).toMatchObject({ tag: 'e1', renotify: false });
-  });
-
-  it('honours an explicit kind over the title', () => {
-    expect(notificationFromPush({ title: 'x', kind: 'realert' }).options.renotify).toBe(true);
   });
 });

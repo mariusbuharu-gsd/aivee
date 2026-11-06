@@ -92,7 +92,7 @@ async def test_prefix_marks_alert_and_follow_up_messages() -> None:
     client, seen = _recording_client()
     notifier = TelegramNotifier("TOKEN", "-100", client, prefix="[test]")
     await notifier.notify(EVENT, None)
-    await notifier.send_text("Ana a ajuns la Masa 1 după 2 min 10 s")
+    await notifier.send_text("Ana a ajuns la Masa 1 după 2 min 10 s", kind="arrived")
     texts = [json.loads(r.content)["text"] for r in seen]
     assert texts[0].startswith("[test] Alertă AiVee: Masa 1")
     assert texts[1] == "[test] Ana a ajuns la Masa 1 după 2 min 10 s"
@@ -102,7 +102,7 @@ async def test_prefix_marks_alert_and_follow_up_messages() -> None:
 async def test_follow_up_error_raises_without_leaking_token() -> None:
     notifier, _ = _notifier(status=500)
     with pytest.raises(RuntimeError) as err:
-        await notifier.send_text("x")
+        await notifier.send_text("x", kind="arrived")
     assert "TOKEN" not in str(err.value)
 
 
@@ -115,8 +115,8 @@ async def test_the_locations_chat_wins_over_the_default_for_alert_and_follow_up(
     notifier = TelegramNotifier("TOKEN", "-100", client, chat_for=chat_for)
     await notifier.notify(EVENT, None)
     await notifier.notify(EVENT.model_copy(update={"event_id": "e9"}), None)
-    await notifier.send_text("Ana a ajuns", tag="e1")
-    await notifier.send_text("fără alertă")
+    await notifier.send_text("Ana a ajuns", tag="e1", kind="arrived")
+    await notifier.send_text("fără alertă", kind="device")
     assert [json.loads(r.content)["chat_id"] for r in seen] == ["-200", "-100", "-200", "-100"]
 
 
@@ -128,5 +128,5 @@ async def test_no_chat_at_all_sends_nothing(caplog: pytest.LogCaptureFixture) ->
 
     notifier = TelegramNotifier("TOKEN", None, client, chat_for=none)
     await notifier.notify(EVENT, None)
-    await notifier.send_text("x", tag="e1")
+    await notifier.send_text("x", tag="e1", kind="realert")
     assert seen == [] and "no Telegram chat" in caplog.text

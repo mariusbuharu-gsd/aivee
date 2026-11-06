@@ -23,6 +23,7 @@ from aivee_api.deps import Services
 from aivee_api.edge.publisher import RecordingPublisher
 from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
 from aivee_api.main import create_app
+from aivee_api.push.sender import PushKind
 from aivee_api.settings import ApiSettings
 from aivee_contracts.events import AlertEvent
 from aivee_contracts.topics import Topics
@@ -57,14 +58,16 @@ class Notifier:
     def __init__(self) -> None:
         self.opened: list[AlertEvent] = []
         self.texts: list[str] = []
+        self.kinds: list[PushKind] = []
 
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         self.opened.append(event)
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         self.texts.append(text)
+        self.kinds.append(kind)
 
 
 class Audit:
@@ -274,6 +277,7 @@ async def test_closed_before_arrived_still_folds_the_arrival(
         [view] = await AlertRepository(s).views(limit=5)
     assert view.state == "closed" and view.arrived_at is not None and view.wait_s == 35
     assert notifier.texts == ["Un angajat a ajuns la Masa 1 după 35 s"]
+    assert notifier.kinds == ["arrived"]
     assert sorted(e.kind for e in audit.entries) == [
         "alert.arrived",
         "alert.closed",

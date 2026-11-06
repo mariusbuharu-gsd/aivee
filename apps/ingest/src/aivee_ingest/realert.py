@@ -55,7 +55,7 @@ class Realerter:
             try:
                 # The alert id as tag: Telegram finds the location's chat, Web Push its members.
                 await self._notifier.send_text(
-                    realert_ro(view, now), view.event_id, title=REALERT_TITLE
+                    realert_ro(view, now), view.event_id, title=REALERT_TITLE, kind="realert"
                 )
             except Exception:
                 log.exception("notifier failed for the re-alert of %s", view.event_id)

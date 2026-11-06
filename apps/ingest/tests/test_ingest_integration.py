@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 from aivee_api.db.repositories import DeviceRepository
+from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent, StaffSuggestion
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_ingest.config import IngestSettings
@@ -25,14 +26,16 @@ class RecordingNotifier:
     def __init__(self) -> None:
         self.calls: list[tuple[AlertEvent, Path | None]] = []
         self.texts: list[str] = []
+        self.kinds: list[PushKind] = []
 
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         self.calls.append((event, snapshot))
 
     async def send_text(
-        self, text: str, tag: str | None = None, *, title: str | None = None
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         self.texts.append(text)
+        self.kinds.append(kind)
 
 
 def _event(state: str = "opened") -> AlertEvent:
@@ -217,6 +220,7 @@ async def test_arrival_without_ack_is_folded_and_announced(
         await asyncio.to_thread(edge.stop)
 
     assert notifier.texts == ["Un angajat a ajuns la t1 după 2 min 10 s"]
+    assert notifier.kinds == ["arrived"]
     async with sessions() as s:
         row = (
             await s.execute(

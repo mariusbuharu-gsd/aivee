@@ -47,7 +47,7 @@ async def ack_alert(
         # Same tag as the alert's push: every phone's notification is replaced (silently,
         # the service worker does not renotify) by who is going. After the response.
         message = PushMessage(
-            title=ACK_PUSH_TITLE, body=going_ro(view), url="/alerte", tag=view.event_id
+            title=ACK_PUSH_TITLE, body=going_ro(view), kind="ack", url="/alerte", tag=view.event_id
         )
         background.add_task(push_to_location, services.sessions, sender, message, view.location_id)
     return view
