@@ -130,3 +130,28 @@ async def test_an_acknowledged_upload_alert_is_never_realerted(
     async with sessions() as s:
         view = await AlertRepository(s).view("ev-up")
         assert view is not None and view.realerted_at is None
+
+
+class NeverVerify:
+    """With VERIFY_ALERTS on, a verified alert is notified: a clip must not even get there."""
+
+    def __init__(self) -> None:
+        self.runs: list[str] = []
+
+    async def run(self, event: AlertEvent) -> None:
+        self.runs.append(event.event_id)
+
+
+async def test_verification_never_runs_for_an_upload(sessions: Any, tmp_path: Path) -> None:
+    await _seed(sessions)
+    verify, notifier = NeverVerify(), Notifier()
+    handler = IngestHandler(sessions, tmp_path, notifier, verification=verify)  # type: ignore[arg-type]
+    await handler.handle(
+        Topics(site=SITE, device="upload-01").events, _event("video-abc", "opened", T0, "ev-up")
+    )
+    await handler.handle(
+        Topics(site=SITE, device="edge-01").events, _event("cam-01", "opened", T0, "ev-live")
+    )
+    await handler.drain()
+    assert verify.runs == ["ev-live"]
+    assert notifier.alerts == [] and notifier.texts == []
