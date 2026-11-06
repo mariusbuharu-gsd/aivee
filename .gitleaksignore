@@ -1,0 +1,2 @@
+# False positive: a test URL in a branch commit (squashed away on merge).
+5700d71e0f0cf2c05372e0071f0ab837518f806d:apps/dashboard/src/api/http.test.ts:generic-api-key:369

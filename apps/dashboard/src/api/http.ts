@@ -30,6 +30,9 @@ import {
   type NewCamera,
   type PendingInvite,
   type SavedZones,
+  type StaffCapture,
+  type StaffCaptureConfirm,
+  type StaffEnrolResult,
   type StaffProfile,
   type SuggestionView,
   type RulePatch,
@@ -174,6 +177,22 @@ export class HttpApi implements ApiClient {
     return `${this.base}${this.scoped(`/api/cameras/${encodeURIComponent(cameraId)}/live.mjpg`)}`;
   }
 
+  async pushFrame(cameraId: string, jpeg: Blob): Promise<void> {
+    const path = `/api/ingest/frames/${encodeURIComponent(cameraId)}`;
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}${path}`, {
+        method: 'POST',
+        body: jpeg,
+        credentials: 'include',
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+    } catch {
+      throw new ApiError('Serverul nu răspunde. Verificați conexiunea.', 'network');
+    }
+    if (!res.ok) throw await toApiError(res);
+  }
+
   async captureFrame(cameraId: string): Promise<CameraFrame> {
     const path = this.scoped(`/api/cameras/${encodeURIComponent(cameraId)}/frame`);
     let res: Response;
@@ -264,6 +283,20 @@ export class HttpApi implements ApiClient {
 
   listStaffProfiles() {
     return this.request<StaffProfile[]>('/api/staff/profiles');
+  }
+
+  captureStaff(cameraId: string, seconds?: number) {
+    return this.request<StaffCapture>('/api/staff/capture', {
+      method: 'POST',
+      body: JSON.stringify({ camera_id: cameraId, ...(seconds ? { seconds } : {}) }),
+    });
+  }
+
+  confirmStaffCapture(token: string, input: StaffCaptureConfirm) {
+    return this.request<StaffEnrolResult>(
+      `/api/staff/capture/${encodeURIComponent(token)}/confirm`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
   }
 
   getMetrics() {

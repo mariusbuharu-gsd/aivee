@@ -36,7 +36,8 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | `/alerte` | Alerte | `alerts.view` | alerts with "Preiau" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare, Reacție, Drum: median and p90), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text; open rules („dacă e foc”, „dacă vine un urs”) read Unde / Ce caută / Cât timp / Atunci, `anywhere` shows as „oriunde în imagine” (`src/rules/chips.ts`) |
-| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | edge devices online/offline, "Adaugă cameră" |
+| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | edge devices online/offline, "Adaugă cameră"; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile |
+| `/telefon` | Telefonul ca cameră | `devices.manage` | the phone browser becomes a cloud camera: `getUserMedia` (back camera, front/back toggle) → canvas ≤ 640 px wide → JPEG 0.7 → `POST /api/ingest/frames/<id>` with the session cookie at 5 fps, one request in flight (`src/phone/sender.ts` skips frames instead of queueing); status Trimite / Reconectare… / Oprit, frames/s, Screen Wake Lock. Needs HTTPS (or localhost) |
 | `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` (shown as „Zonă angajați”) |
 | `/video` | Testează pe un clip | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
 | `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
@@ -78,6 +79,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | POST | `/api/alerts/{event_id}/ack` | "Preiau"; 409 when someone already took it |
 | GET | `/api/metrics/service?from&to` | `{alerts, unacknowledged_arrivals, wait, reaction, travel}`, each `{count, median_s, p90_s}` |
 | GET | `/api/events?limit=` · `/api/snapshots/{id}` | raw events · blurred JPEG |
+| POST | `/api/ingest/frames/{id}` | `pushFrame()`: one JPEG body (`image/jpeg`) from `/telefon`; 204, 401 / 403 / 409 (not a cloud camera) stop the sender |
 | GET | `/api/cameras/{id}/frame` · `/api/devices` | `captureFrame()`: newest blurred still + `X-Frame-At` · devices with `last_seen` |
 | POST | `/api/videos` | multipart `file` (mp4/mov/webm, ≤ 200 MB, ≤ 2 min), `location_id`, optional `rotate` (0/90/180/270), `copy_from_camera_id` → 201 `VideoUpload`; 422 bad type/size/length |
 | GET | `/api/videos?location_id=` | `VideoUpload[]`, newest first; the page polls every 2 s while one is queued or running |
@@ -86,6 +88,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | GET | `/api/devices` · `/api/metrics` | status, `last_seen` · `DashboardMetrics` (`alert_latency_ms` may be `null`) |
 | GET | `/api/staff/suggestions` · POST `.../{id}/confirm` · `.../{id}/reject` | |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | multipart field `photo` (images or a short video) |
+| POST | `/api/staff/capture` · `/api/staff/capture/{token}/confirm` | "Adaugă angajat" on a Dispozitive camera card (`components/StaffCapture.tsx`): capture ≈ 20 s, then confirm the kept candidates |
 | GET | `/api/push/public-key` | VAPID key; 503 when the server has no keys |
 | POST/DELETE | `/api/push/subscribe` | body = `PushSubscription.toJSON()` / `{endpoint}`; tied to the logged-in user |
 | POST | `/api/push/test` | test push to the caller's devices → `{sent, removed, failed}` |

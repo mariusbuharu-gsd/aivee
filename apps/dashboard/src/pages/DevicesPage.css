@@ -119,3 +119,20 @@
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+.phone-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  text-align: center;
+}
+.phone-qr .qr {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  background: #fff;
+}
+.phone-qr a {
+  word-break: break-all;
+}
