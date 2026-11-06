@@ -11,7 +11,7 @@
 
 ### End-to-end tests (Playwright, `e2e/`)
 - `npm run e2e` (or `make e2e`): a production build on the built-in mock, in Chrome on desktop and on a
-  Pixel 7 viewport. Needs nothing running; CI runs it. First time locally: `npx playwright install chromium`.
+  Pixel 7 viewport. Needs nothing running; not part of CI — run it before a release. First time locally: `npx playwright install chromium`.
 - `npm run e2e:real`: the same app against a running API (`make api` + `make seed`). Reads `E2E_API_URL`
   (default `http://localhost:8000`) and `DEMO_PASSWORD` from the environment; it serves on :5174, which the
   API's CORS allows. These tests are read-only except "Merg eu", which writes only the audit log.
