@@ -5,16 +5,16 @@ import { useAuth, useLocationId } from '../auth/context';
 
 const KINDS: { value: string; label: string }[] = [
   { value: '', label: 'Toate' },
-  { value: 'alert.', label: 'Alerte' },
-  { value: 'staff.', label: 'Personal' },
-  { value: 'rule.', label: 'Reguli' },
-  { value: 'zones.', label: 'Zone' },
-  { value: 'camera.', label: 'Camere' },
-  { value: 'device.', label: 'Dispozitive' },
-  { value: 'user.', label: 'Invitații' },
-  { value: 'member.', label: 'Echipă' },
-  { value: 'location.', label: 'Locații' },
-  { value: 'auth.', label: 'Autentificări' },
+  { value: 'alert', label: 'Alerte' },
+  { value: 'staff', label: 'Personal' },
+  { value: 'rule', label: 'Reguli' },
+  { value: 'zones', label: 'Zone' },
+  { value: 'camera', label: 'Camere' },
+  { value: 'device', label: 'Dispozitive' },
+  { value: 'user', label: 'Invitații' },
+  { value: 'member', label: 'Echipă' },
+  { value: 'location', label: 'Locații' },
+  { value: 'auth', label: 'Autentificări' },
 ];
 
 const PERIODS: { value: string; label: string; days: number | null }[] = [

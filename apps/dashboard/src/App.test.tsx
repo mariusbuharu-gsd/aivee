@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { ApiContext } from './api/context';
 import { MockApi } from './api/mock';
@@ -36,12 +36,16 @@ describe('App with the mock API', () => {
   });
 
   it('hides configuration from staff and keeps them out of it', async () => {
+    const rules = vi.spyOn(MockApi.prototype, 'listRules');
     renderApp('/reguli', 'staff@aivee.demo');
     const nav = await screen.findByRole('navigation', { name: 'Principal' });
     expect(within(nav).getByRole('link', { name: /Alerte/ })).toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: /Reguli/ })).toBeNull();
     expect(within(nav).queryByRole('link', { name: /Echipă/ })).toBeNull();
     expect(await screen.findByRole('heading', { name: 'Live' })).toBeVisible();
+    // The API answers 403 to staff on every /api/rules* call, so the UI never asks.
+    expect(rules).not.toHaveBeenCalled();
+    rules.mockRestore();
   });
 
   it('lets the owner switch between locations', async () => {
@@ -88,7 +92,7 @@ describe('App with the mock API', () => {
     const user = userEvent.setup();
     renderApp('/istoric');
     expect(await screen.findByText(/a confirmat că #7 e din personal/)).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('Tip'), 'rule.');
+    await user.selectOptions(screen.getByLabelText('Tip'), 'rule');
     expect(await screen.findByText(/a schimbat regula „Masă neservită”/)).toBeInTheDocument();
     expect(screen.queryByText(/a confirmat că #7/)).toBeNull();
   });

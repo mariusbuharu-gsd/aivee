@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { ApiError, UNAUTHORIZED_EVENT, type Me, type Permission } from '../api/client';
 import { useApi } from '../api/context';
 import { AuthContext, type AuthState } from './context';
+import { browserPushService } from '../push/service';
 import { loadLocationId, saveLocationId } from './session';
+
+/**
+ * Push subscriptions made before signing in have no owner on the API, so re-register this device
+ * after every sign-in when notifications were already on. Best effort: never blocks the login.
+ */
+function renewPush() {
+  browserPushService()
+    .renew()
+    .catch((e: unknown) => console.warn('push renew', e));
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const api = useApi();
@@ -64,9 +75,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       can: (p: Permission) =>
         !!location?.permissions.includes(p) || (p === 'locations.manage' && !!me?.is_owner),
-      login: async (email, password) => adopt(await api.login(email.trim(), password)),
-      register: async (input) => adopt(await api.register(input)),
-      acceptInvite: async (token, input) => adopt(await api.acceptInvite(token, input)),
+      login: async (email, password) => {
+        adopt(await api.login(email.trim(), password));
+        renewPush();
+      },
+      register: async (input) => {
+        adopt(await api.register(input));
+        renewPush();
+      },
+      acceptInvite: async (token, input) => {
+        adopt(await api.acceptInvite(token, input));
+        renewPush();
+      },
       logout: async () => {
         try {
           await api.logout();

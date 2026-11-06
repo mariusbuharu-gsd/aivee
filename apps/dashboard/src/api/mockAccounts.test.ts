@@ -38,6 +38,28 @@ describe('mock accounts follow the permission matrix', () => {
     expect(page.items.every((e) => e.actor.id === 'u-staff')).toBe(true);
   });
 
+  it('lists the org owner among the members, as "owner"', async () => {
+    const api = await signedIn('manager@aivee.demo');
+    const members = await api.listMembers('demo');
+    expect(members.find((m) => m.role === 'owner')?.email).toBe('owner@aivee.demo');
+  });
+
+  it('pages the history by entry id and matches a kind family', async () => {
+    const api = await signedIn('owner@aivee.demo');
+    const first = await api.listAudit({ location_id: 'demo', limit: 3 });
+    expect(first.next_before).toBe(first.items[2]?.id);
+    const next = await api.listAudit({
+      location_id: 'demo',
+      limit: 3,
+      before: first.next_before ?? '',
+    });
+    expect((next.items[0]?.at ?? '') <= (first.items[2]?.at ?? '')).toBe(true);
+    expect(next.items.some((e) => first.items.some((f) => f.id === e.id))).toBe(false);
+    const rules = await api.listAudit({ location_id: 'demo', kind: 'rule' });
+    expect(rules.items.length).toBeGreaterThan(0);
+    expect(rules.items.every((e) => e.kind.startsWith('rule.'))).toBe(true);
+  });
+
   it('refuses a second "Merg eu" with the name of who took it', async () => {
     const api = await signedIn('staff@aivee.demo');
     api.emitAlert('r-mana', 'z-masa-1', 'opened', 'Masa 1: un client a ridicat mâna');
@@ -45,6 +67,7 @@ describe('mock accounts follow the permission matrix', () => {
     if (!open) throw new Error('expected an open alert');
     const taken = await api.ackAlert(open.event_id);
     expect(taken.acknowledged_by).toBe('Ana Dumitru');
+    expect(taken.acknowledged_by_id).toBe('u-staff');
     expect(taken.reaction_s).not.toBeNull();
     await expect(api.ackAlert(open.event_id)).rejects.toMatchObject({ status: 409 });
   });
@@ -53,8 +76,14 @@ describe('mock accounts follow the permission matrix', () => {
     const api = await signedIn('manager@aivee.demo');
     const cases = await api.listAlertCases({ location_id: 'demo' });
     const first = cases.find((c) => c.event_id === 'e-1');
-    expect(first).toMatchObject({ reaction_s: 30, travel_s: 78, wait_s: 108 });
+    expect(first).toMatchObject({
+      reaction_s: 30,
+      travel_s: 78,
+      wait_s: 108,
+      unacknowledged_arrival: false,
+    });
     const m = await api.getServiceMetrics({ location_id: 'demo' });
     expect(m.wait.median_s).toBeGreaterThan(0);
+    expect(m.wait.count).toBeGreaterThan(0);
   });
 });

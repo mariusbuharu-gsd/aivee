@@ -71,7 +71,10 @@ export function ServiceStats() {
               <dt>{c.label}</dt>
               <dd>
                 <span className="service-value mono">{fmt(s?.median_s ?? null)}</span>
-                <span className="small muted">mediană · p90 {fmt(s?.p90_s ?? null)}</span>
+                <span className="small muted">
+                  mediană · p90 {fmt(s?.p90_s ?? null)}
+                  {s ? ` · din ${s.count} ${s.count === 1 ? 'alertă' : 'alerte'}` : ''}
+                </span>
                 <span className="small muted">{c.hint}</span>
               </dd>
             </div>

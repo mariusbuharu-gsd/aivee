@@ -87,6 +87,19 @@ export class PushService {
     return 'on';
   }
 
+  /**
+   * Re-register an existing subscription for the signed-in user (subscriptions made before login
+   * have no owner on the server). Never prompts; does nothing when notifications are off.
+   */
+  async renew(): Promise<boolean> {
+    if (!this.supported || !this.base) return false;
+    if (this.deps.notification?.permission !== 'granted') return false;
+    const sub = await this.currentSubscription();
+    if (!sub) return false;
+    await this.call('/api/push/subscribe', 'POST', sub.toJSON());
+    return true;
+  }
+
   /** Forget this device on the server and in the browser. */
   async disable(): Promise<PushState> {
     const sub = await this.currentSubscription();
@@ -165,7 +178,8 @@ export function browserPushService(apiBase = import.meta.env.VITE_API_URL ?? '')
   const nav = typeof navigator === 'undefined' ? undefined : navigator;
   return new PushService({
     apiBase,
-    fetch: (...args) => fetch(...args),
+    // The API authenticates with the session cookie, also from another origin in development.
+    fetch: (input, init) => fetch(input, { ...init, credentials: 'include' }),
     serviceWorker: nav && 'serviceWorker' in nav ? nav.serviceWorker : undefined,
     notification: typeof Notification === 'undefined' ? undefined : Notification,
     hasPushManager: typeof window !== 'undefined' && 'PushManager' in window,

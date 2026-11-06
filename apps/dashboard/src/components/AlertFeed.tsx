@@ -121,7 +121,7 @@ function AckButton({ onAck, zone }: { onAck: () => Promise<void>; zone: string }
 
 /** opened → preluată → ajuns → închisă, with the time between steps. */
 export function Timeline({ c }: { c: AlertCase }) {
-  const skippedAck = !c.acknowledged_at && !!c.arrived_at;
+  const skippedAck = c.unacknowledged_arrival;
   const steps: { label: string; at: string | null; note?: string; gap?: string }[] = [
     { label: 'Deschisă', at: c.opened_at },
     {

@@ -117,7 +117,11 @@ function p90(xs: number[]): number | null {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.ceil(s.length * 0.9) - 1)] ?? null;
 }
-const stat = (xs: number[]): DurationStat => ({ median_s: median(xs), p90_s: p90(xs) });
+const stat = (xs: number[]): DurationStat => ({
+  median_s: median(xs),
+  p90_s: p90(xs),
+  count: xs.length,
+});
 
 export class MockAccounts {
   private orgs = new Map([['org-demo', 'AiVee Demo']]);
@@ -168,9 +172,10 @@ export class MockAccounts {
   ]);
   private audit: AuditEntry[] = seedAudit();
   /** event_id → who pressed "Merg eu" and when; arrival time once the waiter reached the zone. */
-  private acks = new Map<string, { at: string; by: string; arrived_at: string | null }>([
-    ['e-1', { at: ago(47.5), by: 'Ana Dumitru', arrived_at: ago(46.2) }],
-  ]);
+  private acks = new Map<
+    string,
+    { at: string; by: string; by_id: string; arrived_at: string | null }
+  >([['e-1', { at: ago(47.5), by: 'Ana Dumitru', by_id: 'u-staff', arrived_at: ago(46.2) }]]);
   private userId: string | null = null;
 
   constructor(
@@ -452,12 +457,20 @@ export class MockAccounts {
 
   listMembers(locationId: string): Member[] {
     this.require('users.manage', locationId);
-    return this.members
-      .filter((m) => m.locationId === locationId)
-      .map((m) => {
-        const u = this.users.find((x) => x.id === m.userId) as User;
-        return { user_id: u.id, name: u.name, email: u.email, role: m.role };
-      });
+    const orgId = this.current().orgId;
+    // Like the API: the org's owners are listed too, with role "owner" (read-only in the UI).
+    const owners: Member[] = this.users
+      .filter((u) => u.orgId === orgId && u.isOwner)
+      .map((u) => ({ user_id: u.id, name: u.name, email: u.email, role: 'owner' }));
+    return [
+      ...owners,
+      ...this.members
+        .filter((m) => m.locationId === locationId)
+        .map((m) => {
+          const u = this.users.find((x) => x.id === m.userId) as User;
+          return { user_id: u.id, name: u.name, email: u.email, role: m.role };
+        }),
+    ];
   }
 
   /** Managers may only manage staff of their own location (spec: users.manage). */
@@ -529,8 +542,9 @@ export class MockAccounts {
     const me = this.current();
     const own = !ROLE_PERMISSIONS[role].includes('audit.view');
     const limit = q.limit ?? 50;
-    const kindMatch = (k: string) =>
-      !q.kind ? true : q.kind.endsWith('.') ? k.startsWith(q.kind) : k === q.kind;
+    // Like the API: "rule" matches every rule.* kind, "rule.updated" only itself.
+    const kindMatch = (k: string) => !q.kind || k === q.kind || k.startsWith(`${q.kind}.`);
+    const cursor = q.before ? this.audit.find((e) => e.id === q.before)?.at : undefined;
     const rows = this.audit
       .filter(
         (e) => e.location_id === q.location_id || (e.location_id === null && role === 'owner'),
@@ -538,13 +552,14 @@ export class MockAccounts {
       .filter((e) => (own ? e.actor.id === me.id : true))
       .filter((e) => (q.actor ? e.actor.id === q.actor : true))
       .filter((e) => kindMatch(e.kind))
-      .filter((e) => (q.before ? e.at < q.before : true))
+      .filter((e) => (cursor ? e.at < cursor : true))
       .filter((e) => (q.from ? e.at >= q.from : true))
+      .filter((e) => (q.to ? e.at < q.to : true))
       .sort((a, b) => b.at.localeCompare(a.at));
     const items = rows.slice(0, limit);
     return {
       items,
-      next_before: rows.length > limit ? (items[items.length - 1]?.at ?? null) : null,
+      next_before: rows.length > limit ? (items[items.length - 1]?.id ?? null) : null,
     };
   }
 
@@ -571,7 +586,9 @@ export class MockAccounts {
           opened_at: e.at,
           acknowledged_at: null,
           acknowledged_by: null,
+          acknowledged_by_id: null,
           arrived_at: null,
+          unacknowledged_arrival: false,
           closed_at: null,
           wait_s: null,
           reaction_s: null,
@@ -595,8 +612,10 @@ export class MockAccounts {
       if (ack) {
         c.acknowledged_at = ack.at;
         c.acknowledged_by = ack.by;
+        c.acknowledged_by_id = ack.by_id;
         c.arrived_at ??= ack.arrived_at;
       }
+      c.unacknowledged_arrival = !!c.arrived_at && !c.acknowledged_at;
       c.wait_s = seconds(c.opened_at, c.arrived_at ?? c.closed_at);
       c.reaction_s = seconds(c.opened_at, c.acknowledged_at);
       c.travel_s = seconds(c.acknowledged_at, c.arrived_at);
@@ -621,7 +640,12 @@ export class MockAccounts {
       throw new ApiError(`${c.acknowledged_by} a preluat deja alerta.`, 'conflict', 409);
     }
     const me = this.current();
-    this.acks.set(eventId, { at: new Date().toISOString(), by: me.name, arrived_at: null });
+    this.acks.set(eventId, {
+      at: new Date().toISOString(),
+      by: me.name,
+      by_id: me.id,
+      arrived_at: null,
+    });
     this.log({
       location_id: locationId,
       actor: this.actor(),

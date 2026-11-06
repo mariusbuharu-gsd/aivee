@@ -187,12 +187,14 @@ export interface AuditEntry {
 export interface AuditQuery {
   location_id: string;
   actor?: string;
-  /** Exact kind or a prefix ending in "." (e.g. "rule."). */
+  /** An exact kind ("rule.updated") or a family ("rule" matches every `rule.*`). */
   kind?: string;
-  /** ISO time; only entries strictly before it (paging). */
+  /** Entry id from `next_before`; only entries older than it (paging). */
   before?: string;
   /** ISO time; only entries at or after it (period filter). */
   from?: string;
+  /** ISO time; only entries before it. */
+  to?: string;
   limit?: number;
 }
 
@@ -212,8 +214,12 @@ export interface AlertCase {
   summary_ro: string;
   opened_at: string;
   acknowledged_at: string | null;
+  /** Display name of whoever pressed "Merg eu". */
   acknowledged_by: string | null;
+  acknowledged_by_id: string | null;
   arrived_at: string | null;
+  /** Staff arrived without anyone acknowledging first ("fără preluare"). */
+  unacknowledged_arrival: boolean;
   closed_at: string | null;
   wait_s: number | null;
   reaction_s: number | null;
@@ -223,6 +229,8 @@ export interface AlertCase {
 export interface DurationStat {
   median_s: number | null;
   p90_s: number | null;
+  /** How many alerts the measure is based on. */
+  count: number;
 }
 
 /** `GET /api/metrics/service`: how long guests wait and how fast the team reacts. */

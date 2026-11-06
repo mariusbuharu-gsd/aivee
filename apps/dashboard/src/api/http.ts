@@ -64,6 +64,17 @@ export async function toApiError(res: Response): Promise<ApiError> {
       return new ApiError(d.message_ro, typeof d.code === 'string' ? d.code : 'error', res.status);
     }
   }
+  // FastAPI's own validation errors: {detail: [{loc, msg, type}, ...]}.
+  if (Array.isArray(detail) && res.status === 422) {
+    const fields = detail
+      .map((d) => (d as { loc?: unknown }).loc)
+      .map((loc) => (Array.isArray(loc) ? loc[loc.length - 1] : null))
+      .filter((f): f is string => typeof f === 'string');
+    const message = fields.length
+      ? `Date invalide: verificați ${[...new Set(fields)].join(', ')}.`
+      : 'Date invalide. Verificați câmpurile.';
+    return new ApiError(message, 'invalid', res.status);
+  }
   const code = res.status === 422 ? 'invalid' : 'error';
   const message = FALLBACK_MESSAGE[res.status] ?? `Eroare de server (${res.status}).`;
   return new ApiError(message, code, res.status);
@@ -207,7 +218,13 @@ export class HttpApi implements ApiClient {
           /* ignore malformed frames */
         }
       };
-      ws.onclose = () => {
+      ws.onclose = (e: CloseEvent) => {
+        // 1008 = policy violation: the API closes the socket when there is no session.
+        if (e.code === 1008) {
+          stopped = true;
+          window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+          return;
+        }
         if (!stopped) retry = setTimeout(connect, 2000);
       };
     };

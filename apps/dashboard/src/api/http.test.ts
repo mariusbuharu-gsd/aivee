@@ -80,8 +80,24 @@ describe('HttpApi', () => {
   it('maps validation and network errors to Romanian messages', async () => {
     mockFetch(json({ detail: [{ loc: ['body', 'text'], msg: 'too short' }] }, 422));
     await expect(api.listRules()).rejects.toMatchObject({
-      message: 'Datele trimise nu sunt valide.',
+      message: 'Date invalide: verificați text.',
       code: 'invalid',
+    });
+    mockFetch(
+      json(
+        {
+          detail: {
+            code: 'camera_site',
+            message_ro: 'Camera poate fi adăugată doar la Terasa demo.',
+          },
+        },
+        422,
+      ),
+    );
+    await expect(api.listRules()).rejects.toMatchObject({
+      message: 'Camera poate fi adăugată doar la Terasa demo.',
+      code: 'camera_site',
+      status: 422,
     });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(api.listRules()).rejects.toMatchObject({ code: 'network' });
@@ -136,6 +152,30 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     await expect(api.me()).rejects.toMatchObject({ status: 401 });
     expect(seen).toHaveBeenCalledTimes(1);
     window.removeEventListener('aivee:unauthorized', seen);
+  });
+
+  it('treats a socket closed with 1008 (no session) like a 401 and stops reconnecting', () => {
+    const sockets: { onclose: ((e: CloseEvent) => void) | null; close: () => void }[] = [];
+    class FakeSocket {
+      onclose: ((e: CloseEvent) => void) | null = null;
+      onmessage: unknown = null;
+      constructor() {
+        sockets.push(this);
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    vi.useFakeTimers();
+    const seen = vi.fn();
+    window.addEventListener('aivee:unauthorized', seen);
+    const off = new HttpApi('http://api:8000').subscribeAlerts(() => undefined);
+    sockets[0]?.onclose?.({ code: 1008 } as CloseEvent);
+    vi.advanceTimersByTime(5000);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(1);
+    off();
+    window.removeEventListener('aivee:unauthorized', seen);
+    vi.useRealTimers();
   });
 
   it('acknowledges an alert with "Merg eu"', async () => {

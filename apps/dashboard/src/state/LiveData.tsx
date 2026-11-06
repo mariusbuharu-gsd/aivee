@@ -21,6 +21,8 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const { location, can } = useAuth();
   const locationId = location?.id ?? null;
   const canView = can('alerts.view');
+  // Staff get 403 on every /api/rules* call, so they never ask for rules.
+  const canRules = can('rules.manage');
   const [cases, setCases] = useState<Record<string, AlertCase>>({});
 
   // Alert lifecycle: load once, then re-read whenever an alert event arrives (opened/arrived/closed).
@@ -58,7 +60,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     const fail = (e: unknown) => alive && setError(e instanceof Error ? e.message : String(e));
     Promise.all([
       api.listCameras(),
-      api.listRules(),
+      canRules ? api.listRules() : Promise.resolve([]),
       api.listAlerts(),
       api.listSuggestions(),
       api.getMetrics(),
@@ -87,7 +89,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       offSuggestions();
       clearInterval(poll);
     };
-  }, [api]);
+  }, [api, canRules]);
 
   const setZones = useCallback(
     (cameraId: string, zones: Zone[]) =>

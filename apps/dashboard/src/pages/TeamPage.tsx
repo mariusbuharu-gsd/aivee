@@ -24,7 +24,8 @@ export function TeamPage() {
   }, [load]);
 
   /** Managers manage staff only; nobody edits themselves here. */
-  const editable = (m: Member) => m.user_id !== me?.user.id && (isOwner || m.role === 'staff');
+  const editable = (m: Member) =>
+    m.role !== 'owner' && m.user_id !== me?.user.id && (isOwner || m.role === 'staff');
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
