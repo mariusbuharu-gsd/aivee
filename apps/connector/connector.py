@@ -112,18 +112,59 @@ def _input_args(source: str, platform: str = sys.platform) -> list[str]:
     if source.startswith(("http://", "https://")):
         # Phone MJPEG streams carry no timestamps.
         return ["-use_wallclock_as_timestamps", "1"]
-    if source.isdigit():
+    if source.isdigit() or source.startswith("video="):
         if platform == "darwin":
             return ["-f", "avfoundation", "-framerate", "30"]
+        if platform.startswith("win"):
+            return ["-f", "dshow"]
         return ["-f", "v4l2"]
     return ["-re", "-stream_loop", "-1"]  # a recorded file, replayed in real time
 
 
+_DSHOW_VIDEO = re.compile(r'"([^"]+)"\s*\(video\)')
+_DSHOW_LEGACY_SECTION = re.compile(r"DirectShow (video|audio) devices")
+_DSHOW_LEGACY_NAME = re.compile(r'\]\s+"([^"]+)"\s*$')
+
+
+def parse_dshow_devices(stderr: str) -> list[str]:
+    """Video device names from `ffmpeg -list_devices true -f dshow -i dummy`. Newer ffmpeg
+    tags each line `"Name" (video)`; older builds list names under a "DirectShow video
+    devices" heading instead."""
+    names = _DSHOW_VIDEO.findall(stderr)
+    if names:
+        return names
+    section, legacy = "", []
+    for line in stderr.splitlines():
+        if heading := _DSHOW_LEGACY_SECTION.search(line):
+            section = heading.group(1)
+        elif section == "video" and (name := _DSHOW_LEGACY_NAME.search(line)):
+            legacy.append(name.group(1))
+    return legacy
+
+
+def dshow_device(index: int) -> str:
+    """The Windows webcam number `index` (0 = first), as ffmpeg's `video=<name>`."""
+    out = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    names = parse_dshow_devices(out.stderr)
+    if index >= len(names):
+        found = ", ".join(names) or "none"
+        raise SystemExit(f"webcam {index} not found (DirectShow video devices: {found})")
+    return f"video={names[index]}"
+
+
 def _input(cfg: Config, platform: str = sys.platform) -> list[str]:
-    """ffmpeg input options plus `-i <source>`; a webcam index is /dev/videoN on Linux and
-    the avfoundation device index on macOS."""
+    """ffmpeg input options plus `-i <source>`; a webcam index is /dev/videoN on Linux, the
+    avfoundation device index on macOS and the Nth DirectShow camera on Windows (or pass
+    `video=<name>` directly)."""
     source = cfg.source
-    if source.isdigit() and platform != "darwin":
+    if source.isdigit() and platform.startswith("win"):
+        source = dshow_device(int(source))
+    elif source.isdigit() and platform != "darwin":
         source = f"/dev/video{source}"
     return [*_input_args(cfg.source, platform), "-i", source]
 
