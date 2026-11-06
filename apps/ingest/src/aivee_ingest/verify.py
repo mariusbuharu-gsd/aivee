@@ -5,6 +5,11 @@ really show the rule's situation. `object_gone` sends the before and after image
 every other kind the single opened snapshot. The question is built from the rule's own
 Romanian text.
 
+Open rules (`object_present`, `visual`: "dacă e foc", "dacă vine un urs") ask the
+`visible` question: is the thing really in the scene? CLIP on the edge is coarse (fire on a
+TV screen, a red-lit crowd, a dog that looks like a bear all score high), so this check is
+the main guard against their false alarms: rejected means no notification.
+
 Flow (VERIFY_ALERTS on, with an API key), run as a task so the MQTT handler never waits:
 claim (status `pending`, at most once per alert) → wait for the snapshot(s) → verify with
 a timeout → store status, summary, model and latency → notify:
@@ -28,6 +33,7 @@ import anthropic
 from aivee_api.alerts.repository import AlertRepository
 from aivee_api.db.models import RuleRow
 from aivee_contracts.events import AlertEvent, Verification, before_snapshot_id
+from aivee_contracts.rules import Condition, Rule
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -36,7 +42,9 @@ from aivee_ingest.notify import Notifier
 
 log = logging.getLogger(__name__)
 
-VerifyKind = Literal["object_gone", "snapshot"]
+VerifyKind = Literal["object_gone", "snapshot", "visible"]
+
+OPEN_KINDS = frozenset({"object_present", "visual"})
 
 UNAVAILABLE = Verification(status="unavailable")
 
@@ -58,6 +66,31 @@ class AlertVerifier(Protocol):
 class VerifyContext:
     rule_prompt_ro: str
     zone_name: str
+    conditions: Sequence[Condition] = ()
+
+
+def looked_for(conditions: Sequence[Condition]) -> list[str]:
+    """What an open rule looks for, for the `visible` question: each condition's Romanian
+    label, else its COCO names or its first CLIP prompt."""
+    out: list[str] = []
+    for c in conditions:
+        if c.kind not in OPEN_KINDS:
+            continue
+        if c.label_ro.strip():
+            out.append(c.label_ro.strip())
+        elif c.kind == "object_present":
+            out.append(", ".join(c.objects))
+        elif c.positive:
+            out.append(c.positive[0])
+    return out
+
+
+def verify_kind(event: AlertEvent, conditions: Sequence[Condition]) -> VerifyKind:
+    if event.object_change is not None:
+        return "object_gone"
+    if any(c.kind in OPEN_KINDS for c in conditions):
+        return "visible"
+    return "snapshot"
 
 
 class VerificationStore(Protocol):
@@ -85,6 +118,10 @@ never try to identify anyone. Answer the Romanian question that follows the imag
 - summary_ro: one short Romanian sentence that starts with the zone name, describing what
   you see, e.g. "Masa 1: a dispărut paharul de vin" or "Masa 2: clienții așteaptă".
 - object_ro: the Romanian name of the object concerned, e.g. "pahar de vin"; "" if none.
+- When the question asks whether something is visible (fire, smoke, water on the floor, an
+  animal, an object), answer yes only if it is really there in the scene. A picture of it
+  on a screen, poster or phone, a reflection, a lamp or red light, a toy, or something that
+  merely resembles it is no; so is an image too dark or blurry to tell.
 """
 
 
@@ -92,6 +129,13 @@ def question_ro(
     rule_prompt_ro: str, zone_name: str, kind: VerifyKind, objects: Sequence[str]
 ) -> str:
     rule = f"Regula: «{rule_prompt_ro}». Zona: {zone_name}."
+    if kind == "visible":
+        what = "; ".join(objects) or "ce cere regula"
+        return (
+            f"{rule} Se vede cu adevărat în imagine: {what}? Răspunde da doar dacă este real "
+            "în scenă, nu pe un ecran, poster sau telefon, nu o reflexie și nu ceva care doar "
+            "seamănă. Descrie scurt în română ce se vede."
+        )
     if kind == "object_gone":
         what = ", ".join(objects) or "obiect"
         return (
@@ -262,7 +306,8 @@ class AlertVerification:
         if after is None:
             return UNAVAILABLE
         change = event.object_change
-        kind: VerifyKind = "object_gone" if change is not None else "snapshot"
+        ctx = await self._store.context(event)
+        kind = verify_kind(event, ctx.conditions)
         images = [after.read_bytes()]
         if change is not None:
             before = (
@@ -273,7 +318,9 @@ class AlertVerification:
             if before is None:
                 return UNAVAILABLE  # nothing to compare the after image with
             images.insert(0, before.read_bytes())
-        ctx = await self._store.context(event)
+        objects: Sequence[str] = change.objects if change is not None else ()
+        if kind == "visible":
+            objects = looked_for(ctx.conditions)
         started = time.monotonic()
         try:
             result = await asyncio.wait_for(
@@ -282,7 +329,7 @@ class AlertVerification:
                     ctx.zone_name,
                     images,
                     kind,
-                    change.objects if change is not None else (),
+                    objects,
                 ),
                 self._timeout_s,
             )
@@ -315,7 +362,17 @@ class DbVerificationStore:
         prompt = rule.prompt_ro if rule is not None and rule.prompt_ro else ""
         if not prompt and rule is not None:
             prompt = str(rule.rule.get("name", ""))
-        return VerifyContext(prompt or event.summary_ro, view.zone_name if view else event.zone_id)
+        conditions: list[Condition] = []
+        if rule is not None:
+            try:
+                conditions = Rule.model_validate(rule.rule).all_of
+            except ValidationError:
+                conditions = []
+        return VerifyContext(
+            prompt or event.summary_ro,
+            view.zone_name if view else event.zone_id,
+            conditions,
+        )
 
     async def save(self, alert_id: str, verification: Verification) -> None:
         async with self._sessions() as s:

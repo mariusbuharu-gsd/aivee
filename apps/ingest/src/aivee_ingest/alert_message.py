@@ -6,9 +6,11 @@
     📍 Terasa demo · Sala principală · 16:56
 
 The branch follows the rule's most specific condition, in the edge's own order
-(`aivee_edge.domain.engine.summary_ro`): object_gone, pose, objects_unattended, count,
-absent, present. Without a known rule the edge's `summary_ro` is the headline. A confirmed
-vision check replaces the canned explanation with the model's summary.
+(`aivee_edge.domain.engine.summary_ro`): object_gone, visual ("Sala principală: posibil
+foc"), object_present ("Terasă: a apărut un urs"), pose, objects_unattended, count,
+absent, present. A whole-frame rule's zone name is the camera's. Without a known rule
+the edge's `summary_ro` is the headline. A confirmed vision check replaces the canned
+explanation with the model's summary.
 """
 
 import html
@@ -68,6 +70,14 @@ def _gone_what(ctx: AlertContext) -> str:
     return tail or "un obiect"
 
 
+def _present_what(ctx: AlertContext, c: Condition) -> str:
+    # The edge names the class in Romanian: "Terasă: a apărut un urs".
+    tail = ctx.event.summary_ro.partition("a apărut")[2].strip()
+    if tail:
+        return tail
+    return _first_word_article(c.label_ro.strip()) if c.label_ro.strip() else "un obiect"
+
+
 def _count(ctx: AlertContext, c: Condition) -> int:
     found = re.search(r"(\d+)\s+persoane", ctx.event.summary_ro)
     return int(found.group(1)) if found else c.min_count
@@ -81,6 +91,11 @@ def headline_explanation(ctx: AlertContext) -> tuple[str, str]:
     explanation: str
     if ctx.event.object_change is not None or "object_gone" in by_kind:
         headline, explanation = f"{zone}: a dispărut {_gone_what(ctx)}", "Verifică masa."
+    elif c := by_kind.get("visual"):
+        what = c.label_ro.strip() or "o situație de verificat"
+        headline, explanation = f"{zone}: posibil {what}", "Verifică imediat locul."
+    elif c := by_kind.get("object_present"):
+        headline, explanation = f"{zone}: a apărut {_present_what(ctx, c)}", "Verifică locul."
     elif "pose" in by_kind:
         headline, explanation = f"{zone}: un client cheamă", "Un client a ridicat mâna."
     elif c := by_kind.get("objects_unattended"):
