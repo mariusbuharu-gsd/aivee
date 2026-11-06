@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from aivee_api.alerts.domain import AlertState, Measure, ServiceStats
+from aivee_api.alerts.domain import AlertState, ClosedBy, CloseReason, Measure, ServiceStats
 
 
 class AlertView(BaseModel):
@@ -29,6 +29,13 @@ class AlertView(BaseModel):
     acknowledged_by_id: str | None = None
     arrived_at: datetime | None = None
     closed_at: datetime | None = None
+    closed_by: ClosedBy | None = Field(
+        None, description='"edge" (the situation ended) or "system" (see closed_reason)'
+    )
+    closed_reason: CloseReason | None = Field(
+        None,
+        description="Why the system closed it: device_offline | device_restarted | camera_deleted",
+    )
     wait_s: float | None = Field(None, description="arrived (or closed) - opened")
     reaction_s: float | None = Field(None, description="acknowledged - opened")
     travel_s: float | None = Field(None, description="arrived - acknowledged")

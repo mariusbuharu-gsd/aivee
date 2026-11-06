@@ -17,6 +17,11 @@ CASES = [
         "Ana l-a invitat pe ion@x.ro ca angajat la Terasa",
     ),
     (
+        "user.invite_revoked",
+        {"actor": "Ana", "target": "ion@x.ro"},
+        "Ana a anulat invitația pentru ion@x.ro",
+    ),
+    (
         "user.joined",
         {"actor": "Ion", "role": "staff", "location": "Terasa"},
         "Ion s-a alăturat echipei ca angajat la Terasa",

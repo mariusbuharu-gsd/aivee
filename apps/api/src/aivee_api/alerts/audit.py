@@ -5,13 +5,13 @@ with the change (the API's ack, ingest's event). `LoggingAuditWriter` only logs 
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.alerts.auth import CurrentUser
-from aivee_api.alerts.domain import duration_ro
+from aivee_api.alerts.domain import duration_ro, system_close_summary_ro
 from aivee_api.alerts.schemas import AlertView
 from aivee_api.audit.repository import Actor, AuditRepository, Target
 from aivee_api.db.models import Site
@@ -111,6 +111,17 @@ def acknowledged_entry(view: AlertView, user: CurrentUser) -> AlertAuditEntry:
         ("user", user.id, user.name),
         f"{user.name} a preluat alerta de la {view.zone_name}",
     )
+
+
+def system_closed_entry(view: AlertView, reason: str) -> AlertAuditEntry:
+    """Ingest closed the alert because its device went away (actor = the system)."""
+    entry = _entry(
+        view,
+        "alert.closed",
+        ("system", "system", "AiVee"),
+        system_close_summary_ro(view.zone_name, reason),
+    )
+    return replace(entry, after={"reason": reason})
 
 
 def device_entry(view: AlertView, state: str) -> AlertAuditEntry | None:

@@ -116,6 +116,9 @@ class EventRow(Base):
     acknowledged_by_name: Mapped[str | None] = mapped_column(Text)
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when the system (not the edge) closed it: device_offline | device_restarted |
+    # camera_deleted.
+    closed_reason: Mapped[str | None] = mapped_column(String(32))
 
     __table_args__ = (
         CheckConstraint("state IN ('opened', 'arrived', 'closed')", name="event_state"),

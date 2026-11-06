@@ -28,7 +28,12 @@ Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 | **Rules in Romanian** | "Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut" → a typed `Rule` draft the owner confirms, edits or discards. Vague or out-of-scope requests get a question back. |
 | **Staff by appearance + behaviour** | CLIP embedding of uniform photos plus movement (tables visited, distance per minute). Suggested staff are confirmed with one tap: "Pare angajat — confirmi?". |
 | **Privacy by design** | No face recognition, faces blurred on the device, video never leaves the site. |
-| **Alerts** | Telegram message with a blurred snapshot; the alert closes itself when staff reach the table. Live dashboard with zones, rules, alerts, devices and metrics. |
+| **Alert lifecycle with service times** | opened → acknowledged ("Merg eu" on the phone) → arrived (the edge sees staff in the zone for ≥ 5 s) → closed. Each alert shows wait, reaction and travel time; Metrici shows the median and p90. |
+| **Alerts on the phone** | Telegram message with a blurred snapshot, plus a second one when staff arrive. Installable PWA with Web Push: the notification opens the alert. |
+| **Live detection overlay** | Live video with a box per person, light blue for staff and white for guests, streamed from the edge at up to 5 Hz. |
+| **Accounts and roles per location** | Owner (every location), manager and staff per location, a fixed permission matrix enforced in the API, invites by link, sessions in an HttpOnly cookie. |
+| **Multi-location** | Organization → locations (restaurant, terrace, event, shop, other) → devices. Each location has its own team, rules, alerts and Telegram chat. |
+| **Audit history** | Append-only log, enforced in Postgres: logins, config changes with before/after, staff decisions, alerts, devices. Shown on Istoric. |
 
 ## Architecture
 
@@ -36,26 +41,29 @@ Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 flowchart LR
     cam["Camera<br/>RTSP / MJPEG"] --> edge
     subgraph site["On site"]
-        edge["Edge (CPU)<br/>YOLO11n INT8 OpenVINO + ByteTrack<br/>pose · role · situation engine · face blur"]
+        edge["Edge (CPU)<br/>YOLO11n INT8 OpenVINO + ByteTrack<br/>pose · role · situation engine<br/>arrival · face blur"]
         mq[("Mosquitto<br/>ACL · LWT · retained")]
-        ing["ingest ×N<br/>shared subscription"]
-        pg[("Postgres 17<br/>+ pgvector")]
-        api["API (FastAPI)"]
+        ing["ingest ×2<br/>shared subscription"]
+        pg[("Postgres 17 + pgvector<br/>tenancy · append-only audit")]
+        api["API (FastAPI)<br/>cookie sessions · roles per location"]
         mtx["MediaMTX"]
     end
-    edge -- "events · status · metrics · snapshots" --> mq
-    mq -- "rules · config · profiles (retained)" --> edge
+    edge -- "events · status · metrics<br/>snapshots · detections" --> mq
+    mq -- "rules · config · profiles (retained)<br/>commands" --> edge
     mq --> ing --> pg
     ing --> tg["Telegram"]
+    ing --> wp["Web Push"]
     api <--> pg
-    api -- "publish complete state" --> mq
+    api -- "publish complete state · commands" --> mq
+    mq -- "metrics · detections" --> api
     api -- "request → rule" --> claude["Claude API"]
-    dash["Dashboard (React)"] <-- "REST + WS" --> api
+    dash["Dashboard + PWA (React)"] <-- "REST + WS (cookie)" --> api
     edge --> mtx -- WebRTC --> dash
+    wp --> dash
 ```
 
-More: [docs/architecture.md](docs/architecture.md) (C4 context and containers, alert and request → rule
-sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
+More: [docs/architecture.md](docs/architecture.md) (context and containers, tenancy, auth and permissions,
+audit, alert lifecycle and request → rule sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
 
 1. [Edge-first CPU inference with OpenVINO](docs/adr/0001-edge-first-cpu-inference.md)
 2. [MQTT with ACL, LWT, retained state, shared subscriptions](docs/adr/0002-mqtt-acl-lwt-retained-shared.md)
@@ -63,6 +71,10 @@ sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
 4. [Contracts as the single source of truth](docs/adr/0004-contracts-single-source-of-truth.md)
 5. [Staff by appearance + behaviour, no face recognition](docs/adr/0005-staff-by-appearance-and-behaviour.md)
 6. [LLM turns the request into a rule, human confirms](docs/adr/0006-llm-request-to-rule.md)
+7. [Opaque sessions in an HttpOnly cookie, not JWT](docs/adr/0007-session-cookie-not-jwt.md)
+8. [Roles per location with a fixed permission matrix](docs/adr/0008-roles-per-location-fixed-matrix.md)
+9. [Append-only audit log, enforced in the database](docs/adr/0009-append-only-audit-log-in-db.md)
+10. ["Arrived" detected on the edge, not self-reported](docs/adr/0010-arrival-detected-on-edge.md)
 
 ## Tech stack
 
@@ -70,10 +82,10 @@ sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
 |---|---|
 | Edge | Python 3.12, Ultralytics YOLO11n + pose, OpenVINO INT8 (NNCF), ByteTrack, OpenCLIP, OpenCV, paho-mqtt |
 | Messaging | Eclipse Mosquitto 2 (per-device ACL, LWT, retained, QoS 1, shared subscriptions) |
-| Backend | FastAPI, SQLAlchemy 2 (async) + asyncpg, Alembic, aiomqtt, Anthropic SDK (structured outputs) |
+| Backend | FastAPI, SQLAlchemy 2 (async) + asyncpg, Alembic, aiomqtt, Anthropic SDK (structured outputs), argon2-cffi, pywebpush (VAPID) |
 | Data | Postgres 17 + pgvector |
 | Video | MediaMTX (RTSP in, WebRTC/WHEP out) |
-| Frontend | Vite 8, React 19, TypeScript strict, plain CSS on design tokens; static site in plain HTML/CSS |
+| Frontend | Vite 8, React 19, React Router, TypeScript strict, plain CSS on design tokens, vite-plugin-pwa + Workbox; static site in plain HTML/CSS |
 | Contracts | Pydantic → JSON Schema → TypeScript types |
 | Tooling | uv workspace, ruff, mypy (strict on contracts and edge domain), pytest + testcontainers, Vitest, ESLint, GitHub Actions, gitleaks |
 
@@ -82,49 +94,63 @@ sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
 Needs Docker, [uv](https://docs.astral.sh/uv/) and Node 24.
 
 ```bash
-cp .env.example .env     # fill in the names listed there (or: make keys)
+cp .env.example .env     # fill in the names listed there (or: make keys; make vapid for push)
 make dev                 # install the Python workspace
-make up                  # Mosquitto, Postgres+pgvector, MediaMTX, ingest ×2, API :8000
+make data-dirs           # data/snapshots and recordings, owned by you
+make up                  # Mosquitto, Postgres+pgvector, migrations, MediaMTX, ingest ×2, API :8000
+make seed                # demo org, location `demo`, owner@ / manager@ / staff@aivee.demo
+                         # (password DEMO_PASSWORD in .env)
 make fake-edge SCENARIO=unattended SPEED=10   # scripted scenario through the real pipeline
                                               # (unattended | hand | queue | uncleared)
 cd apps/dashboard && npm ci
 VITE_API_URL=http://localhost:8000 npm run dev   # dashboard; omit VITE_API_URL for the offline mock
 ```
 
+Open `http://localhost:5173/intra` and log in as `owner@aivee.demo`.
+
 With a real camera: `uv run python tools/download_models.py`, then
-`make edge SOURCE=http://<phone>:8080/video` (Android IP Webcam stream).
+`make edge SOURCE=http://<phone>:8080/video ROTATE=90` (Android IP Webcam stream). Backup clip:
+`make record SOURCE=http://<phone>:8080/video SECONDS=60 ROTATE=90 NAME=sala-1`, replay with
+`make edge SOURCE=recordings/sala-1.mp4`. The 4-minute demo: [docs/demo-script.md](docs/demo-script.md).
 All commands: [backend handbook](docs/handbook/backend.md) · [frontend handbook](docs/handbook/frontend.md).
 
 ## Repository map
 
 ```
 apps/
-  edge/        camera → detection, tracking, pose, role, situation engine, blur → MQTT
+  edge/        camera → detection, tracking, pose, role, situation engine, arrival, blur → MQTT
                domain/ is pure (no IO) behind Protocol ports; adapters/ for YOLO, CLIP, MQTT, blur
-  ingest/      shared-subscription worker → Postgres → Telegram
-  api/         FastAPI: REST + WS, retained edge state, request → rule, staff enrolment, Alembic
-  dashboard/   React 19 dashboard (Romanian UI)
+  ingest/      shared-subscription worker → Postgres (alert times, audit) → Telegram + Web Push
+  api/         FastAPI: REST + WS, accounts, roles per location, invites, audit, alert lifecycle,
+               retained edge state, request → rule, staff enrolment, push, Alembic
+  dashboard/   React 19 dashboard + PWA (Romanian UI)
   site/        static presentation site (GitHub Pages)
 packages/
   contracts/   Pydantic models + MQTT topic builder → JSON Schema → TS types
 infra/         mosquitto, postgres, mediamtx config
 evals/         nl_to_rule: 20 Romanian requests → expected rules
-tools/         fake_edge.py, bench_edge.py, download_models.py, setup scripts
-docs/          architecture, ADRs, decisions log, handbooks, plans, brand
+tools/         fake_edge.py, record_clip.py, bench_edge.py, download_models.py, gen_vapid.py, setup scripts
+docs/          architecture, ADRs, decisions log, handbooks, plans, demo script, brand
 ```
 
 ## How we test
 
 | Suite | Command | Result (2026-11-06) |
 |---|---|---|
-| Python unit | `uv run pytest -q` | 213 passed |
-| Python integration (testcontainers: Mosquitto, Postgres + pgvector) | `uv run pytest -q -m integration` | 37 passed, 2 skipped |
-| Dashboard (Vitest) | `cd apps/dashboard && npm ci && npm test -- --run` | 42 passed (6 files) |
+| Python unit | `uv sync --all-packages -q && uv run pytest -q` | 362 passed |
+| Python integration (testcontainers: Mosquitto, Postgres + pgvector) | `uv run pytest -q -m integration` | 105 passed, 2 skipped ¹ |
+| Dashboard (Vitest) | `cd apps/dashboard && npm ci && npx vitest run` | 100 passed (13 files) |
 | Request → rule eval (real API calls) | `make eval` | 20/20, median 2.4 s, max 4.0 s |
 
-Unit tests cover the situation engine on simulated timelines, cooldown and alert close, behaviour and role
-scoring, and zone geometry. Integration tests cover MQTT → Postgres (duplicates ignored), LWT → offline,
-retained state on reconnect and pgvector lookups. CI runs lint, mypy, all Python tests with coverage,
+¹ One test, `test_fake_edge_alert_is_acknowledged_arrives_and_closes`, is timing-sensitive: on 2026-11-06 it
+failed in 2 of 3 full runs and passed alone and in the third run.
+
+Unit tests cover the situation engine on simulated timelines (cooldown, arrival after `ARRIVE_S`, close),
+behaviour and role scoring, zone geometry, the permission matrix cell by cell, sessions and the login rate
+limit, alert lifecycle times and percentiles, and push. Integration tests cover MQTT → Postgres (duplicates
+ignored), LWT → offline, retained state on reconnect, pgvector lookups, login and invites, scoping between
+locations and organizations, the audit log rejecting UPDATE / DELETE, and the fake edge → ack → arrived →
+closed lifecycle. CI runs lint, mypy, all Python tests with coverage,
 contract drift checks (JSON Schema and TS types), the dashboard lint/tests/build, the site build and a
 gitleaks scan of the full history.
 
@@ -135,6 +161,7 @@ gitleaks scan of the full history.
 - **Faces blurred on the device** before a snapshot leaves the edge.
 - **Video stays on site.** Only alerts, metrics and blurred snapshots travel over MQTT; the rule request
   sends text only.
+- **Least access.** Staff see only their location's alerts; the history records who did what and cannot be edited.
 - **Human in the loop.** Rules are drafts until the owner confirms them; suggested staff are confirmed
   or rejected explicitly.
 

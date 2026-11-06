@@ -3,10 +3,15 @@
 ## Dashboard (`apps/dashboard`)
 
 - Stack: Vite 8, React 19, React Router, TypeScript strict, Vitest, ESLint + Prettier. No UI kit.
-- Run against the mock: `npm ci && npm run dev` (no `VITE_API_URL`) — a 45 s demo timeline plays.
-- Run against the real stack: `make up && make api` in the repo root, then
-  `VITE_API_URL=http://localhost:8000 npm run dev`. Live video: `VITE_WHEP_BASE` (default `http://localhost:8889`).
-- Checks before a PR: `npm run lint && npm test -- --run && npm run build && npm run e2e`, and
+- Run against the mock: `npm ci && npm run dev` (no `VITE_API_URL`) — a demo timeline plays, and the login
+  page offers the demo accounts.
+- Run against the real stack: `make data-dirs && make up && make seed` in the repo root, then
+  `VITE_API_URL=http://localhost:8000 npm run dev` and log in as `owner@aivee.demo` (password `DEMO_PASSWORD`
+  in `.env`). Live video: `VITE_WHEP_BASE` (default `http://localhost:8889`).
+- On a phone in the same Wi-Fi: `npm run dev -- --host`, `VITE_API_URL=http://<laptop-ip>:8000`, and add
+  `http://<laptop-ip>:5173` to `CORS_ORIGINS`. Push needs HTTPS (see below).
+- Env names: `VITE_API_URL`, `VITE_WHEP_BASE`.
+- Checks before a PR: `npm run lint && npx vitest run && npm run build` (plus `npm run e2e` locally before a release), and
   `npm run contracts && git diff --exit-code src/contracts`.
 
 ### End-to-end tests (Playwright, `e2e/`)
@@ -21,41 +26,61 @@
 - Failures keep a trace and screenshot in `test-results/`; open one with `npx playwright show-trace <zip>`.
 
 ### Screens (UI copy in Romanian)
-| Route | Page | Purpose |
-|---|---|---|
-| `/` | Live | camera tiles, live video with detection boxes, alert feed, staff suggestions |
-| `/camere/:cameraId/zone` | Zone editor | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` |
-| `/reguli` | Reguli | write a rule in Romanian → "Ce am înțeles" draft → Confirmă / Modifică / Renunță |
-| `/alerte` | Alerte | opened/closed alerts with blurred snapshot |
-| `/dispozitive` | Dispozitive | edge devices online/offline, "Adaugă cameră" |
-| `/metrici` | Metrici | FPS, CPU, verified ratio, events today, alert latency |
+
+Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner), `/invitatie/:token`
+(accept an invite). Everything else needs a session; a 401 sends you to `/intra?next=…`.
+
+| Route | Page | Permission | Purpose |
+|---|---|---|---|
+| `/` | Live | `alerts.view` | camera tiles, live video with detection boxes (staff light blue, guests white), alert feed, staff suggestions |
+| `/alerte` | Alerte | `alerts.view` | alerts with "Merg eu" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; "Notificări pe telefon" |
+| `/metrici` | Metrici | `alerts.view` | service times (Așteptare, Reacție, Drum: median and p90), FPS, CPU, verified frames |
+| `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică |
+| `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră" |
+| `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` |
+| `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
+| `/echipa` | Echipă | `users.manage` | members, roles, invite link |
+| `/locatii` | Locații | `locations.manage` | the organization's locations (owner) |
+
+The sidebar has a location switcher when the user has more than one location; every page reads the current
+location. `can(permission)` hides actions and routes; the API is what enforces them.
 
 ### Code map
-`src/api/` client interface, `mock.ts`, `http.ts` · `src/contracts/` generated types (never edit) ·
-`src/zones/geometry.ts` pure polygon logic · `src/alerts/fold.ts` · `src/rules/describe.ts` ·
-`src/live/` WHEP player · `src/state/` shared state · `src/components/`, `src/pages/` · `src/styles.css`.
+`src/api/` client interface, `mock.ts`, `mockAccounts.ts`, `http.ts` (`credentials: 'include'`, 401 → login) ·
+`src/auth/` AuthProvider, RequireAuth, session helpers · `src/contracts/` generated types (never edit) ·
+`src/zones/geometry.ts` pure polygon logic · `src/alerts/fold.ts`, `format.ts` · `src/rules/describe.ts` ·
+`src/live/` WHEP player and detection overlay · `src/pwa/`, `src/push/` · `src/state/` shared state ·
+`src/components/`, `src/pages/` · `src/styles.css`.
 
 ## API the frontend uses
 
-Base `VITE_API_URL`. Errors: `{detail: {code, message_ro}}` — show `message_ro`.
+Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, message_ro}}` — show
+`message_ro`. Most calls take `?location_id=`. Full list with permissions: [backend handbook](backend.md#endpoints-from-the-routers).
 
 | Method | Path | Notes |
 |---|---|---|
-| GET/POST | `/api/cameras` | POST accepts `id` (use `cam-01` for the demo); device comes from the API's `DEVICE` |
-| GET | `/api/cameras/{id}` | includes `online` |
+| POST | `/api/auth/login` · `/register` · `/logout` | login / register return `Me` and set the cookie |
+| GET | `/api/auth/me` | `{user, org, is_owner, locations: [{id, name, type, role, permissions}]}` |
+| GET/POST · PATCH/DELETE | `/api/locations` · `/api/locations/{id}` | owner |
+| GET · PATCH/DELETE | `/api/locations/{id}/members` · `.../members/{user_id}` | Echipă |
+| POST · GET · POST | `/api/invites` · `/api/invites/{token}` · `/api/invites/{token}/accept` | invite link, public preview, accept |
+| GET | `/api/audit` | `{items: [AuditEntry], next_before}`; filters `actor`, `kind`, `from`, `to`, `before` |
+| GET/POST | `/api/cameras` | POST accepts `id`; 409 on an existing id |
+| GET · PUT/PATCH | `/api/cameras/{id}` | includes `online` |
 | GET/PUT | `/api/cameras/{id}/zones` | PUT replaces all zones |
 | GET/POST | `/api/rules` · GET/PATCH/DELETE `/api/rules/{id}` | |
 | POST | `/api/rules/from-text` | `{camera_id, text, save?}` → `{rule, explanation_ro, saved}`; may answer a clarifying question |
-| GET | `/api/events?limit=` | AlertEvent + `device_id`, `snapshot_url` |
-| GET | `/api/snapshots/{event_id}` | blurred JPEG |
-| GET | `/api/devices` | status, `last_seen` |
+| GET | `/api/alerts?state=&limit=` | folded `AlertView` with `wait_s`, `reaction_s`, `travel_s`, `unacknowledged_arrival` |
+| POST | `/api/alerts/{event_id}/ack` | "Merg eu"; 409 when someone already took it |
+| GET | `/api/metrics/service?from&to` | `{alerts, unacknowledged_arrivals, wait, reaction, travel}`, each `{count, median_s, p90_s}` |
+| GET | `/api/events?limit=` · `/api/snapshots/{id}` | raw events · blurred JPEG |
+| GET | `/api/devices` · `/api/metrics` | status, `last_seen` · `DashboardMetrics` (`alert_latency_ms` may be `null`) |
 | GET | `/api/staff/suggestions` · POST `.../{id}/confirm` · `.../{id}/reject` | |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | multipart field `photo` (images or a short video) |
-| GET | `/api/metrics` | `DashboardMetrics`; `alert_latency_ms` may be `null` |
 | GET | `/api/push/public-key` | VAPID key; 503 when the server has no keys |
-| POST/DELETE | `/api/push/subscribe` | body = `PushSubscription.toJSON()` / `{endpoint}` |
-| POST | `/api/push/test` | test push to every subscription → `{sent, removed, failed}` |
-| WS | `/ws/events` | `{type: 'alert' \| 'suggestion', data}` and `{type: 'detections', camera_id, data: [{track_id, role, box: [x,y,w,h], staff_score, raised_hand}]}` |
+| POST/DELETE | `/api/push/subscribe` | body = `PushSubscription.toJSON()` / `{endpoint}`; tied to the logged-in user |
+| POST | `/api/push/test` | test push to the caller's devices → `{sent, removed, failed}` |
+| WS | `/ws/events` | cookie-authenticated; `{type: 'alert', data: AlertView}` on every change, `{type: 'suggestion', data}`, `{type: 'detections', camera_id, data: [{track_id, role, box: [x,y,w,h], staff_score, raised_hand}]}`; only the user's locations |
 
 Contract types: `packages/contracts` → `make schema` → `npm run contracts`. Don't hand-write API types.
 
@@ -66,9 +91,9 @@ Contract types: `packages/contracts` → `make schema` → `npm run contracts`. 
 - The look is a light working surface (`--ground` `#F6F7F9`, `--surface` white, `--ink` `#14161B` text) with night
   chrome: the sidebar, camera media and the suggestion card are ink. Add `.on-night` to any dark container;
   it remaps `--text`, `--surface*`, `--border*` and `--focus`.
-- Coral `#FF5C6C` means "needs attention" (open alerts, the one alert action). Use it for fills only. As text on
-  light, use `--coral-strong` `#C8283E`. On camera media, light blue (`--live-on-night`) marks staff and live,
-  and white/grey marks guests and tables.
+- Coral `#FF5C6C` means "needs attention" (open alerts, the one alert action "Merg eu"). Use it for fills only.
+  As text on light, use `--coral-strong` `#C8283E`. On camera media, light blue (`--live-on-night`) marks staff
+  and live, and white/grey marks guests and tables.
 - Fonts: Fredoka 600 for the logo and h1, Figtree for the UI, JetBrains Mono for ids, timers and metrics.
   Tap targets are at least 44 px.
 - Brand files are in `docs/brand/` (logo, white logo, mark, app icon, favicon).
@@ -82,14 +107,17 @@ Contract types: `packages/contracts` → `make schema` → `npm run contracts`. 
 - `src/pwa/sw.ts` precaches the app shell (offline navigation in production builds), shows push
   notifications and opens `/alerte` on tap. The API is never cached; `OfflineBanner` probes `/healthz`.
 - Alerte page → "Notificări pe telefon": states indisponibil / blocate / oprite / active, plus "Trimite un test".
+- Alerts are pushed to the subscribed members and owners of the alert's location; the arrival follow-up
+  replaces the alert's notification (same tag).
 - Push needs a secure context: `localhost` or HTTPS. On a phone, serve the dashboard and the API over HTTPS
-  (e.g. `tailscale serve`) and add that origin to the API's `CORS_ORIGINS`.
+  (e.g. `tailscale serve`), add that origin to `CORS_ORIGINS` and set `COOKIE_SECURE=true`.
 
-## Still to build (frontend)
-- Presentation site `apps/site` (static, GitHub Pages): problem, how it works, privacy, architecture, team, demo video.
-- Pitch slides and demo video (see the demo script in the design doc).
+## Presentation site (`apps/site`)
+Static HTML/CSS, built by `apps/site/build.mjs`, deployed to GitHub Pages by `.github/workflows/pages.yml`.
 
 ## Known gaps
-- WHEP live video checked only headless (black frame) — verify in a real browser.
-- Snapshots return 404 when the API runs on the host (`make api`) while ingest writes into a Docker volume.
-- Events from the fake edge use zone id `masa-1`; dashboard-created zones get `z-<ts>` ids.
+- WHEP live video checked only headless (black frame) — verify in a real browser before the demo.
+- Push does not work from a phone over plain `http://<laptop-ip>` (no secure context); Telegram still does.
+- Staff photo profiles are global (shared by every location), not per location.
+- Cameras can be added only at the API's own location (`SITE`); elsewhere "Adaugă cameră" gets an error.
+- Open alerts stay open when their device goes offline — being fixed in `fix/alert-edge-cases`.

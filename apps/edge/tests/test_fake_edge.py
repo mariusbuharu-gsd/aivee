@@ -198,3 +198,54 @@ def test_unattended_waiter_arrives_after_staying_five_seconds() -> None:
     ).run()
     arrived = next(e for e in rec.alerts if e.state == "arrived")
     assert 95 <= arrived.at.timestamp() <= 96  # the waiter reaches Masa 1 at 90
+
+
+# -- overlapping retained tables: the waiter serves the guests' own zone ----------------------
+
+
+def _redrawn_tables(tables: int, overlap: float) -> Any:
+    """cam-01 with "Masa 1" and, for two tables, a redrawn "Masa 2" overlapping it."""
+    from aivee_contracts.geometry import CameraConfig
+
+    zones = [_square("z-masa-1", "Masa 1", "table", 0.10, 0.30, 0.25)]
+    if tables == 2:
+        zones.append(_square("z-masa-2", "Masa 2", "table", 0.35 - overlap, 0.32, 0.25))
+    return CameraConfig(id="cam-01", name="Sala", source="rtsp://x", zones=zones)
+
+
+@pytest.mark.parametrize(
+    ("tables", "overlap"),
+    [(1, 0.0), (2, 0.05), (2, 0.15)],
+    ids=["one-table", "two-tables-slight-overlap", "two-tables-guests-in-overlap"],
+)
+def test_unattended_waiter_arrives_at_the_guests_zone(tables: int, overlap: float) -> None:
+    camera = _redrawn_tables(tables, overlap)
+    assert _run_on(camera, "unattended") == [
+        (s, "demo-unattended", "cam-01", "z-masa-1") for s in _lifecycle("unattended")
+    ]
+
+
+def test_unattended_people_stand_in_the_guests_zone_only() -> None:
+    from aivee_edge.domain.geometry import foot_point, point_in_polygon
+
+    camera = _redrawn_tables(2, 0.15)
+    masa_1, masa_2 = camera.zones
+    layout = fake_edge.Layout.from_camera(camera)
+    assert layout.places["masa-1"] == masa_1
+    for t in (0.0, 95.0):  # the guests, then the guests and the waiter who came
+        tracks, _ = fake_edge.SCENARIOS["unattended"].script(t, layout)
+        for track in tracks:
+            foot = foot_point(track.bbox)
+            assert point_in_polygon(foot, masa_1.polygon), (t, track)
+            assert not point_in_polygon(foot, masa_2.polygon), (t, track)
+
+
+def test_waiter_round_never_uses_a_zone_overlapping_the_guests() -> None:
+    camera = _redrawn_tables(2, 0.05)
+    layout = fake_edge.Layout.from_camera(camera)
+    masa_1 = camera.zones[0]
+    zones = layout.camera.zones
+    stops = [layout.waypoints[p] for p in ("masa-2", "masa-3", "masa-4")]
+    stops = [z for z in stops if z in zones]
+    assert len(stops) >= 2 and all(not fake_edge._overlaps(z, masa_1) for z in stops)
+    assert all(z.id.startswith("demo-") for z in stops)  # behaviour-only stand-ins
