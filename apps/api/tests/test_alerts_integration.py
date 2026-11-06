@@ -1,5 +1,6 @@
 """Alert lifecycle endpoints against a real Postgres: ack, folded view, metrics, live feed."""
 
+import json
 import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
@@ -18,6 +19,8 @@ from aivee_api.deps import Services
 from aivee_api.edge.publisher import RecordingPublisher
 from aivee_api.events.service import LiveFeed
 from aivee_api.main import create_app
+from aivee_api.push.repository import PushSubscriptionRepository
+from aivee_api.push.sender import Subscription
 from aivee_api.settings import ApiSettings
 from aivee_contracts.events import AlertEvent
 from aivee_contracts.geometry import CameraConfig, Zone
@@ -342,3 +345,48 @@ async def test_live_feed_pushes_folded_alerts_and_keeps_raw_events_legacy(
     # The raw stream (what today's dashboard folds) never shows `arrived`.
     assert [r.data.state for r in await raw.poll()] == ["closed"]  # type: ignore[attr-defined]
     assert [e["state"] for e in (await api.get("/api/events")).json()] == ["closed", "opened"]
+
+
+class FakePushSender:
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, dict[str, Any]]] = []
+
+    async def send(self, sub: Any, payload: str) -> int:
+        self.sent.append((sub.endpoint, json.loads(payload)))
+        return 201
+
+
+async def test_ack_replaces_the_alert_push_on_every_phone_with_who_goes(
+    app: FastAPI, client_as: Client, sessions: Any, camera: None
+) -> None:
+    """Q5: "Merg eu" stops the alarm on all phones (same tag = the alert's notification is
+    replaced, silently) and shows who goes."""
+    sender = FakePushSender()
+    app.state.push_sender = sender
+    async with sessions() as s:
+        repo = PushSubscriptionRepository(s)
+        await repo.upsert(Subscription("https://push.example/ion", "k", "a"), user_id="u-ion")
+        await repo.upsert(Subscription("https://push.example/otto", "k", "a"), user_id="u-otto")
+        await s.commit()
+    opened = _event("opened", 0)
+    await _ingest(sessions, opened)
+    ana, ion = await client_as("ana@a.ro"), await client_as("ion@a.ro")
+
+    assert (await ana.post(f"/api/alerts/{opened.event_id}/ack")).status_code == 200
+    [(endpoint, payload)] = sender.sent  # the location's phones only, not Otto's
+    assert endpoint == "https://push.example/ion"
+    assert payload["tag"] == opened.event_id
+    assert payload["body"] == "Ana merge la Masa Unu"
+    assert payload["title"] == "AiVee · Preluată"
+
+    assert (await ion.post(f"/api/alerts/{opened.event_id}/ack")).status_code == 409
+    assert len(sender.sent) == 1  # a refused ack pushes nothing
+
+
+async def test_ack_without_push_configured_still_works(
+    client_as: Client, sessions: Any, camera: None
+) -> None:
+    opened = _event("opened", 0)
+    await _ingest(sessions, opened)
+    ana = await client_as("ana@a.ro")
+    assert (await ana.post(f"/api/alerts/{opened.event_id}/ack")).status_code == 200

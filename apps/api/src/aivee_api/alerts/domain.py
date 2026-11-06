@@ -11,7 +11,7 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 
 AlertState = Literal["opened", "acknowledged", "arrived", "closed"]
@@ -63,6 +63,21 @@ class Lifecycle:
         return self.arrived_at is not None and (
             self.acknowledged_at is None or self.acknowledged_at > self.arrived_at
         )
+
+
+def realert_due(
+    life: Lifecycle, realerted_at: datetime | None, now: datetime, after_s: float
+) -> bool:
+    """Someone pressed "Merg eu" more than `after_s` ago, nobody arrived, the alert is
+    still open and the shift was not told yet (once per alert). Mirrors the SQL claim in
+    `AlertRepository.claim_realerts`."""
+    return (
+        life.acknowledged_at is not None
+        and life.arrived_at is None
+        and life.closed_at is None
+        and realerted_at is None
+        and life.acknowledged_at < now - timedelta(seconds=after_s)
+    )
 
 
 def percentile(values: Sequence[float], q: float) -> float | None:
