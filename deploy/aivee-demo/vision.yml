@@ -17,7 +17,7 @@ x-vision: &vision
   networks: [internal]
   deploy:
     placement: { constraints: ["node.hostname == dev-worker-1"] }
-    resources: { limits: { memory: 1536m, cpus: "2" } }
+    resources: { limits: { memory: 2560m, cpus: "2" } }
     restart_policy: { condition: any, delay: 5s }
 
 services:
@@ -32,6 +32,7 @@ services:
       SOURCE: mqtt-frames://cam-coleg-1
       TARGET_FPS: "5"
       ROTATE: "0"
+      HF_HOME: /tmp/hf  # CLIP weights (uniform + visual rules) download here on first use
       DETECTOR_MODEL: /app/models/yolo11n_int8_openvino_model
       POSE_MODEL: /app/models/yolo11n-pose_int8_openvino_model
       YUNET_MODEL: /app/models/face_detection_yunet_2023mar.onnx
