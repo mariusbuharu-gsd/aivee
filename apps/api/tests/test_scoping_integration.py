@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
+from aivee_api.alerts.repository import AlertRepository
 from aivee_api.audit.models import AuditRow
 from aivee_api.db.repositories import (
     CameraRepository,
@@ -259,7 +260,9 @@ def test_ws_events_needs_the_cookie_and_streams_only_own_locations(
         async with sessions() as s:
             for event_id, device in pairs:
                 cam = "cam1" if device == "edge-01" else "camfar"
-                await EventRepository(s).insert_if_new(_event(event_id, cam), device)
+                event = _event(event_id, cam)
+                await EventRepository(s).insert_if_new(event, device)
+                await AlertRepository(s).link(event, device)
             await s.commit()
 
     with TestClient(app) as client:
@@ -277,6 +280,9 @@ def test_ws_events_needs_the_cookie_and_streams_only_own_locations(
         with client.websocket_connect("/ws/events") as ws:
             time.sleep(0.2)  # let the feed take its starting cursor
             asyncio.run(add_events(("ev-far-2", "edge-far"), ("ev-test-2", "edge-01")))
-            msg = ws.receive_json()
-        assert msg["type"] == "alert" and msg["data"]["event_id"] == "ev-test-2"
+            raw, folded = ws.receive_json(), ws.receive_json()
+        assert raw["type"] == "alert" and raw["data"]["event_id"] == "ev-test-2"
+        # The folded AlertView of the same alert, also only of the user's location.
+        assert folded["type"] == "alert" and folded["data"]["event_id"] == "ev-test-2"
+        assert folded["data"]["location_id"] == "test" and "zone_name" in folded["data"]
     asyncio.run(engine.dispose())

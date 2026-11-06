@@ -115,7 +115,7 @@ def test_mqtt_link_forwards_detections_with_the_topic_device() -> None:
 
 
 class _NoFeed:
-    def __init__(self, _sessions: Any) -> None: ...
+    def __init__(self, _sessions: Any, _locations: Any = None) -> None: ...
 
     async def start(self) -> None: ...
 
@@ -124,6 +124,8 @@ class _NoFeed:
 
 
 class _AllowAll:
+    alert_locations: frozenset[str] = frozenset()
+
     async def refresh(self, _sessions: Any) -> None: ...
 
     def allows(self, _message: BaseModel) -> bool:

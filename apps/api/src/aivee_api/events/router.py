@@ -18,7 +18,7 @@ from aivee_api.deps import Services, ServicesDep, SessionDep
 from aivee_api.errors import NotFound
 from aivee_api.events.schemas import DetectionsMessage, EventOut, event_out
 from aivee_api.events.scope import LiveScope
-from aivee_api.events.service import LiveFeed, snapshot_file
+from aivee_api.events.service import LEGACY_STATES, LiveFeed, snapshot_file
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,12 @@ async def list_events(
     access: Annotated[Access, Depends(require(ALERTS_VIEW))],
     limit: int = Query(50, ge=1, le=500),
 ) -> list[EventOut]:
-    stmt = events_at(access.location_id).order_by(EventRow.at.desc()).limit(limit)
+    stmt = (
+        events_at(access.location_id)
+        .where(EventRow.state.in_(LEGACY_STATES))  # `arrived` only reaches the dashboard folded
+        .order_by(EventRow.at.desc())
+        .limit(limit)
+    )
     return [event_out(r) for r in await s.scalars(stmt)]
 
 
@@ -81,7 +86,7 @@ async def events_socket(ws: WebSocket) -> None:
     await ws.accept()
     await scope.refresh(services.sessions)
     feed = LiveFeed(services.sessions)
-    alerts = AlertFeed(services.sessions)
+    alerts = AlertFeed(services.sessions, scope.alert_locations)
     await feed.start()
     await alerts.start()
     interval: float = getattr(ws.app.state, "ws_poll_interval_s", POLL_INTERVAL_S)
