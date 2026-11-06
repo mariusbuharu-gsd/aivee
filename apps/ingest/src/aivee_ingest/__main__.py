@@ -15,6 +15,7 @@ from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
 from aivee_ingest.locations import telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
+from aivee_ingest.realert import Realerter, run_realerts
 from aivee_ingest.telegram import TelegramNotifier
 from aivee_ingest.webpush import CompositeNotifier, WebPushNotifier
 from aivee_ingest.worker import run_worker
@@ -58,13 +59,18 @@ async def main() -> None:
     settings = IngestSettings()
     engine = make_engine()
     sessions = make_session_factory(engine)
-    handler = IngestHandler(
-        sessions,
-        settings.snapshot_dir,
-        build_notifier(settings, sessions),
-        audit=RepositoryAuditWriter(),
-    )
-    task = asyncio.create_task(run_worker(settings, handler))
+    notifier = build_notifier(settings, sessions)
+    audit = RepositoryAuditWriter()
+    handler = IngestHandler(sessions, settings.snapshot_dir, notifier, audit=audit)
+    realerter = Realerter(sessions, notifier, audit, settings.realert_after_s)
+
+    async def run() -> None:
+        await asyncio.gather(
+            run_worker(settings, handler),
+            run_realerts(realerter, settings.realert_interval_s),
+        )
+
+    task = asyncio.create_task(run())
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, task.cancel)
