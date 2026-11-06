@@ -78,14 +78,18 @@ async def test_log_notifier_logs(caplog: pytest.LogCaptureFixture) -> None:
     assert "Masa 1 așteaptă" in caplog.text
 
 
-async def test_prefix_marks_alert_and_follow_up_messages() -> None:
+def _recording_client() -> tuple[httpx.AsyncClient, list[httpx.Request]]:
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(request)
         return httpx.Response(200, json={"ok": True})
 
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler)), seen
+
+
+async def test_prefix_marks_alert_and_follow_up_messages() -> None:
+    client, seen = _recording_client()
     notifier = TelegramNotifier("TOKEN", "-100", client, prefix="[test]")
     await notifier.notify(EVENT, None)
     await notifier.send_text("Ana a ajuns la Masa 1 după 2 min 10 s")
@@ -100,3 +104,29 @@ async def test_follow_up_error_raises_without_leaking_token() -> None:
     with pytest.raises(RuntimeError) as err:
         await notifier.send_text("x")
     assert "TOKEN" not in str(err.value)
+
+
+async def test_the_locations_chat_wins_over_the_default_for_alert_and_follow_up() -> None:
+    client, seen = _recording_client()
+
+    async def chat_for(event_id: str) -> str | None:
+        return "-200" if event_id == "e1" else None
+
+    notifier = TelegramNotifier("TOKEN", "-100", client, chat_for=chat_for)
+    await notifier.notify(EVENT, None)
+    await notifier.notify(EVENT.model_copy(update={"event_id": "e9"}), None)
+    await notifier.send_text("Ana a ajuns", tag="e1")
+    await notifier.send_text("fără alertă")
+    assert [json.loads(r.content)["chat_id"] for r in seen] == ["-200", "-100", "-200", "-100"]
+
+
+async def test_no_chat_at_all_sends_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    client, seen = _recording_client()
+
+    async def none(_: str) -> str | None:
+        return None
+
+    notifier = TelegramNotifier("TOKEN", None, client, chat_for=none)
+    await notifier.notify(EVENT, None)
+    await notifier.send_text("x", tag="e1")
+    assert seen == [] and "no Telegram chat" in caplog.text

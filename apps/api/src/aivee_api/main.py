@@ -14,8 +14,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from aivee_api.alerts.router import router as alerts_router
 from aivee_api.accounts.invites import router as invites_router
+from aivee_api.alerts.router import router as alerts_router
 from aivee_api.audit.router import router as audit_router
 from aivee_api.auth.router import router as auth_router
 from aivee_api.cameras.router import router as cameras_router

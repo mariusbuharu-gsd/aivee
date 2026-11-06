@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
+from aivee_ingest.locations import telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
 from aivee_ingest.telegram import TelegramNotifier
 from aivee_ingest.webpush import CompositeNotifier, WebPushNotifier
@@ -26,17 +27,22 @@ def build_notifier(
     vapid: VapidSettings | None = None,
 ) -> Notifier:
     notifiers: list[Notifier] = []
-    if settings.telegram_bot_token and settings.telegram_chat_id:
-        log.info("notifier: Telegram")
+    if settings.telegram_bot_token and (settings.telegram_chat_id or sessions is not None):
+        log.info("notifier: Telegram (location chat, else TELEGRAM_CHAT_ID)")
+
+        async def chat_for(event_id: str) -> str | None:
+            return await telegram_chat_for(sessions, event_id) if sessions is not None else None
+
         notifiers.append(
             TelegramNotifier(
                 settings.telegram_bot_token,
                 settings.telegram_chat_id,
                 prefix=settings.telegram_prefix,
+                chat_for=chat_for,
             )
         )
     else:
-        log.info("notifier: log (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set)")
+        log.info("notifier: log (TELEGRAM_BOT_TOKEN not set)")
         notifiers.append(LogNotifier())
     vapid = vapid or VapidSettings()
     if sessions is not None and vapid.enabled:

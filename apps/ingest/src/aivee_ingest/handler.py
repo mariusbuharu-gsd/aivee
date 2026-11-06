@@ -11,10 +11,13 @@ from pathlib import Path
 from aivee_api.alerts.audit import AuditWriter, LoggingAuditWriter, arrival_ro, device_entry
 from aivee_api.alerts.repository import AlertRepository
 from aivee_api.alerts.schemas import AlertView
+from aivee_api.audit.repository import Actor, AuditRepository, Target
+from aivee_api.db.models import Device, Site
 from aivee_api.db.repositories import DeviceRepository, EventRepository, SuggestionRepository
 from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion
 from aivee_contracts.topics import ROOT, Topics
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_ingest.notify import Notifier
@@ -118,7 +121,22 @@ class IngestHandler:
         # The topic (enforced by the broker ACL) is the source of truth for the device id.
         status = status.model_copy(update={"device": t.device})
         async with self._sessions() as s:
-            await DeviceRepository(s).apply_status(t.site, status)
+            # Every replica gets every status: serialise per device so a change is audited once.
+            await s.execute(select(func.pg_advisory_xact_lock(func.hashtext(t.device))))
+            devices = DeviceRepository(s)
+            before = await s.scalar(select(Device.state).where(Device.id == t.device))
+            await devices.apply_status(t.site, status)
+            if before != status.state:
+                site = await s.get(Site, t.site)
+                await AuditRepository(s).append(
+                    f"device.{status.state}",
+                    Actor("device", t.device, t.device),
+                    org_id=site.org_id if site else None,
+                    location_id=t.site,
+                    target=Target("device", t.device, t.device),
+                    before={"state": before} if before else None,
+                    after={"state": status.state},
+                )
             await s.commit()
         log.info("device %s/%s is %s", t.site, t.device, status.state)
 
