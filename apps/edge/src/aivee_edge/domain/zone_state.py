@@ -1,7 +1,10 @@
 """Per-zone presence, absence and objects over time.
 
 A person is in a zone when their foot point is inside its polygon; an object when
-its box centre is. Durations are measured on `Frame.ts` (seconds). A role or object
+its box centre is (for `objects_unattended`). For `object_gone` an object counts by its
+base, the bottom-centre of its box: like a person's feet on the floor, a glass's base
+sits on the table surface the zone is drawn on, while the centre of a tall bottle seen
+from an angle can fall outside it. Durations are measured on `Frame.ts` (seconds). A role or object
 missing for at most `grace_s` still counts as present, so a detector that drops a
 person for a frame does not reset their timers.
 
@@ -13,6 +16,7 @@ from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Role
 
 from aivee_edge.domain.geometry import box_centre, foot_point, point_in_polygon
+from aivee_edge.domain.objects import Gone, ObjectPresence
 from aivee_edge.domain.observation import Frame, TrackObs
 
 ROLES: tuple[Role, ...] = ("guest", "staff", "any")
@@ -36,6 +40,7 @@ class ZoneState:
         self._tracks: list[TrackObs] = []
         self._staff_since: dict[int, float] = {}
         self._staff_last_seen: dict[int, float] = {}
+        self.objects = ObjectPresence()
 
     @property
     def occupied_since(self) -> float | None:
@@ -66,6 +71,12 @@ class ZoneState:
             self.empty_since = None
         elif self.empty_since is None:
             self.empty_since = ts
+
+        counts: dict[str, int] = {}
+        for o in frame.objects:
+            if point_in_polygon(foot_point(o.bbox), poly):
+                counts[o.label] = counts.get(o.label, 0) + 1
+        self.objects.update(ts, counts)
 
         labels = {o.label for o in frame.objects if point_in_polygon(box_centre(o.bbox), poly)}
         for label in labels:
@@ -122,3 +133,7 @@ class ZoneState:
         if not placed:
             return None
         return now - max(min(placed), self.empty_since)
+
+    def gone(self, labels: list[str], min_present_s: float, now: float) -> Gone | None:
+        """A still-holding disappearance of one of `labels` (see `ObjectPresence`)."""
+        return self.objects.gone(labels, min_present_s, now)
