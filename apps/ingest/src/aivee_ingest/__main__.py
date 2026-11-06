@@ -17,6 +17,7 @@ from aivee_ingest.locations import telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
 from aivee_ingest.realert import Realerter, run_realerts
 from aivee_ingest.telegram import TelegramNotifier
+from aivee_ingest.verify import AlertVerification, DbVerificationStore, build_verifier
 from aivee_ingest.webpush import CompositeNotifier, WebPushNotifier
 from aivee_ingest.worker import run_worker
 
@@ -61,7 +62,21 @@ async def main() -> None:
     sessions = make_session_factory(engine)
     notifier = build_notifier(settings, sessions)
     audit = RepositoryAuditWriter()
-    handler = IngestHandler(sessions, settings.snapshot_dir, notifier, audit=audit)
+    verifier = build_verifier(settings)
+    verification = (
+        AlertVerification(
+            verifier,
+            DbVerificationStore(sessions),
+            notifier,
+            settings.snapshot_dir,
+            timeout_s=settings.verify_timeout_s,
+        )
+        if verifier is not None
+        else None
+    )
+    handler = IngestHandler(
+        sessions, settings.snapshot_dir, notifier, audit=audit, verification=verification
+    )
     realerter = Realerter(sessions, notifier, audit, settings.realert_after_s)
 
     async def run() -> None:
