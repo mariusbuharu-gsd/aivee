@@ -63,7 +63,15 @@ async def test_success_returns_the_draft_and_sends_a_cache_friendly_request(
 
 
 async def test_patterns_and_roles_are_in_the_fixed_prompt() -> None:
-    for needle in ("raised_hand", "objects_unattended", "wine glass", "guest", "staff", "any"):
+    for needle in (
+        "raised_hand",
+        "objects_unattended",
+        "object_gone",
+        "wine glass",
+        "guest",
+        "staff",
+        "any",
+    ):
         assert needle in INSTRUCTIONS
 
 

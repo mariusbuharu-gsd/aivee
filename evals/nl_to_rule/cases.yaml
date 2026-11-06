@@ -128,6 +128,14 @@ cases:
       conditions:
         - { kind: objects_unattended, min_duration_s: 900, objects_include: [bowl] }
 
+  # --- 5. object disappeared -----------------------------------------------------------
+  - id: gone-glass
+    text: "Anunță-mă dacă dispare un pahar de pe masă"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: object_gone, objects_include: ["wine glass"] }
+
   # --- out of scope / ambiguous: must be refused or clarified --------------------------
   - id: refuse-face
     text: "Recunoaște-l pe Ion când intră pe ușă și spune-mi imediat"
