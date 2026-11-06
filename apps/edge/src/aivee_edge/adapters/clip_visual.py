@@ -109,6 +109,16 @@ class ClipVisualScorer:
 ScorerFactory = Callable[[], ClipVisualScorer]
 
 
+def _limit_torch_threads(n: int) -> None:
+    """Cap torch's intra-op threads for this worker, so CLIP leaves the cores to the
+    detector (OpenVINO) instead of fighting it for every one of them."""
+    try:
+        import torch
+    except ImportError:
+        return
+    torch.set_num_threads(n)
+
+
 class InlineVisualScorer:
     """`VisualScorer` port that scores inside `submit` (deterministic, blocks the caller)."""
 
@@ -143,8 +153,14 @@ class BackgroundVisualScorer:
     (every frame at DEBUG).
     """
 
-    def __init__(self, factory: ScorerFactory = ClipVisualScorer, log_every_s: float = 5.0) -> None:
+    def __init__(
+        self,
+        factory: ScorerFactory = ClipVisualScorer,
+        log_every_s: float = 5.0,
+        threads: int = 2,
+    ) -> None:
         self._factory = factory
+        self._threads = threads
         self._log_every_s = log_every_s
         self._logged_at = -float("inf")
         self._tasks: queue.Queue[tuple[str, Any]] = queue.Queue()
@@ -185,6 +201,8 @@ class BackgroundVisualScorer:
 
     def _work(self) -> None:
         inner: ClipVisualScorer | None = None
+        if self._threads > 0:
+            _limit_torch_threads(self._threads)
         while True:
             kind, payload = self._tasks.get()
             if kind == "stop":
