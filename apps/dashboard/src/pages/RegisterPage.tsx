@@ -112,8 +112,8 @@ export function RegisterPage() {
         <label className="check">
           <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
           <span>
-            Sunt de acord cu termenii și cu felul în care prelucrăm imaginile: fețele se blurează
-            local, video-ul nu pleacă din locație.
+            Sunt de acord cu termenii și cu felul în care prelucrăm imaginile: video-ul e analizat
+            și aruncat, nu e salvat; fețele apar blurate în orice cadru.
           </span>
         </label>
         {error && <Banner tone="error" title={error} />}
