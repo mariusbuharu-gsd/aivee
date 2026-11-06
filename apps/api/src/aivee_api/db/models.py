@@ -28,12 +28,32 @@ def _now() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+LOCATION_TYPES = ("restaurant", "terrace", "event", "shop", "other")
+
+
 class Site(Base):
+    """A location (D19): the MQTT `<site>` segment. Rows ingest creates for an unknown site
+    have no organization and are visible to nobody until an owner claims them."""
+
     __tablename__ = "sites"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     name: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = _now()
+    org_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(16), default="other", server_default="other")
+    telegram_chat_id: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('restaurant', 'terrace', 'event', 'shop', 'other')", name="location_type"
+        ),
+    )
+
+
+Location = Site
 
 
 class Device(Base):
