@@ -61,7 +61,9 @@ class TelegramNotifier:
             )
         self._check(resp)
 
-    async def send_text(self, text: str, tag: str | None = None) -> None:
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None
+    ) -> None:
         chat_id = await self._chat(tag)
         if not chat_id:
             return

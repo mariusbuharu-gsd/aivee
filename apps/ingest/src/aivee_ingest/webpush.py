@@ -41,14 +41,17 @@ class WebPushNotifier:
         )
         await push_to_location(self._sessions, self._sender, message, location_id)
 
-    async def send_text(self, text: str, tag: str | None = None) -> None:
-        """Follow-up (staff arrived); the same `tag` replaces the alert's notification."""
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None
+    ) -> None:
+        """Follow-up (staff arrived, device gone); the same `tag` replaces the alert's
+        notification. `title` defaults to the arrival's."""
         location_id = await alert_location(self._sessions, tag) if tag else None
         if location_id is None:
             log.warning("no location for alert %s; follow-up push not sent", tag)
             return
         message = PushMessage(
-            title="AiVee · Angajat sosit", body=text, url="/alerte", tag=tag or "aivee"
+            title=title or "AiVee · Angajat sosit", body=text, url="/alerte", tag=tag or "aivee"
         )
         await push_to_location(self._sessions, self._sender, message, location_id)
 
@@ -73,9 +76,11 @@ class CompositeNotifier:
         )
         self._log_failures(results, f"event {event.event_id}")
 
-    async def send_text(self, text: str, tag: str | None = None) -> None:
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None
+    ) -> None:
         results = await asyncio.gather(
-            *(n.send_text(text, tag) for n in self.notifiers), return_exceptions=True
+            *(n.send_text(text, tag, title=title) for n in self.notifiers), return_exceptions=True
         )
         self._log_failures(results, f"follow-up {tag}")
 

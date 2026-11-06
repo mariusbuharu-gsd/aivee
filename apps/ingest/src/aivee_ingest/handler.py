@@ -6,9 +6,17 @@ import os
 import re
 import uuid
 from collections import deque
+from datetime import UTC, datetime
 from pathlib import Path
 
-from aivee_api.alerts.audit import AuditWriter, LoggingAuditWriter, arrival_ro, device_entry
+from aivee_api.alerts.audit import (
+    AuditWriter,
+    LoggingAuditWriter,
+    arrival_ro,
+    device_entry,
+    system_closed_entry,
+)
+from aivee_api.alerts.domain import device_closed_note_ro, system_close_reason
 from aivee_api.alerts.repository import AlertRepository
 from aivee_api.alerts.schemas import AlertView
 from aivee_api.audit.repository import Actor, AuditRepository, Target
@@ -77,8 +85,8 @@ class IngestHandler:
             if inserted:
                 # Same transaction: the row, its alert's folded times and the audit entry.
                 alerts = AlertRepository(s)
-                alert_id = await alerts.link(event, t.device)
-                view = await alerts.view(alert_id) if alert_id else None
+                alert_id, folded = await alerts.link_folded(event, t.device)
+                view = await alerts.view(alert_id) if alert_id and folded else None
                 entry = device_entry(view, event.state) if view else None
                 if entry is not None:
                     await self._audit.append(s, entry)
@@ -120,8 +128,10 @@ class IngestHandler:
     async def _on_status(self, t: Topics, status: DeviceStatus) -> None:
         # The topic (enforced by the broker ACL) is the source of truth for the device id.
         status = status.model_copy(update={"device": t.device})
+        closed: list[AlertView] = []
         async with self._sessions() as s:
-            # Every replica gets every status: serialise per device so a change is audited once.
+            # Every replica gets every status: serialise per device so a change is audited
+            # once, and its open alerts are closed (and announced) once.
             await s.execute(select(func.pg_advisory_xact_lock(func.hashtext(t.device))))
             devices = DeviceRepository(s)
             before = await s.scalar(select(Device.state).where(Device.id == t.device))
@@ -137,8 +147,23 @@ class IngestHandler:
                     before={"state": before} if before else None,
                     after={"state": status.state},
                 )
+            reason = system_close_reason(before, status.state)
+            if reason is not None:
+                closed = await AlertRepository(s).close_open_for_device(
+                    t.device, datetime.now(UTC), reason
+                )
+                for view in closed:
+                    await self._audit.append(s, system_closed_entry(view, reason))
             await s.commit()
         log.info("device %s/%s is %s", t.site, t.device, status.state)
+        if closed and reason is not None:
+            log.info("closed %d open alert(s) of %s: %s", len(closed), t.device, reason)
+            note = device_closed_note_ro(t.device, reason, len(closed))
+            try:
+                # No "a ajuns": nobody came. The tag picks the location (and its chat).
+                await self._notifier.send_text(note, closed[0].event_id, title="AiVee · Dispozitiv")
+            except Exception:
+                log.exception("notifier failed for the %s note of %s", reason, t.device)
 
     async def _on_suggestion(self, t: Topics, suggestion: StaffSuggestion) -> None:
         async with self._sessions() as s:

@@ -120,3 +120,56 @@ def zone_name_from_summary(summary_ro: str) -> str | None:
     """Edge summaries start with the zone's name: "Masa 4: neservită de 2 min"."""
     name, sep, _ = summary_ro.partition(":")
     return name.strip() or None if sep else None
+
+
+# -- closed by the system ------------------------------------------------------------------
+
+CloseReason = Literal["device_offline", "device_restarted"]
+ClosedBy = Literal["edge", "system"]
+
+_REASON_RO: dict[str, str] = {
+    "device_offline": "dispozitivul s-a deconectat",
+    "device_restarted": "dispozitivul a repornit",
+}
+_DEVICE_RO: dict[str, str] = {
+    "device_offline": "s-a deconectat",
+    "device_restarted": "a repornit",
+}
+
+
+def system_close_reason(before: str | None, after: str) -> CloseReason | None:
+    """Why the system closes a device's open alerts on a status message, or None.
+
+    Offline (also repeated: an alert may be stored after the first one): nothing can close
+    them any more. Back online after offline: the edge restarted with a fresh engine and
+    will never close what it opened before. A retained `online` re-read while the device
+    stays online (an ingest restart) closes nothing."""
+    if after == "offline":
+        return "device_offline"
+    if after == "online" and before == "offline":
+        return "device_restarted"
+    return None
+
+
+def closed_by(closed_at: datetime | None, reason: str | None) -> ClosedBy | None:
+    if closed_at is None:
+        return None
+    return "system" if reason else "edge"
+
+
+def system_close_summary_ro(zone_name: str, reason: str) -> str:
+    """ "Alerta de la Masa 1 s-a închis: dispozitivul s-a deconectat"."""
+    return f"Alerta de la {zone_name} s-a închis: {_REASON_RO.get(reason, reason)}"
+
+
+def _alerts_ro(count: int) -> str:
+    if count == 1:
+        return "o alertă închisă"
+    rest = count % 100
+    de = "de " if rest == 0 or rest >= 20 else ""
+    return f"{count} {de}alerte închise"
+
+
+def device_closed_note_ro(device: str, reason: str, count: int) -> str:
+    """ "edge-01 s-a deconectat — 2 alerte închise": one note per device, not per alert."""
+    return f"{device} {_DEVICE_RO.get(reason, reason)} — {_alerts_ro(count)}"
