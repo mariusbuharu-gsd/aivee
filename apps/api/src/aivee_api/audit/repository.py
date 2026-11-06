@@ -56,8 +56,10 @@ class AuditRepository:
         target: Target | None = None,
         before: Any = None,
         after: Any = None,
+        summary: str | None = None,
         **fields: str,
     ) -> AuditRow:
+        """`summary` overrides the kind's template (callers that already phrased it)."""
         row = AuditRow(
             org_id=org_id,
             location_id=location_id,
@@ -68,9 +70,8 @@ class AuditRepository:
             target_type=target.type if target else None,
             target_id=target.id if target else None,
             target_label=target.label if target else None,
-            summary_ro=summary_ro(
-                kind, actor=actor.name, target=target.label if target else "", **fields
-            ),
+            summary_ro=summary
+            or summary_ro(kind, actor=actor.name, target=target.label if target else "", **fields),
             before=before,
             after=after,
         )

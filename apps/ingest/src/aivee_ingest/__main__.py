@@ -5,6 +5,7 @@ import contextlib
 import logging
 import signal
 
+from aivee_api.alerts.audit import RepositoryAuditWriter
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.push.sender import WebPushSender
 from aivee_api.push.settings import VapidSettings
@@ -57,7 +58,12 @@ async def main() -> None:
     settings = IngestSettings()
     engine = make_engine()
     sessions = make_session_factory(engine)
-    handler = IngestHandler(sessions, settings.snapshot_dir, build_notifier(settings, sessions))
+    handler = IngestHandler(
+        sessions,
+        settings.snapshot_dir,
+        build_notifier(settings, sessions),
+        audit=RepositoryAuditWriter(),
+    )
     task = asyncio.create_task(run_worker(settings, handler))
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
