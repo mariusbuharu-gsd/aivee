@@ -23,6 +23,45 @@ def test_cli_overrides_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.device == "edge-07"  # device id follows the MQTT user (ACL)
 
 
+def test_rotate_flag_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert parse([]).rotate == 0
+    assert parse(["--rotate", "90"]).rotate == 90
+    monkeypatch.setenv("ROTATE", "270")
+    assert parse([]).rotate == 270
+    with pytest.raises(SystemExit):
+        parse(["--rotate", "45"])
+
+
+def test_rotate_setting_accepts_only_right_angles() -> None:
+    with pytest.raises(ValueError):
+        EdgeSettings(rotate=45, _env_file=None)  # type: ignore[call-arg]
+
+
+def test_build_vision_passes_rotation_to_the_capture_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class Capture:
+        @staticmethod
+        def Cv2Source(source: str, fps: float, *, rotate: int) -> object:
+            seen["rotate"] = rotate
+            return object()
+
+    class Yolo:
+        @staticmethod
+        def YoloDetector(model: str) -> object:
+            return object()
+
+    modules = {"capture": Capture, "yolo": Yolo}
+    monkeypatch.setattr(app, "_adapter", lambda name: modules[name])
+    settings = EdgeSettings(
+        source="http://phone/video", rotate=90, pose_model="", blur=False, _env_file=None
+    )  # type: ignore[call-arg]
+    app.build_vision(settings)
+    assert seen == {"rotate": 90}
+
+
 def test_missing_vision_adapter_gives_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
     real = importlib.import_module
 

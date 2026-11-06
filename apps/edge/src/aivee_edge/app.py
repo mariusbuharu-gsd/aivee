@@ -95,9 +95,11 @@ def build_vision(settings: EdgeSettings) -> Vision:
     try:
         capture = _adapter("capture")
         if Path(settings.source).is_file():
-            source = capture.FileSource(settings.source, settings.target_fps, settings.loop_file)
+            source = capture.FileSource(
+                settings.source, settings.target_fps, settings.loop_file, rotate=settings.rotate
+            )
         else:
-            source = capture.Cv2Source(settings.source, settings.target_fps)
+            source = capture.Cv2Source(settings.source, settings.target_fps, rotate=settings.rotate)
         detector = _adapter("yolo").YoloDetector(settings.detector_model)
         pose = _adapter("pose").PoseEstimator(settings.pose_model) if settings.pose_model else None
         embedder = (

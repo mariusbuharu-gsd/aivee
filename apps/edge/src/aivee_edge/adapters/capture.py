@@ -15,6 +15,30 @@ log = logging.getLogger(__name__)
 Image = np.ndarray
 
 
+_ROTATIONS: dict[int, int | None] = {
+    0: None,
+    90: cv2.ROTATE_90_CLOCKWISE,
+    180: cv2.ROTATE_180,
+    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+}
+
+
+def rotate(image: Image, degrees: int) -> Image:
+    """Turn `image` clockwise by 0/90/180/270 degrees.
+
+    Applied right after capture, so detection, zones (normalised against the rotated frame),
+    snapshots and live detections all see the upright picture.
+    """
+    rotate_check(degrees)
+    code = _ROTATIONS[degrees]
+    return image if code is None else cv2.rotate(image, code)
+
+
+def rotate_check(degrees: int) -> None:
+    if degrees not in _ROTATIONS:
+        raise ValueError(f"rotation must be one of {sorted(_ROTATIONS)}, got {degrees}")
+
+
 def _parse_source(url_or_index: str | int) -> str | int:
     if isinstance(url_or_index, str) and url_or_index.isdigit():
         return int(url_or_index)
@@ -37,7 +61,10 @@ class Cv2Source:
         max_reconnects: int | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        rotate: int = 0,
     ) -> None:
+        rotate_check(rotate)
+        self._rotate = rotate
         self._source = _parse_source(url_or_index)
         self._period = 1.0 / target_fps if target_fps > 0 else 0.0
         self._max_backoff = max_backoff_s
@@ -85,7 +112,7 @@ class Cv2Source:
             now = self._clock()
             if now - self._last_emit >= self._period:
                 self._last_emit = now
-                return now, image
+                return now, rotate(image, self._rotate)
             # else: drop the frame; grabbing keeps the buffer fresh
 
     def close(self) -> None:
@@ -101,7 +128,11 @@ class FileSource:
     offset per loop so they stay monotonic when `loop=True`.
     """
 
-    def __init__(self, path: str | Path, target_fps: float = 10.0, loop: bool = False) -> None:
+    def __init__(
+        self, path: str | Path, target_fps: float = 10.0, loop: bool = False, *, rotate: int = 0
+    ) -> None:
+        rotate_check(rotate)
+        self._rotate = rotate
         self._path = str(path)
         self._cap = cv2.VideoCapture(self._path)
         if not self._cap.isOpened():
@@ -133,7 +164,7 @@ class FileSource:
             # small epsilon so 30 fps -> 10 fps keeps exactly every 3rd frame
             if ts + 1e-6 >= self._next_ts:
                 self._next_ts = ts + self._period
-                return ts, image
+                return ts, rotate(image, self._rotate)
 
     def close(self) -> None:
         self._cap.release()
