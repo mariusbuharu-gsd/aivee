@@ -117,7 +117,7 @@ async def test_locations_crud_is_owner_only(
     new = {"id": "bar-1", "name": "Bar", "type": "event", "telegram_chat_id": "-100123"}
     assert (await manager.post("/api/locations", json=new)).status_code == 403
     r = await owner.post("/api/locations", json=new)
-    assert r.status_code == 201 and r.json() == new
+    assert r.status_code == 201 and r.json() == {**new, "service_target_s": None}
     assert (await owner.post("/api/locations", json=new)).status_code == 409
     assert (await xowner.post("/api/locations", json={**new, "id": "test"})).status_code == 409
     assert (await owner.post("/api/locations", json={**new, "id": "a/b"})).status_code == 422
@@ -147,6 +147,47 @@ async def test_locations_crud_is_owner_only(
     assert rows[1].before["name"] == "Bar" and rows[1].after["name"] == "Bar nou"
     assert rows[1].summary_ro == "Olga a modificat locația Bar nou"
     for c in (owner, manager, xowner):
+        await c.aclose()
+
+
+async def test_service_target_owners_and_managers_set_it(
+    t: Any, client_factory: Any, login: Any, sessions: Any
+) -> None:
+    owner = await _as(client_factory, login, "owner@t.ro")
+    manager = await _as(client_factory, login, "manager@t.ro")
+    staff = await _as(client_factory, login, "staff@t.ro")
+
+    [loc] = (await manager.get("/api/locations")).json()
+    assert loc["service_target_s"] is None
+
+    r = await manager.patch("/api/locations/test", json={"service_target_s": 90})
+    assert r.status_code == 200, r.text
+    assert r.json()["service_target_s"] == 90
+    assert [x["service_target_s"] for x in (await staff.get("/api/locations")).json()] == [90]
+
+    target = {"service_target_s": 60}
+    assert (await staff.patch("/api/locations/test", json=target)).status_code == 403
+    both = {"service_target_s": 60, "name": "X"}
+    assert (await manager.patch("/api/locations/test", json=both)).status_code == 403
+    assert (await manager.patch("/api/locations/other", json=target)).status_code == 404
+    for bad in (0, 3601, "abc"):
+        r = await owner.patch("/api/locations/test", json={"service_target_s": bad})
+        assert r.status_code == 422
+    r = await owner.patch("/api/locations/test", json={"service_target_s": None})
+    assert r.status_code == 200 and r.json()["service_target_s"] is None
+
+    async with sessions() as s:
+        rows = (
+            await s.scalars(
+                select(AuditRow).where(AuditRow.kind == "location.updated").order_by(AuditRow.id)
+            )
+        ).all()
+    assert [(r.before["service_target_s"], r.after["service_target_s"]) for r in rows] == [
+        (None, 90),
+        (90, None),
+    ]
+    assert rows[0].actor_id == "u-manager"
+    for c in (owner, manager, staff):
         await c.aclose()
 
 

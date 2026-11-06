@@ -496,6 +496,10 @@ details summary {
   font-variant-numeric: tabular-nums;
 }
 
+.metric-unit {
+  font-family: var(--sans);
+}
+
 /* ---------- Camera tiles ---------- */
 .tile {
   background: var(--surface);

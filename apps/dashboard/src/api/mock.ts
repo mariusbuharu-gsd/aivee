@@ -923,6 +923,10 @@ export class MockApi implements ApiClient {
   getServiceMetrics(query: { location_id: string; from?: string; to?: string }) {
     return this.call(() => this.accounts.serviceMetrics(query));
   }
+
+  getServiceHeatmap(query: { location_id: string; from?: string; to?: string }) {
+    return this.call(() => this.accounts.serviceHeatmap(query));
+  }
 }
 
 /** Like the API's `warnings=true`: zones whose bounding boxes overlap (a rough, demo-only check). */
