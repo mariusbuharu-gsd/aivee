@@ -266,6 +266,10 @@ nav {
 .lead strong {
   color: var(--text);
 }
+.hero__sub {
+  color: var(--muted);
+  max-width: 48ch;
+}
 .hero__actions {
   display: flex;
   flex-wrap: wrap;
@@ -468,6 +472,99 @@ nav {
   color: var(--muted);
 }
 
+/* Privacy modes: Cloud (standard) and Edge (option), side by side */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--gap);
+}
+.mode {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-top: 4px solid var(--ink);
+  border-radius: var(--radius);
+}
+.mode h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.5rem;
+}
+.mode p {
+  color: var(--muted);
+}
+.mode .mode__claim {
+  color: var(--text);
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.mode__tag {
+  justify-self: start;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-xs);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.mode p.mode__tag {
+  color: var(--muted-2);
+}
+
+/* Pilot contact: selectable text with a copy button */
+.contact {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+  max-width: 640px;
+}
+.contact__row {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+.contact dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+.contact dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.contact__value {
+  font-size: 1.05rem;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+a.contact__value {
+  color: var(--text);
+}
+.contact__status {
+  min-height: 1.55em;
+  color: var(--live);
+  font-weight: 600;
+}
+
+/* Section kicker above a heading (e.g. "Pentru cititorul tehnic") */
+.section .eyebrow + h2 {
+  margin-top: -20px;
+}
+
 /* Architecture flow */
 .arch {
   margin: 0;
@@ -660,6 +757,7 @@ nav {
 }
 @media (max-width: 720px) {
   .steps,
+  .modes,
   .team {
     grid-template-columns: 1fr;
   }
@@ -699,5 +797,9 @@ nav {
   }
   .hero__actions .btn {
     flex: 1 1 100%;
+  }
+  .contact__row {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 }

@@ -27,6 +27,11 @@ class AlertView(BaseModel):
         None, description='Who pressed "Merg eu": their name at that moment (a snapshot)'
     )
     acknowledged_by_id: str | None = None
+    realerted_at: datetime | None = Field(
+        None,
+        description="When the whole shift was told again that nobody arrived after the ack "
+        "(REALERT_AFTER_S, once per alert)",
+    )
     arrived_at: datetime | None = None
     closed_at: datetime | None = None
     closed_by: ClosedBy | None = Field(
@@ -48,7 +53,8 @@ class AlertView(BaseModel):
 
 
 class AlertViewMessage(BaseModel):
-    """Pushed on /ws/events whenever an alert changes (opened, ack, arrived, closed)."""
+    """Pushed on /ws/events whenever an alert changes (opened, ack, re-alert, arrived,
+    closed)."""
 
     type: Literal["alert"] = "alert"
     data: AlertView

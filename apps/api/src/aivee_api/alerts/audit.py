@@ -6,6 +6,7 @@ with the change (the API's ack, ingest's event). `LoggingAuditWriter` only logs 
 
 import logging
 from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +26,7 @@ ActorKind = Literal["user", "device", "system"]
 class AlertAuditEntry:
     """Mirrors the spec's AuditEntry, minus the id and time the table assigns."""
 
-    kind: str  # alert.opened | alert.acknowledged | alert.arrived | alert.closed
+    kind: str  # alert.opened | .acknowledged | .realerted | .arrived | .closed
     location_id: str | None
     actor_kind: ActorKind
     actor_id: str
@@ -88,6 +89,19 @@ def arrival_ro(view: AlertView) -> str:
     return f"{who} a ajuns la {view.zone_name}{after}"
 
 
+def going_ro(view: AlertView) -> str:
+    """ "Ana merge la Masa 4": who took the alert, for the other phones."""
+    return f"{view.acknowledged_by or 'Cineva'} merge la {view.zone_name}"
+
+
+def realert_ro(view: AlertView, now: datetime) -> str:
+    """ "Masa 4: Ana a confirmat acum 2 min, încă nu a ajuns nimeni" (whole minutes)."""
+    who = view.acknowledged_by or "Cineva"
+    since = (now - view.acknowledged_at).total_seconds() if view.acknowledged_at else 0
+    minutes = max(1, int(since // 60))
+    return f"{view.zone_name}: {who} a confirmat acum {minutes} min, încă nu a ajuns nimeni"
+
+
 def _entry(
     view: AlertView, kind: str, actor: tuple[ActorKind, str, str], summary: str
 ) -> AlertAuditEntry:
@@ -122,6 +136,12 @@ def system_closed_entry(view: AlertView, reason: str) -> AlertAuditEntry:
         system_close_summary_ro(view.zone_name, reason),
     )
     return replace(entry, after={"reason": reason})
+
+
+def realerted_entry(view: AlertView, now: datetime) -> AlertAuditEntry:
+    """Ingest told the whole shift again: acknowledged, nobody arrived (actor = the system)."""
+    entry = _entry(view, "alert.realerted", ("system", "system", "AiVee"), realert_ro(view, now))
+    return replace(entry, after={"realerted_at": now.isoformat()})
 
 
 def device_entry(view: AlertView, state: str) -> AlertAuditEntry | None:
