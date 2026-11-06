@@ -1,5 +1,7 @@
 """auth and tenancy: organizations, locations, users, sessions, memberships, invites, audit_log
 
+push_subscriptions gains user_id.
+
 Sites become locations: they gain org_id, type and telegram_chat_id (the table keeps its name,
 so code that still writes `sites` keeps working). The existing `demo` site moves into the demo
 organization. audit_log is append-only for the role that runs the migration (= the API's role):
@@ -7,7 +9,7 @@ UPDATE/DELETE/TRUNCATE are revoked, and a trigger rejects them too, because the 
 table and may be a superuser (both ignore privileges).
 
 Revision ID: 0003_auth_tenancy
-Revises: 0001
+Revises: 0002_push_subscriptions
 Create Date: 2026-11-06
 """
 
@@ -18,7 +20,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision: str = "0003_auth_tenancy"
-down_revision: str | None = "0001"
+down_revision: str | None = "0002_push_subscriptions"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -71,6 +73,16 @@ def upgrade() -> None:
         sa.Column("is_owner", sa.Boolean, nullable=False, server_default=sa.false()),
         _created(),
     )
+    # A push subscription belongs to the user who subscribed; alerts go only to members of
+    # the alert's location. Existing anonymous rows keep NULL and receive no alerts.
+    op.add_column(
+        "push_subscriptions",
+        sa.Column(
+            "user_id", sa.String(64), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+        ),
+    )
+    op.create_index("ix_push_subscriptions_user_id", "push_subscriptions", ["user_id"])
+
     op.create_table(
         "sessions",
         sa.Column("token_hash", sa.String(64), primary_key=True),
@@ -190,6 +202,8 @@ def downgrade() -> None:
     op.drop_table("invites")
     op.drop_table("memberships")
     op.drop_table("sessions")
+    op.drop_index("ix_push_subscriptions_user_id", "push_subscriptions")
+    op.drop_column("push_subscriptions", "user_id")
     op.drop_table("users")
     op.drop_constraint("location_type", "sites", type_="check")
     op.drop_index("ix_sites_org_id", "sites")

@@ -461,12 +461,16 @@ async def test_enrolment_models_that_fail_to_load_are_503(
     translator: Any,
     services_factory: Any,
     fake_enroller: Enroller,
+    tenancy_factory: Any,
+    login: Any,
 ) -> None:
+    await tenancy_factory(sessions)
     broken = Enroller(fake_enroller._decoder, fake_enroller._cropper, _NoWeights())
     app = create_app(services_factory(settings, sessions, publisher, translator, broken))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
+        await login(client, "manager@t.ro")
         r = await client.post(
             "/api/staff/photos", files=[("photo", ("a.jpg", bytes([2]), "image/jpeg"))]
         )

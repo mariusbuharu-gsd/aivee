@@ -28,7 +28,7 @@ async def _sql(url: str, *statements: str) -> list[list[tuple[object, ...]]]:
 
 
 def test_upgrade_moves_demo_into_the_demo_org_and_downgrade_reverts(empty_db_url: str) -> None:
-    upgrade(empty_db_url, "0001")
+    upgrade(empty_db_url, "0002_push_subscriptions")
     asyncio.run(
         _sql(
             empty_db_url,
@@ -49,7 +49,7 @@ def test_upgrade_moves_demo_into_the_demo_org_and_downgrade_reverts(empty_db_url
     ]
     assert orgs == [("org-demo", "AiVee Demo")]
 
-    downgrade(empty_db_url, "0001")
+    downgrade(empty_db_url, "0002_push_subscriptions")
     [tables, cols] = asyncio.run(
         _sql(
             empty_db_url,
