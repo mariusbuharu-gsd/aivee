@@ -2,7 +2,10 @@
 name = "aivee-edge"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["aivee-contracts"]
+dependencies = [
+    "aivee-contracts",
+    "paho-mqtt>=2.1",
+]
 
 [build-system]
 requires = ["hatchling"]

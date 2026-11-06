@@ -2,7 +2,14 @@
 name = "aivee-ingest"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["aivee-contracts"]
+dependencies = [
+    "aiomqtt>=2.5.1",
+    "aivee-api",
+    "aivee-contracts",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.16.2",
+    "tzdata>=2026.6",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -13,3 +20,4 @@ packages = ["src/aivee_ingest"]
 
 [tool.uv.sources]
 aivee-contracts = { workspace = true }
+aivee-api = { workspace = true }
