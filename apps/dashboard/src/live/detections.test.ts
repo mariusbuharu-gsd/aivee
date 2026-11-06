@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Detections } from '../contracts';
-import { detectionLabel, fromContract, parseDetections } from './detections';
+import { detectionLabel, detectionTitle, fromContract, parseDetections } from './detections';
 
 describe('parseDetections', () => {
   it('reads the API frame as is', () => {
@@ -79,9 +79,13 @@ describe('fromContract', () => {
 
 describe('detectionLabel', () => {
   it('names people by role in Romanian and flags a raised hand', () => {
-    expect(detectionLabel({ track_id: 7, role: 'staff', box: [0, 0, 1, 1] })).toBe('angajat #7');
+    expect(detectionLabel({ track_id: 7, role: 'staff', box: [0, 0, 1, 1] })).toBe('angajat');
     expect(
       detectionLabel({ track_id: 12, role: 'guest', box: [0, 0, 1, 1], raised_hand: true }),
-    ).toBe('mână ridicată #12');
+    ).toBe('mână ridicată');
+  });
+
+  it('keeps the track id for the title only', () => {
+    expect(detectionTitle({ track_id: 7, role: 'guest', box: [0, 0, 1, 1] })).toBe('client #7');
   });
 });

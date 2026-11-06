@@ -407,7 +407,7 @@ describe('SuggestionCard', () => {
     const { api } = renderWithApi(
       <SuggestionCard suggestion={suggestion} cameraName="Sala" onResolved={onResolved} />,
     );
-    const card = screen.getByRole('article', { name: '#7 pare să fie din personal?' });
+    const card = screen.getByRole('article', { name: 'Persoana asta e din personal?' });
     expect(card).toHaveClass('suggestion-q', 'suggestion-q-side');
     expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
     expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
@@ -437,7 +437,7 @@ describe('SuggestionCard', () => {
       />,
     );
     expect(
-      screen.getByRole('heading', { name: '#7 pare să fie din personal?' }),
+      screen.getByRole('heading', { name: 'Persoana asta e din personal?' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
     expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();

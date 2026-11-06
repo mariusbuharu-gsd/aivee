@@ -3,7 +3,8 @@ import { Link } from 'react-router';
 import type { CameraView, Detection } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
-import { detectionLabel } from '../live/detections';
+import { detectionLabel, detectionTitle } from '../live/detections';
+import { plural } from '../ui/plural';
 import { LivePlayer } from '../live/LivePlayer';
 import { isCloudFrames } from '../live/source';
 import { toSvgPoints } from '../zones/geometry';
@@ -92,6 +93,7 @@ export function CameraTile({
           <div
             key={d.track_id}
             className={`det det-${d.role}${d.raised_hand ? ' det-hand' : ''}`}
+            title={detectionTitle(d)}
             style={{
               left: `${d.box[0] * 100}%`,
               top: `${d.box[1] * 100}%`,
@@ -108,7 +110,8 @@ export function CameraTile({
         <div className="tile-title">
           <span>{camera.name}</span>
           <span className="muted mono small">
-            {camera.zones?.length ?? 0} zone · {shown.length} persoane
+            {plural(camera.zones?.length ?? 0, 'zonă', 'zone')} ·{' '}
+            {plural(shown.length, 'persoană', 'persoane')}
           </span>
         </div>
         {can('devices.manage') && (

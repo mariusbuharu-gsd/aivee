@@ -68,7 +68,7 @@ describe('Live', () => {
     api.emitSuggestion();
     const side = await screen.findByRole('complementary', { name: 'Alerte recente' });
     const question = await within(side).findByRole('article', {
-      name: /^#\d+ pare să fie din personal\?$/,
+      name: 'Persoana asta e din personal?',
     });
     expect(question).toHaveClass('suggestion-q-side');
     expect(within(side).queryByText(/scor/)).toBeNull();

@@ -155,7 +155,7 @@ describe('App with the mock API', () => {
     const rows = await screen.findByRole('list', { name: 'Alerte închise' });
     expect(rows.querySelectorAll(':scope > li')).toHaveLength(5);
     expect(screen.getByText('Confirmat de AI')).toBeInTheDocument();
-    expect((await screen.findAllByText(/angajat #7/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByTitle(/angajat #7/)).length).toBeGreaterThan(0);
   });
 
   it('navigates to the zone editor and lists the camera zones', async () => {
