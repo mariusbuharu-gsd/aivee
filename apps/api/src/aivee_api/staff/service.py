@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,7 +13,12 @@ from aivee_api.events.schemas import SuggestionOut, suggestion_out
 from aivee_api.staff.enrol import Enroller, Upload, l2_normalise
 from aivee_api.staff.schemas import DecisionOut, EnrolOut, ProfileOut
 
+log = logging.getLogger(__name__)
+
 NO_ENROLLER = "Înrolarea din poze nu este disponibilă pe acest server (lipsesc modelele)."
+MODELS_FAILED = (
+    "Înrolarea din poze nu merge acum: modelele nu au putut fi încărcate. Încearcă mai târziu."
+)
 
 
 class StaffService:
@@ -48,7 +54,11 @@ class StaffService:
         bad = [u.filename for u in uploads if not u.content_type.startswith(("image/", "video/"))]
         if bad:
             raise Invalid(f"Fișiere nesuportate (doar imagini sau video): {', '.join(bad)}")
-        result = await asyncio.to_thread(self._enroller.enrol, list(uploads))
+        try:
+            result = await asyncio.to_thread(self._enroller.enrol, list(uploads))
+        except (RuntimeError, OSError) as e:  # weights missing, download or load failed
+            log.exception("enrolment models failed to load")
+            raise Unavailable(MODELS_FAILED) from e
         profile = await self._ensure_profile(profile_id, name, description_ro)
         await self._add_examples(profile.id, result.embeddings, "upload")
         await self._s.commit()
