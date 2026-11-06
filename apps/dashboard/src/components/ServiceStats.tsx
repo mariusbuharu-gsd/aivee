@@ -5,6 +5,7 @@ import { useLocationId } from '../auth/context';
 import { duration } from '../alerts/format';
 import { barTones, headline, periodPhrase, serviceTarget, shortDuration } from '../metrics/insight';
 import { Banner } from '../ui/Banner';
+import { LookingEyes } from '../ui/Eyes';
 
 const TILES: { key: 'reaction' | 'travel'; label: string; hint: string }[] = [
   { key: 'reaction', label: 'Reacție', hint: 'de la alertă până apasă cineva „Merg eu”' },
@@ -69,7 +70,10 @@ export function ServiceStats({ days }: { days: number }) {
       <div className="service-lead">
         <p className="service-headline">
           {!h ? (
-            'Se încarcă…'
+            <span className="loading">
+              <LookingEyes size={36} />
+              Se încarcă…
+            </span>
           ) : h.value === null ? (
             h.rest
           ) : (

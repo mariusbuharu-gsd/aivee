@@ -19,6 +19,7 @@ import { useLiveData } from '../state/context';
 import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
+import { BusyLabel } from '../ui/Eyes';
 
 interface Extra {
   profiles: StaffProfile[] | null;
@@ -201,7 +202,9 @@ function StepAction({
         disabled={busy || !!step.waitingFor}
         onClick={onTest}
       >
-        {busy ? 'Se trimite…' : step.action}
+        <BusyLabel busy={busy} idle={step.action}>
+          Se trimite…
+        </BusyLabel>
       </button>
     );
   }

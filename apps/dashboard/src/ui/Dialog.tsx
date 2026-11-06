@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../components/Icon';
 import { Banner } from './Banner';
+import { BusyLabel } from './Eyes';
 
 /**
  * A modal on the native `<dialog>`: focus is trapped, Esc and a click on the backdrop close it,
@@ -140,7 +141,9 @@ export function ConfirmDialog({
             onClick={() => void go()}
             disabled={!ready || busy}
           >
-            {busy ? 'Un moment…' : confirmLabel}
+            <BusyLabel busy={busy} idle={confirmLabel}>
+              Un moment…
+            </BusyLabel>
           </button>
         </>
       }

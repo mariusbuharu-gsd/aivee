@@ -10,6 +10,7 @@ import { Banner } from '../ui/Banner';
 import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
 import './RuleComposer.css';
+import { BusyLabel } from '../ui/Eyes';
 
 // Web Speech API is not in lib.dom yet; describe the small part we use.
 interface SpeechRecognitionLike {
@@ -231,7 +232,9 @@ export function RuleComposer({
               className="btn btn-accent composer-go"
               aria-busy={busy || undefined}
             >
-              {busy ? 'Se analizează…' : 'Creează regula'}
+              <BusyLabel busy={busy} idle="Creează regula">
+                Se analizează…
+              </BusyLabel>
             </button>
           </div>
         </form>
@@ -323,7 +326,16 @@ export function RuleComposer({
                 <Icon name="edit" /> {editing ? 'Gata cu modificările' : 'Modifică'}
               </button>
               <button className="btn btn-accent" onClick={confirm} disabled={busy}>
-                <Icon name="check" /> {busy ? 'Se salvează…' : 'Pornește regula'}
+                <BusyLabel
+                  busy={busy}
+                  idle={
+                    <>
+                      <Icon name="check" /> Pornește regula
+                    </>
+                  }
+                >
+                  Se salvează…
+                </BusyLabel>
               </button>
             </div>
           </div>
