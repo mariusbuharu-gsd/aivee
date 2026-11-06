@@ -207,9 +207,13 @@ class EventRepository:
     async def get(self, event_id: str) -> EventRow | None:
         return await self.s.scalar(select(EventRow).where(EventRow.event_id == event_id))
 
-    async def recent(self, limit: int = 50) -> Sequence[EventRow]:
-        rows = await self.s.scalars(select(EventRow).order_by(EventRow.at.desc()).limit(limit))
-        return rows.all()
+    async def recent(
+        self, limit: int = 50, states: Sequence[str] | None = None
+    ) -> Sequence[EventRow]:
+        stmt = select(EventRow).order_by(EventRow.at.desc()).limit(limit)
+        if states is not None:
+            stmt = stmt.where(EventRow.state.in_(states))
+        return (await self.s.scalars(stmt)).all()
 
     async def max_id(self) -> int:
         return int(await self.s.scalar(select(func.coalesce(func.max(EventRow.id), 0))) or 0)

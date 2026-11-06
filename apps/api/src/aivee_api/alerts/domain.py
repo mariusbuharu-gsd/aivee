@@ -4,9 +4,9 @@
 
 `arrived` may come without `acknowledged` ("fără preluare").
 
-- wait     = arrived (or closed) − opened
-- reaction = acknowledged − opened
-- travel   = arrived − acknowledged (only when the ack came first)
+- wait     = arrived (or closed) - opened
+- reaction = acknowledged - opened
+- travel   = arrived - acknowledged (only when the ack came first)
 """
 
 from collections.abc import Iterable, Sequence
@@ -108,7 +108,7 @@ def service_stats(lives: Sequence[Lifecycle]) -> ServiceStats:
 
 
 def duration_ro(seconds: float) -> str:
-    """"2 min 10 s", "45 s", "3 min"."""
+    """ "2 min 10 s", "45 s", "3 min"."""
     total = round(seconds)
     minutes, rest = divmod(total, 60)
     if minutes == 0:

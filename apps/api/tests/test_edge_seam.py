@@ -127,6 +127,7 @@ def test_ws_events_pushes_live_detections(
     monkeypatch: pytest.MonkeyPatch, settings: ApiSettings, translator: Any, services_factory: Any
 ) -> None:
     monkeypatch.setattr(events_router, "LiveFeed", _NoFeed)
+    monkeypatch.setattr(events_router, "AlertFeed", _NoFeed)
     services: Services = services_factory(settings, None, RecordingPublisher(), translator)
     app = create_app(services)
     msg = DetectionsMessage.from_detections(_detections())
