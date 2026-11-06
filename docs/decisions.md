@@ -22,3 +22,9 @@ One line per decision. Newest last. Reopen a decision only with a new entry that
 | D16 | 11-06 | Git flow: `feature/*`, `fix/*`, `docs/*` → PR into `develop` (default branch) → squash after green CI. `develop` → `main` only at milestones. | `main` is always demo-ready. |
 | D17 | 11-06 | **No AI attribution** in commits or PRs. Code, docs, commits in English; UI copy in Romanian. | Team decision. |
 | D18 | 11-06 | Dashboard: Vite + React 19 + strict TS, plain CSS with tokens ("night watch" dark theme), mock API when `VITE_API_URL` is unset. | Fast, no UI framework lock-in, demo works offline. |
+| D19 | 11-06 | AiVee is for **locations** in general (restaurants, terraces, events, shops), not only restaurants. Organization → locations → devices. A location is the MQTT `<site>`. | Wider market; the engine is not restaurant-specific. |
+| D20 | 11-06 | Real accounts: argon2 passwords, opaque session in an HttpOnly cookie, invites by link. | Secure by default without an identity provider. |
+| D21 | 11-06 | Roles **per location**: manager, staff; owner sees every location of the org. Fixed permission matrix enforced in the API. | Matches how places are staffed; staff only get their location's alerts. |
+| D22 | 11-06 | Append-only **audit history** of accounts, configuration (before/after), staff decisions, alerts and devices. | Accountability and service statistics. |
+| D23 | 11-06 | Alert lifecycle opened → acknowledged ("Merg eu") → arrived (edge sees staff ≥ 5 s) → closed, with wait / reaction / travel times. | The owner's real question: how long do guests wait and how fast do we react. |
+| D24 | 11-06 | Spec for D19–D23: `docs/plans/2026-11-06-auth-roles-audit.md`. | One contract for three parallel streams. |
