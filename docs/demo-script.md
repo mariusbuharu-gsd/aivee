@@ -59,6 +59,10 @@ Istoric and Metrici.
   (the recorded clip, already upright). Still nothing → `make fake-edge SCENARIO=unattended SPEED=2`
   and say "this is the same pipeline fed by a scripted scene". Login fails → `make seed` was not run or
   `DEMO_PASSWORD` changed; run `make seed` (it resets the three demo users).
+- **Fallback without a live camera at all:** Analiză video (`/video`) → upload `recordings/sala-1.mp4`, copy
+  zones and rules from cam-01 → the timeline lists each alert at its mm:ss with the blurred snapshot. Say:
+  "the same pipeline and the same rules, on a recording, as fast as the laptop can go; it does not ring the
+  staff's phones".
 
 ### 2. A rule in Romanian (0:20–0:55)
 
@@ -156,6 +160,10 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
 - [ ] Backup clips present and playing: `ls recordings/` — one clip per scene, made with
       `make record SOURCE=http://<phone>:8080/video SECONDS=60 ROTATE=90 NAME=<scene>`.
 - [ ] Fake edge tested once: `make fake-edge SCENARIO=unattended SPEED=10`.
+- [ ] Analiză video ready: `MQTT_UPLOAD_USER` / `MQTT_UPLOAD_PASSWORD` in `.env` (`make keys`), mosquitto
+      restarted once since, `make data-dirs`, migrations at head. Upload `recordings/sala-1.mp4` on `/video`
+      with "Copiază zonele și regulile de la" = cam-01 once before the demo, so a finished timeline is there
+      to show even if there is no time to wait for a new run. It never rings the staff's phones.
 - [ ] Wi-Fi fallback (USB fails): laptop hotspot configured; phone and camera phone know it;
       `ROTATE=90 APPEARANCE=true TARGET_FPS=30 make edge SOURCE=http://<phone>:8080/video`, and update the
       dashboard URL on Vasi's phone.
