@@ -229,9 +229,10 @@ h3 { font-size: 19px; line-height: 1.3; }
 .points li { border-top: 2px solid var(--ink); padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .points p { color: var(--muted); font-size: 15px; }
 
-.video-placeholder { aspect-ratio: 16 / 9; max-width: 960px; border-radius: var(--radius-lg); background: var(--night); color: var(--night-muted); display: grid; place-content: center; justify-items: center; gap: 16px; text-align: center; padding: 24px; }
-.video-placeholder__play { width: 72px; height: 72px; border-radius: 50%; background: var(--coral); clip-path: none; position: relative; }
-.video-placeholder__play::after { content: ""; position: absolute; left: 29px; top: 22px; border-style: solid; border-width: 14px 0 14px 22px; border-color: transparent transparent transparent var(--ink); }
+
+.demo-still { margin: 0; max-width: 960px; display: flex; flex-direction: column; gap: 12px; }
+.demo-still img { display: block; width: 100%; height: auto; border-radius: var(--radius-lg); border: 1px solid var(--line, rgba(20, 22, 27, 0.12)); box-shadow: 0 24px 60px -30px rgba(20, 22, 27, 0.45); }
+.demo-still figcaption { font-size: 14px; color: var(--muted, #4b515c); }
 
 /* ---------- Pilot: contact + demo form (night) ---------- */
 .pilot { background: var(--night); color: var(--night-text); padding-block: var(--section-y); }
