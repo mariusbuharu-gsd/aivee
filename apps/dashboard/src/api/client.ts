@@ -37,6 +37,31 @@ export interface StaffProfile {
   has_centroid: boolean;
 }
 
+/** One guided capture (`POST /api/staff/capture`): the largest person of each sampled frame. */
+export interface StaffCapture {
+  token: string;
+  camera_id: string;
+  /** Frames sampled from the camera. */
+  frames: number;
+  /** `thumbnail` is a `data:image/jpeg;base64,…` URL of the person crop. */
+  candidates: { index: number; thumbnail: string }[];
+  expires_in_s: number;
+}
+
+/** Keep `keep` of a capture: into `profile_id`, or a new profile named `name`. */
+export interface StaffCaptureConfirm {
+  keep: number[];
+  name?: string;
+  description_ro?: string;
+  profile_id?: string;
+}
+
+export interface StaffEnrolResult {
+  profile: StaffProfile;
+  examples_added: number;
+  published: boolean;
+}
+
 /** A camera plus the online state of the device that serves it. */
 export interface CameraView extends CameraConfig {
   device: string;
@@ -244,6 +269,14 @@ export interface ApiClient extends AccountApi {
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;
   uploadStaffPhoto(file: File): Promise<void>;
+  /**
+   * `POST /api/staff/capture` (`staff.enrol`): samples the camera's live frames for `seconds`
+   * (5–30, default 20); resolves after about that long. 404 when the camera sends nothing,
+   * 422 when nobody was in front of it, 503 without enrolment models.
+   */
+  captureStaff(cameraId: string, seconds?: number): Promise<StaffCapture>;
+  /** `POST /api/staff/capture/{token}/confirm`: enrol the kept crops and publish the profile. */
+  confirmStaffCapture(token: string, input: StaffCaptureConfirm): Promise<StaffEnrolResult>;
   /** `GET /api/staff/profiles` (`staff.enrol`): enrolled uniform profiles, shared by every location. */
   listStaffProfiles(): Promise<StaffProfile[]>;
   getMetrics(): Promise<DashboardMetrics>;

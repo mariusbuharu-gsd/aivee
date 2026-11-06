@@ -22,6 +22,9 @@ import {
   type CameraPatch,
   type NewCamera,
   type SavedZones,
+  type StaffCapture,
+  type StaffCaptureConfirm,
+  type StaffEnrolResult,
   type StaffProfile,
   type RulePatch,
   type RegisterInput,
@@ -34,6 +37,16 @@ import {
   type VideoUpload,
 } from './client';
 import { fromContract } from '../live/detections';
+
+/** A person-shaped placeholder thumbnail for the mock capture (no real camera here). */
+function silhouette(hue: number): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="200" viewBox="0 0 120 200">` +
+    `<rect width="120" height="200" fill="hsl(${hue} 20% 88%)"/>` +
+    `<circle cx="60" cy="45" r="22" fill="hsl(${hue} 15% 60%)"/>` +
+    `<path d="M22 200V120a38 38 0 0 1 76 0v80z" fill="hsl(${hue} 45% 35%)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const wait = (ms: number) =>
@@ -814,6 +827,42 @@ export class MockApi implements ApiClient {
         has_centroid: true,
       });
     await this.delay(null);
+  }
+
+  private captures = new Map<string, number>();
+
+  async captureStaff(cameraId: string): Promise<StaffCapture> {
+    await wait(this.latency * 4);
+    if (!this.cameras.some((c) => c.id === cameraId))
+      throw new ApiError(`Camera ${cameraId} nu există.`, 'not_found', 404);
+    const token = uid('cap');
+    const candidates = [200, 210, 220, 205, 215, 30].map((hue, index) => ({
+      index,
+      thumbnail: silhouette(hue),
+    }));
+    this.captures.set(token, candidates.length);
+    return { token, camera_id: cameraId, frames: 12, candidates, expires_in_s: 600 };
+  }
+
+  async confirmStaffCapture(token: string, input: StaffCaptureConfirm): Promise<StaffEnrolResult> {
+    await wait(this.latency);
+    if (!this.captures.has(token))
+      throw new ApiError('Captura a expirat sau nu există. Începe din nou.', 'not_found', 404);
+    if (input.keep.length === 0) throw new ApiError('Alege cel puțin o poză.', 'invalid', 422);
+    this.captures.delete(token);
+    let profile = this.staffProfiles.find((p) => p.id === input.profile_id);
+    if (profile) profile.examples += input.keep.length;
+    else {
+      profile = {
+        id: uid('staff'),
+        name: input.name?.trim() || 'Angajat',
+        description_ro: input.description_ro ?? '',
+        examples: input.keep.length,
+        has_centroid: true,
+      };
+      this.staffProfiles.push(profile);
+    }
+    return { profile: { ...profile }, examples_added: input.keep.length, published: true };
   }
 
   /** Empty until a photo is uploaded, so the setup checklist shows "Poze cu uniforma" to do. */
