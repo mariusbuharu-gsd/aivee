@@ -1,6 +1,7 @@
 """API test doubles. Unit tests use them without a DB; integration tests add `sessions`."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -120,3 +121,79 @@ def draft_factory() -> Any:
 @pytest.fixture
 def translator_factory() -> Any:
     return FakeTranslator
+
+
+# --- accounts and tenancy (integration) ---------------------------------------------------
+
+PASSWORD = "parola-test-1"
+
+
+@dataclass(frozen=True)
+class Tenancy:
+    """org-t: locations `test` (= settings.site) and `other`; org-x: location `far`.
+    Users (password PASSWORD): owner@t.ro, manager@t.ro (test), staff@t.ro (test),
+    other@t.ro (manager of `other`), owner@x.ro."""
+
+    org: str = "org-t"
+    location: str = "test"
+    other_location: str = "other"
+    foreign_location: str = "far"
+
+
+async def seed_tenancy(sessions: Any) -> Tenancy:
+    from aivee_api.accounts.models import Membership, Organization, User
+    from aivee_api.auth.passwords import hash_password
+    from aivee_api.db.models import Site
+
+    t = Tenancy()
+    pw = hash_password(PASSWORD)
+    async with sessions() as s:
+        s.add_all([Organization(id="org-t", name="Org T"), Organization(id="org-x", name="Org X")])
+        s.add(Site(id=t.location, name="Terasa", org_id="org-t", type="terrace"))
+        await s.commit()  # `test` is created first, so it is everyone's default location
+        s.add_all(
+            [
+                Site(id=t.other_location, name="Sala mare", org_id="org-t", type="restaurant"),
+                Site(id=t.foreign_location, name="Străin", org_id="org-x", type="shop"),
+            ]
+        )
+        await s.flush()
+        users = [
+            ("u-owner", "org-t", "owner@t.ro", "Olga", True),
+            ("u-manager", "org-t", "manager@t.ro", "Mihai", False),
+            ("u-staff", "org-t", "staff@t.ro", "Ana", False),
+            ("u-other", "org-t", "other@t.ro", "Otilia", False),
+            ("u-xowner", "org-x", "owner@x.ro", "Xenia", True),
+        ]
+        s.add_all(
+            [
+                User(id=i, org_id=o, email=e, name=n, password_hash=pw, is_owner=own)
+                for i, o, e, n, own in users
+            ]
+        )
+        await s.flush()
+        s.add_all(
+            [
+                Membership(user_id="u-manager", location_id=t.location, role="manager"),
+                Membership(user_id="u-staff", location_id=t.location, role="staff"),
+                Membership(user_id="u-other", location_id=t.other_location, role="manager"),
+            ]
+        )
+        await s.commit()
+    return t
+
+
+@pytest.fixture
+def tenancy_factory() -> Any:
+    return seed_tenancy
+
+
+async def login_as(client: Any, email: str, password: str = PASSWORD) -> Any:
+    r = await client.post("/api/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+    return r
+
+
+@pytest.fixture
+def login() -> Any:
+    return login_as

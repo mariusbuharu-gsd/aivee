@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from aivee_api.alerts.router import router as alerts_router
+from aivee_api.auth.router import router as auth_router
 from aivee_api.cameras.router import router as cameras_router
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.deps import Services
@@ -98,6 +99,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     )
     install_handlers(app)
     for router in (
+        auth_router,
         cameras_router,
         zones_router,
         rules_router,
