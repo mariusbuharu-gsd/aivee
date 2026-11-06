@@ -445,6 +445,9 @@ p {
 .pill-muted {
   color: var(--muted);
 }
+.pill-warn {
+  color: var(--warn);
+}
 
 /* ---------- Rule composer ---------- */
 details summary {

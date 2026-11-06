@@ -166,4 +166,45 @@ describe('DevicesPage', () => {
     expect(within(dialog).getByRole('img', { name: /Cod QR/ })).toBeInTheDocument();
     expect(within(dialog).getByText(url)).toBeInTheDocument();
   });
+
+  it('shows "fără imagine" when an online device has been silent for over a minute', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const real = api.listDevices.bind(api);
+    vi.spyOn(api, 'listDevices').mockImplementation(async () =>
+      (await real()).map((d) =>
+        d.state === 'online'
+          ? { ...d, last_seen: new Date(Date.now() - 5 * 60_000).toISOString() }
+          : d,
+      ),
+    );
+    renderApp('/dispozitive', 'manager@aivee.demo', api);
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    expect(await within(sala).findByText('fără imagine')).toBeInTheDocument();
+    expect(within(sala).getByText('Nu mai vin imagini. Ce verifici:')).toBeInTheDocument();
+    expect(within(sala).queryByText('FPS')).toBeNull();
+    expect(within(sala).queryByRole('button', { name: /încearcă din nou/ })).toBeNull();
+  });
+
+  it('asks about the laptop script and the phone page for an offline cloud camera', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const real = api.listCameras.bind(api);
+    vi.spyOn(api, 'listCameras').mockImplementation(async () =>
+      (await real()).map((c) => (c.online ? c : { ...c, source: `mqtt-frames://${c.id}` })),
+    );
+    renderApp('/dispozitive', 'manager@aivee.demo', api);
+    const terrace = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Terasă' },
+      { timeout: 5000 },
+    );
+    expect(
+      await within(terrace).findByText('Scriptul de pe laptop rulează? Laptopul are internet?'),
+    ).toBeInTheDocument();
+    expect(within(terrace).getByText(/e deschisă și ecranul aprins\?/)).toBeInTheDocument();
+    expect(within(terrace).queryByText(/Cablul de rețea/)).toBeNull();
+  });
 });

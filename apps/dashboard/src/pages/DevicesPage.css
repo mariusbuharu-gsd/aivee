@@ -94,6 +94,9 @@
   flex-direction: column;
   gap: 8px;
 }
+.device-offline.is-stale {
+  border-left-color: var(--warn);
+}
 .device-offline-title {
   margin: 0;
   font-size: 0.9rem;
