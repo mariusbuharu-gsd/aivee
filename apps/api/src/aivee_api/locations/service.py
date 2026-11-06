@@ -7,6 +7,7 @@ from aivee_api.accounts.models import Membership, User
 from aivee_api.audit.repository import AuditRepository, Target
 from aivee_api.auth.permissions import (
     LOCATIONS_MANAGE,
+    RULES_MANAGE,
     USERS_MANAGE,
     MemberRole,
     Role,
@@ -27,6 +28,8 @@ from aivee_api.locations.schemas import (
 from aivee_api.videos.kind import not_upload
 
 NO_MEMBER = "Utilizatorul nu există."
+TARGET_FIELDS = frozenset({"service_target_s"})
+NULLABLE_FIELDS = frozenset({"telegram_chat_id", "service_target_s"})
 
 
 async def camera_counts(s: AsyncSession, location_ids: list[str]) -> dict[str, tuple[int, int]]:
@@ -110,11 +113,15 @@ class LocationService:
         return location_out(row)
 
     async def update(self, location_id: str, patch: LocationPatch) -> LocationOut:
-        self._p.authorize(LOCATIONS_MANAGE, location_id)
+        changes = patch.model_dump(exclude_unset=True)
+        # The service target is the team's goal, not the location's identity: managers set it
+        # too (rules.manage). Anything else stays owner-only (locations.manage).
+        target_only = bool(changes) and changes.keys() <= TARGET_FIELDS
+        self._p.authorize(RULES_MANAGE if target_only else LOCATIONS_MANAGE, location_id)
         row = await self._row(location_id)
         before = location_json(row)
-        for key, value in patch.model_dump(exclude_unset=True).items():
-            if key != "telegram_chat_id" and value is None:
+        for key, value in changes.items():
+            if key not in NULLABLE_FIELDS and value is None:
                 continue
             if key == "telegram_chat_id" and value != row.telegram_chat_id:
                 row.telegram_chat_title = None  # the linked chat's title no longer applies

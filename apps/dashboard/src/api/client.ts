@@ -301,6 +301,11 @@ export interface Location {
   name: string;
   type: string;
   telegram_chat_id?: string | null;
+  /**
+   * The owner's goal for how long a guest may wait for staff after an alert, in seconds
+   * (1–3600); null when not set. Owners and managers (`rules.manage`) may change it.
+   */
+  service_target_s?: number | null;
   /** `GET /api/locations` only: live cameras at the location, and those whose device is online. */
   cameras_total?: number;
   cameras_online?: number;
@@ -426,6 +431,24 @@ export interface ServiceMetrics {
   travel: DurationStat;
 }
 
+/** One weekday × hour cell of `GET /api/metrics/service/heatmap`. */
+export interface HeatCell {
+  alerts: number;
+  /** Median wait of the cell's alerts; null when none has one. */
+  wait_median_s: number | null;
+}
+
+/** When guests wait: alerts and median wait per local weekday and hour (team level only). */
+export interface ServiceHeatmap {
+  location_id: string | null;
+  from: string | null;
+  to: string | null;
+  /** IANA zone the weekdays and hours are counted in (Europe/Bucharest). */
+  timezone: string;
+  /** 7 rows, Monday first, of 24 hourly cells (00–23). */
+  cells: HeatCell[][];
+}
+
 export interface AccountApi {
   me(): Promise<Me>;
   login(email: string, password: string): Promise<Me>;
@@ -463,6 +486,11 @@ export interface AccountApi {
     from?: string;
     to?: string;
   }): Promise<ServiceMetrics>;
+  getServiceHeatmap(query: {
+    location_id: string;
+    from?: string;
+    to?: string;
+  }): Promise<ServiceHeatmap>;
 }
 
 /** Fired on window when the API answers 401, so the app can return to /intra. */

@@ -5,10 +5,16 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
 from aivee_api.alerts.audit import AuditWriter, get_audit_writer, going_ro
 from aivee_api.alerts.auth import AckAccess, ViewAccess
-from aivee_api.alerts.schemas import AlertView, ServiceMetrics, VerificationMetrics
+from aivee_api.alerts.schemas import (
+    AlertView,
+    ServiceHeatmap,
+    ServiceMetrics,
+    VerificationMetrics,
+)
 from aivee_api.alerts.service import (
     acknowledge,
     list_alerts,
+    service_heatmap,
     service_metrics,
     verification_metrics,
 )
@@ -80,6 +86,18 @@ async def get_service_metrics(
     end: Annotated[datetime | None, Query(alias="to")] = None,
 ) -> ServiceMetrics:
     return await service_metrics(s, access, location_id, start, end)
+
+
+@router.get("/api/metrics/service/heatmap", response_model_by_alias=True)
+async def get_service_heatmap(
+    s: SessionDep,
+    access: ViewAccess,
+    location_id: str | None = None,
+    start: Annotated[datetime | None, Query(alias="from")] = None,
+    end: Annotated[datetime | None, Query(alias="to")] = None,
+) -> ServiceHeatmap:
+    """Alert count and median wait per weekday x hour (Europe/Bucharest); team level only."""
+    return await service_heatmap(s, access, location_id, start, end)
 
 
 @router.get("/api/metrics/verification")

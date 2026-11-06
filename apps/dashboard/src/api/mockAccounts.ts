@@ -19,6 +19,7 @@ import {
   type Permission,
   type RegisterInput,
   type Role,
+  type ServiceHeatmap,
   type ServiceMetrics,
   type TelegramLink,
   type TelegramStatus,
@@ -160,7 +161,13 @@ export class MockAccounts {
     },
   ];
   private locations: (Location & { orgId: string })[] = [
-    { id: 'demo', name: 'Terasa demo', type: 'restaurant', orgId: 'org-demo' },
+    {
+      id: 'demo',
+      name: 'Terasa demo',
+      type: 'restaurant',
+      orgId: 'org-demo',
+      service_target_s: 90,
+    },
     { id: 'centru', name: 'Bistro Centru', type: 'restaurant', orgId: 'org-demo' },
   ];
   private telegram = new Map<string, { connectAt: number; expiresAt: number }>();
@@ -411,6 +418,7 @@ export class MockAccounts {
       name,
       type,
       telegram_chat_id: this.locations.find((l) => l.id === id)?.telegram_chat_id ?? null,
+      service_target_s: this.locations.find((l) => l.id === id)?.service_target_s ?? null,
     }));
   }
 
@@ -437,13 +445,22 @@ export class MockAccounts {
   }
 
   updateLocation(id: string, patch: Partial<Omit<Location, 'id'>>): Location {
-    this.require('locations.manage', id);
+    // Like the API: the service target alone needs rules.manage (managers too).
+    const keys = Object.keys(patch);
+    const targetOnly = keys.length > 0 && keys.every((k) => k === 'service_target_s');
+    this.require(targetOnly ? 'rules.manage' : 'locations.manage', id);
+    const t = patch.service_target_s;
+    if (t !== undefined && t !== null && !(Number.isInteger(t) && t >= 1 && t <= 3600)) {
+      throw new ApiError('Ținta trebuie să fie între 1 secundă și 60 de minute.', 'invalid', 422);
+    }
     const loc = this.locations.find((l) => l.id === id) as Location & { orgId: string };
-    const before = {
+    const fields = () => ({
       name: loc.name,
       type: loc.type,
       telegram_chat_id: loc.telegram_chat_id ?? null,
-    };
+      service_target_s: loc.service_target_s ?? null,
+    });
+    const before = fields();
     if ('telegram_chat_id' in patch && patch.telegram_chat_id !== loc.telegram_chat_id) {
       this.telegramTitles.delete(id);
     }
@@ -455,9 +472,9 @@ export class MockAccounts {
       target: { type: 'location', id, label: loc.name },
       summary_ro: `${this.current().name} a modificat locația ${loc.name}`,
       before,
-      after: { name: loc.name, type: loc.type, telegram_chat_id: loc.telegram_chat_id ?? null },
+      after: fields(),
     });
-    return { id, name: loc.name, type: loc.type, telegram_chat_id: loc.telegram_chat_id ?? null };
+    return { id, ...fields() };
   }
 
   deleteLocation(id: string) {
@@ -785,7 +802,53 @@ export class MockAccounts {
       travel: stat(pick((c) => c.travel_s, 2)),
     };
   }
+
+  /** The demo week scaled to the span asked for (7 or 30 days); team level only. */
+  serviceHeatmap(q: { location_id: string; from?: string; to?: string }): ServiceHeatmap {
+    this.require('alerts.view', q.location_id);
+    const to = q.to ? Date.parse(q.to) : Date.now();
+    const from = q.from ? Date.parse(q.from) : to - 7 * 86_400_000;
+    const weeks = Math.max(1, (to - from) / (7 * 86_400_000));
+    return {
+      location_id: q.location_id,
+      from: q.from ?? null,
+      to: q.to ?? null,
+      timezone: 'Europe/Bucharest',
+      cells: HEAT_WEEK.map((row) =>
+        row.map(({ alerts, wait }) => {
+          const n = Math.round(alerts * weeks);
+          return { alerts: n, wait_median_s: n ? Math.round(wait) : null };
+        }),
+      ),
+    };
+  }
 }
+
+/**
+ * A believable week for the demo heatmap: alerts at lunch (12–14) and dinner (19–22), more on
+ * Friday and Saturday, slower dinners. Weekday 0 is Monday; times are the venue's.
+ */
+const HEAT_WEEK = (() => {
+  const day = [0.6, 0.6, 0.7, 0.8, 1.3, 1.6, 1.1];
+  const hour: Record<number, [alerts: number, wait: number]> = {
+    11: [0.4, 55],
+    12: [1.4, 70],
+    13: [1.8, 85],
+    14: [0.8, 60],
+    15: [0.3, 45],
+    18: [0.6, 60],
+    19: [1.6, 95],
+    20: [2.4, 120],
+    21: [2, 105],
+    22: [0.8, 75],
+  };
+  return day.map((d, w) =>
+    Array.from({ length: 24 }, (_, h) => {
+      const [a, wait] = hour[h] ?? [0, 0];
+      return { alerts: a * d, wait: wait * (0.85 + d * 0.15) + ((w * 7 + h * 3) % 11) - 5 };
+    }),
+  );
+})();
 
 /** 1 for open ranges; 0.7–1.3 for a bounded window, stable per start date. */
 function rangeScale(from?: string, to?: string): number {

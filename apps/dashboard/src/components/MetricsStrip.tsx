@@ -5,7 +5,7 @@ const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.le
 export function MetricsStrip({ metrics }: { metrics: DashboardMetrics | null }) {
   const fps = avg(metrics?.devices.map((d) => d.fps) ?? []);
   const verified = avg(metrics?.devices.map((d) => d.verified_ratio) ?? []);
-  const cells: { label: string; value: string }[] = [
+  const cells: { label: string; value: string; unit?: string }[] = [
     {
       label: 'Dispozitive online',
       value: metrics ? `${metrics.devices_online}/${metrics.devices_total}` : '—',
@@ -18,10 +18,8 @@ export function MetricsStrip({ metrics }: { metrics: DashboardMetrics | null }) 
     { label: 'Evenimente azi', value: metrics ? String(metrics.events_today) : '—' },
     {
       label: 'Latență alertă',
-      value:
-        metrics?.alert_latency_ms == null
-          ? '—'
-          : `${(metrics.alert_latency_ms / 1000).toFixed(1)} s`,
+      value: metrics?.alert_latency_ms == null ? '—' : (metrics.alert_latency_ms / 1000).toFixed(1),
+      unit: metrics?.alert_latency_ms == null ? undefined : 's',
     },
   ];
   return (
@@ -29,7 +27,11 @@ export function MetricsStrip({ metrics }: { metrics: DashboardMetrics | null }) 
       {cells.map((c) => (
         <div key={c.label} className="metric">
           <dt>{c.label}</dt>
-          <dd className="mono">{c.value}</dd>
+          <dd className="mono">
+            {c.value}
+            {/* Outside the monospace face, whose wide space read as "0.9  s". */}
+            {c.unit && <span className="metric-unit"> {c.unit}</span>}
+          </dd>
         </div>
       ))}
     </dl>
