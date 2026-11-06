@@ -61,6 +61,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | POST | `/api/auth/register` | public; creates org + owner, sets the cookie (201) |
 | POST | `/api/auth/login` · `/api/auth/logout` | public / session; sets / clears `aivee_session` |
 | GET | `/api/auth/me` | session → `Me` (org, `is_owner`, locations with role and permissions) |
+| GET | `/api/capabilities` | signed in; `{videos, enrol}`: the clip runner (same checks as `POST /api/videos`) and the staff enroller are wired on this server |
 | GET / POST | `/api/locations` | visible locations / create (owner) |
 | PATCH / DELETE | `/api/locations/{id}` | `locations.manage` |
 | POST | `/api/locations/{id}/telegram/link` | `locations.manage` → `{url, private_url, expires_at}`: `https://t.me/<bot>?startgroup=<code>` / `?start=<code>`; single use, 15 min; 503 without a bot username |

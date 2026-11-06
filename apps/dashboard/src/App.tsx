@@ -17,15 +17,18 @@ import { RulesPage } from './pages/RulesPage';
 import { TeamPage } from './pages/TeamPage';
 import { VideoPage } from './pages/VideoPage';
 import { ZonesPage } from './pages/ZonesPage';
+import { CapabilitiesProvider, RequireCapability } from './state/capabilities';
 import { LiveDataProvider } from './state/LiveData';
 
 /** Shared data reloads from scratch when the user switches location. */
 function LocationScope() {
   const { location } = useAuth();
   return (
-    <LiveDataProvider key={location?.id ?? 'none'}>
-      <Outlet />
-    </LiveDataProvider>
+    <CapabilitiesProvider>
+      <LiveDataProvider key={location?.id ?? 'none'}>
+        <Outlet />
+      </LiveDataProvider>
+    </CapabilitiesProvider>
   );
 }
 
@@ -54,7 +57,9 @@ export function App() {
               {/* The page is called "Camere" now; the old path stays the canonical one. */}
               <Route path="camere" element={<Navigate to="/dispozitive" replace />} />
               <Route path="camere/:cameraId/zone" element={<ZonesPage />} />
-              <Route path="video" element={<VideoPage />} />
+              <Route element={<RequireCapability name="videos" />}>
+                <Route path="video" element={<VideoPage />} />
+              </Route>
               <Route path="telefon" element={<PhoneCameraPage />} />
             </Route>
             <Route element={<RequirePermission any={['audit.view', 'audit.view.own']} />}>

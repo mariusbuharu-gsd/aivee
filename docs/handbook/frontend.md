@@ -65,6 +65,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/login` · `/register` · `/logout` | login / register return `Me` and set the cookie |
+| GET | `/api/capabilities` | `{videos, enrol}`: optional features this server runs; `videos: false` hides „Testează pe un clip” and sends `/video` to Live (a failed call hides nothing) |
 | GET | `/api/auth/me` | `{user, org, is_owner, locations: [{id, name, type, role, permissions}]}` |
 | GET/POST · PATCH/DELETE | `/api/locations` · `/api/locations/{id}` | owner |
 | POST · GET | `/api/locations/{id}/telegram/link` · `/api/locations/{id}/telegram` | owner; `{url, private_url, expires_at}` · `{connected, chat_title}` |

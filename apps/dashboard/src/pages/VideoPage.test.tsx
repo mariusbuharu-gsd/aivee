@@ -135,3 +135,29 @@ describe('VideoPage', () => {
     );
   });
 });
+
+describe('a server without clip analysis', () => {
+  it('hides "Testează pe un clip" and sends /video to Live', async () => {
+    vi.spyOn(MockApi.prototype, 'getCapabilities').mockResolvedValue({
+      videos: false,
+      enrol: true,
+    });
+    const list = vi.spyOn(MockApi.prototype, 'listVideos');
+    renderApp('/video');
+    expect(await screen.findByRole('heading', { name: 'Live' })).toBeVisible();
+    const nav = screen.getByRole('navigation', { name: 'Principal' });
+    await waitFor(() =>
+      expect(within(nav).queryByRole('link', { name: /Testează pe un clip/ })).toBeNull(),
+    );
+    expect(within(nav).getByRole('link', { name: /Camere/ })).toBeInTheDocument();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('keeps the page when the capabilities call fails (an older API)', async () => {
+    vi.spyOn(MockApi.prototype, 'getCapabilities').mockRejectedValue(
+      new ApiError('Not Found', 'not_found', 404),
+    );
+    renderApp('/video');
+    expect(await screen.findByRole('heading', { name: 'Testează pe un clip' })).toBeVisible();
+  });
+});

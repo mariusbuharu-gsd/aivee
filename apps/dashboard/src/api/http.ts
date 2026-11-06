@@ -2,6 +2,7 @@
 // adjust here only, the rest of the dashboard depends on ApiClient.
 import type { Rule, Zone } from '../contracts';
 import {
+  type Capabilities,
   ApiError,
   UNAUTHORIZED_EVENT,
   type AlertCase,
@@ -316,6 +317,10 @@ export class HttpApi implements ApiClient {
     if (rotate !== undefined) body.append('rotate', String(rotate));
     if (copy_from_camera_id) body.append('copy_from_camera_id', copy_from_camera_id);
     return this.request<VideoUpload>('/api/videos', { method: 'POST', body });
+  }
+
+  getCapabilities() {
+    return this.request<Capabilities>('/api/capabilities');
   }
 
   listVideos() {

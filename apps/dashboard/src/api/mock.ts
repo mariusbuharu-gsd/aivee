@@ -192,19 +192,23 @@ function seedRules(): Rule[] {
   ];
 }
 
-/** The translator's usual visual condition for "dacă e foc" (see evals/nl_to_rule). */
+/**
+ * The translator's visual condition for "dacă e foc" after the API's draft check: small-flame
+ * positives added, no person prompts in `negative` (they hid a lighter held in a hand).
+ */
 const VISUAL_FIRE: Condition = {
   kind: 'visual',
   role: 'any',
   min_duration_s: 3,
-  positive: ['a photo of fire', 'flames', 'a burning fire'],
-  negative: [
-    'a photo of a person',
-    'a photo of a room',
-    'a blurry photo',
-    'a photo of a normal restaurant room',
-    'people sitting at tables',
+  positive: [
+    'a photo of fire',
+    'flames',
+    'a burning fire',
+    'a lighter with a flame',
+    'a small open flame',
+    'a hand holding a lit lighter',
   ],
+  negative: ['a photo of a room', 'a blurry photo', 'a photo of a normal restaurant room'],
   threshold: 0.5,
   crop: 'frame',
   label_ro: 'foc',
@@ -987,6 +991,11 @@ export class MockApi implements ApiClient {
       finished_at: new Date().toISOString(),
     };
     return v;
+  }
+
+  /** The mock runs everything. */
+  getCapabilities() {
+    return this.delay({ videos: true, enrol: true });
   }
 
   async listVideos() {

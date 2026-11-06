@@ -334,6 +334,19 @@ async def test_upload_needs_the_runner_login(
     await c.aclose()
 
 
+async def test_capabilities_say_whether_clips_can_be_analysed(
+    world: None, client_factory: Any, login: Any, settings: ApiSettings
+) -> None:
+    anon = client_factory()
+    assert (await anon.get("/api/capabilities")).status_code == 401
+    c = await _as(client_factory, login, "manager@t.ro")
+    assert (await c.get("/api/capabilities")).json() == {"videos": True, "enrol": False}
+    settings.mqtt_upload_password = ""
+    assert (await c.get("/api/capabilities")).json()["videos"] is False
+    for x in (anon, c):
+        await x.aclose()
+
+
 async def test_reserved_ids_cannot_be_used_by_live_cameras(
     world: None, client_factory: Any, login: Any
 ) -> None:

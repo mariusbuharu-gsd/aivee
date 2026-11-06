@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 from aivee_api.rules.prompt import COCO_CLASSES, INSTRUCTIONS
-from aivee_api.rules.service import draft_to_rule
+from aivee_api.rules.service import SMALL_FLAME, clean_visual, draft_to_rule
 from aivee_api.rules.translator import RuleDraft, TranslationError
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import ANYWHERE_TAG, Condition
@@ -47,8 +47,12 @@ def test_recorded_visual_drafts_carry_prompts_and_defaults(case: str) -> None:
     rule = draft_to_rule(recorded(case), "cam1", "x", ZONES)
     (c,) = rule.all_of
     assert c.kind == "visual" and rule.zone_tag == ANYWHERE_TAG
-    assert c.positive and len(c.negative) >= 4
-    assert {"a photo of a person", "a photo of a room", "a blurry photo"} <= set(c.negative)
+    assert c.positive and len(c.negative) >= 3
+    assert {"a photo of a room", "a blurry photo"} <= set(c.negative)
+    # The recorded output had person prompts in `negative`; the draft check drops them.
+    raw = recorded(case).all_of[0].negative
+    assert "a photo of a person" in raw
+    assert not [n for n in c.negative if "person" in n or "people" in n]
     assert not set(c.positive) & set(c.negative)
     assert (c.min_duration_s, c.threshold, c.crop, rule.cooldown_s) == (3, 0.5, "frame", 120)
     assert c.label_ro and "verificat" in recorded(case).explanation_ro
@@ -105,3 +109,31 @@ def test_prompt_describes_both_new_situations_in_its_fixed_part() -> None:
         assert needle in INSTRUCTIONS
     assert all(c in INSTRUCTIONS for c in COCO_CLASSES) and len(COCO_CLASSES) == 80
     assert "Masa 1" not in INSTRUCTIONS and "{" not in INSTRUCTIONS.split("## Output")[0][-200:]
+
+
+def test_fire_rules_also_look_for_a_small_flame() -> None:
+    rule = draft_to_rule(recorded("visual-fire"), "cam1", "x", ZONES)
+    (c,) = rule.all_of
+    assert c.positive[:3] == ["a photo of fire", "flames", "a burning fire"]
+    assert set(SMALL_FLAME) <= set(c.positive)
+    water = draft_to_rule(recorded("visual-water"), "cam1", "x", ZONES).all_of[0]
+    assert not set(SMALL_FLAME) & set(water.positive)
+
+
+@pytest.mark.parametrize(
+    "negative",
+    ["a photo of a person", "people sitting at tables", "A man", "a hand", "two guests"],
+)
+def test_person_prompts_never_stay_in_visual_negatives(negative: str) -> None:
+    c = Condition(kind="visual", positive=["a knife"], negative=[negative, "a photo of a room"])
+    assert clean_visual(c).negative == ["a photo of a room"]
+
+
+def test_clean_visual_leaves_other_kinds_alone() -> None:
+    bear = Condition(kind="object_present", objects=["bear"])
+    assert clean_visual(bear) is bear
+
+
+def test_prompt_keeps_people_out_of_negatives() -> None:
+    assert "Never put a person or people in `negative`" in INSTRUCTIONS
+    assert "a lighter with a flame" in INSTRUCTIONS

@@ -228,8 +228,17 @@ export interface NewVideoUpload {
   copy_from_camera_id?: string | null;
 }
 
+/** `GET /api/capabilities`: optional features this server runs. */
+export interface Capabilities {
+  /** Clip analysis ("Testează pe un clip"); false where `POST /api/videos` answers 503. */
+  videos: boolean;
+  /** Staff profiles (photos, live capture). */
+  enrol: boolean;
+}
+
 export interface ApiClient extends AccountApi {
   readonly kind: 'mock' | 'http';
+  getCapabilities(): Promise<Capabilities>;
   listCameras(): Promise<CameraView[]>;
   createCamera(camera: NewCamera): Promise<CameraView>;
   updateCamera(id: string, patch: CameraPatch): Promise<CameraView>;
