@@ -29,3 +29,6 @@ staff are recognised by appearance and behaviour (never by face); everything run
 - **No AI attribution**: no `Co-Authored-By`, no session links, no mention of Claude or any model,
   in commits or PR descriptions.
 - Small commits; one PR per task; squash merge after green CI.
+- Branches: `feature/<slug>`, `fix/<slug>`, `docs/<slug>` from `develop`; PRs target `develop`.
+- `develop` → `main` only through a release PR at a milestone (M1, M2, freeze). `main` is always demo-ready.
+- Never push directly to `develop` or `main`.
