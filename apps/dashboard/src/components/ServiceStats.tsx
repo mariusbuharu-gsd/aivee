@@ -17,6 +17,7 @@ import {
   targetSeconds,
 } from '../metrics/insight';
 import { Banner } from '../ui/Banner';
+import { LookingEyes } from '../ui/Eyes';
 import { useToast } from '../ui/toast';
 
 const TILES: { key: 'reaction' | 'travel'; label: string; hint: string }[] = [
@@ -82,7 +83,10 @@ export function ServiceStats({ days }: { days: number }) {
       <div className="service-lead">
         <p className="service-headline">
           {!h ? (
-            'Se încarcă…'
+            <span className="loading">
+              <LookingEyes size={36} />
+              Se încarcă…
+            </span>
           ) : h.value === null ? (
             h.rest
           ) : (

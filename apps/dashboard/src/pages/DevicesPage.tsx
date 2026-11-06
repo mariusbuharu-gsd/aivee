@@ -16,6 +16,7 @@ import { Menu } from '../ui/Menu';
 import { EmptyState, Skeleton } from '../ui/controls';
 import { useToast } from '../ui/toast';
 import './DevicesPage.css';
+import { BusyLabel } from '../ui/Eyes';
 
 /** "1 zonă se șterge" / "3 zone se șterg" / "nicio zonă". */
 function willGo(n: number, one: string, many: string, none: string): string {
@@ -248,7 +249,9 @@ function OfflineChecklist({ camera }: { camera: CameraView }) {
       </ol>
       <p className="muted small">Alertele de la această cameră nu vin până revine.</p>
       <button type="button" className="btn btn-sm" onClick={() => void retry()} disabled={checking}>
-        {checking ? 'Se verifică…' : 'Am verificat, încearcă din nou'}
+        <BusyLabel busy={checking} idle="Am verificat, încearcă din nou">
+          Se verifică…
+        </BusyLabel>
       </button>
     </div>
   );

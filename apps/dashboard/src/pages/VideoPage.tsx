@@ -17,6 +17,7 @@ import { Select } from '../ui/Select';
 import { EmptyState, Skeleton } from '../ui/controls';
 import { useToast } from '../ui/toast';
 import { PHONE, useMedia } from '../ui/useMedia';
+import { BusyLabel, Loading } from '../ui/Eyes';
 
 /** How often the list refreshes while a clip waits or is being analysed. */
 const POLL_MS = 2_000;
@@ -234,7 +235,9 @@ function UploadForm({ onUploaded }: { onUploaded: (u: VideoUpload) => void }) {
         </Banner>
       )}
       <button type="submit" className="btn btn-primary" disabled={sending}>
-        {sending ? 'Se trimite…' : 'Analizează'}
+        <BusyLabel busy={sending} idle="Analizează">
+          Se trimite…
+        </BusyLabel>
       </button>
     </form>
   );
@@ -311,7 +314,7 @@ function Timeline({ upload }: { upload: VideoUpload }) {
         </Banner>
       )}
       {status === 'running' && (
-        <p className="muted small">Se analizează… alertele apar pe măsură ce sunt găsite.</p>
+        <Loading>Se analizează… alertele apar pe măsură ce sunt găsite.</Loading>
       )}
       {error && (
         <Banner tone="error" title="Nu am putut încărca alertele.">

@@ -15,6 +15,7 @@ import { Select } from '../ui/Select';
 import { EmptyState, Switch } from '../ui/controls';
 import { useToast } from '../ui/toast';
 import './RulesPage.css';
+import { BusyLabel } from '../ui/Eyes';
 
 export function RulesPage() {
   const api = useApi();
@@ -238,7 +239,9 @@ function EditRule({ rule, onClose }: { rule: Rule; onClose: () => void }) {
             onClick={() => void save()}
             disabled={busy}
           >
-            {busy ? 'Se salvează…' : 'Salvează'}
+            <BusyLabel busy={busy} idle="Salvează">
+              Se salvează…
+            </BusyLabel>
           </button>
         </>
       }

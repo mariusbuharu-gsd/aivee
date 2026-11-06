@@ -1,5 +1,6 @@
 import { useId, useState, type ComponentProps, type ReactNode } from 'react';
 import { Icon, type IconName } from '../components/Icon';
+import { LookingEyes } from './Eyes';
 
 /** On/off for something that takes effect at once (a rule). */
 export function Switch({
@@ -109,6 +110,10 @@ export function EmptyState({
 export function Skeleton({ rows = 3, label = 'Se încarcă' }: { rows?: number; label?: string }) {
   return (
     <div className="skeleton" role="status" aria-label={label}>
+      <p className="loading" aria-hidden="true">
+        <LookingEyes size={28} />
+        <span>{label}…</span>
+      </p>
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="sk-row">
           <span className="sk sk-avatar" />
