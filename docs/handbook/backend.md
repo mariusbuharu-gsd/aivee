@@ -130,6 +130,7 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
 - `arrived`: a staff track's foot point in the alert's zone ≥ `ARRIVE_S` (default 5 s), once per alert.
 - Appearance is off by default (`APPEARANCE` / `--appearance`), ~0.6 s per crop, at most once per 2 s per person.
 - `ROTATE=90` for a sideways phone (D13). Live alert time is wall clock.
+- Network sources (`rtsp://`, `http://`) decode on one FFmpeg thread (`Cv2Source._open`): frame threading held ~1 frame per core, ~2.4 s behind the camera at 5 fps on 12 cores. One thread still decodes 1280×720 at ~34 FPS.
 
 ## Request → rule
 `apps/api/.../rules/translator.py`: `messages.parse`, model `claude-opus-5-5`, effort low, `RuleDraft` output;

@@ -1,5 +1,6 @@
 import itertools
 from pathlib import Path
+from typing import ClassVar
 
 import cv2
 import numpy as np
@@ -118,3 +119,38 @@ def test_cv2_source_gives_up_after_max_reconnects(tmp_path: Path) -> None:
     )
     assert source.read() is None
     assert sleeps == [0.5, 1.0, 2.0]
+
+
+class _FakeCapture:
+    calls: ClassVar[list[tuple[object, ...]]] = []
+
+    def __init__(self, *args: object) -> None:
+        _FakeCapture.calls.append(args)
+
+    def set(self, *_a: object) -> bool:
+        return True
+
+    def isOpened(self) -> bool:
+        return True
+
+    def release(self) -> None:
+        pass
+
+
+@pytest.mark.parametrize(
+    "url", ["rtsp://mediamtx:8554/cam-01", "rtsps://h/cam", "http://192.168.1.30:8080/video"]
+)
+def test_network_sources_decode_on_one_thread(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    # Frame threading holds about one frame per decoder thread: at 5 fps on 12 cores that is
+    # ~2.4 s of lag behind the camera. One thread keeps the reader live.
+    _FakeCapture.calls = []
+    monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
+    assert Cv2Source(url, target_fps=5)._open()
+    assert _FakeCapture.calls == [(url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])]
+
+
+def test_webcam_index_opens_with_default_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    _FakeCapture.calls = []
+    monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
+    assert Cv2Source("0", target_fps=5)._open()
+    assert _FakeCapture.calls == [(0,)]
