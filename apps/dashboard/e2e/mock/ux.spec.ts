@@ -54,12 +54,12 @@ test('a deleted zone comes back from the toast, and leaving asks first', async (
   await signIn(page, 'manager', MOCK_PASSWORD, '/camere/cam-sala/zone');
   await page.getByRole('button', { name: /Masa 2/ }).click();
   await page.getByRole('button', { name: /Șterge/ }).click();
-  await expect(page.getByRole('heading', { name: /Zone \(2\)/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '2 zone' })).toBeVisible();
   await page
     .getByRole('region', { name: 'Notificări' })
     .getByRole('button', { name: 'Anulează' })
     .click();
-  await expect(page.getByRole('heading', { name: /Zone \(3\)/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '3 zone' })).toBeVisible();
   await expect(page.getByText('modificări nesalvate')).toBeVisible();
 
   await page

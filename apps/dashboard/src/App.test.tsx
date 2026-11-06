@@ -163,11 +163,11 @@ describe('App with the mock API', () => {
     await user.click(
       await screen.findByRole('link', { name: 'Editează zonele pentru Sala principală' }),
     );
-    expect(await screen.findByRole('heading', { name: /Zone \(3\)/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '3 zone' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Masa 2/ }));
     expect(screen.getByLabelText('Nume')).toHaveValue('Masa 2');
     await user.click(screen.getByRole('button', { name: /Șterge/ }));
-    expect(screen.getByRole('heading', { name: /Zone \(2\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2 zone' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvează zonele' })).toBeEnabled();
   });
 
@@ -220,10 +220,10 @@ describe('App with the mock API', () => {
     );
     await user.click(await screen.findByRole('button', { name: /Masa 2/ }));
     await user.click(screen.getByRole('button', { name: /Șterge/ }));
-    expect(screen.getByRole('heading', { name: /Zone \(2\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '2 zone' })).toBeInTheDocument();
     expect(screen.getByText('modificări nesalvate')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Anulează' }));
-    expect(screen.getByRole('heading', { name: /Zone \(3\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '3 zone' })).toBeInTheDocument();
 
     const nav = screen.getByRole('navigation', { name: 'Principal' });
     await user.click(within(nav).getByRole('link', { name: /Alerte/ }));
@@ -247,7 +247,7 @@ describe('App with the mock API', () => {
     await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
     expect(await screen.findByRole('heading', { name: /Zone · Bar/ })).toBeInTheDocument();
     expect(screen.getByText('Camera „Bar” a fost adăugată')).toBeInTheDocument();
-    expect(screen.getByLabelText('Încarcă o imagine din cameră')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Încarcă o imagine din cameră')).toBeInTheDocument();
 
     await user.click(screen.getByRole('link', { name: 'Reguli' }));
     await user.type(
