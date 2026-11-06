@@ -80,7 +80,9 @@ class StaffService:
         if added:
             await self._sync.publish_profiles()
         await self._commands.suggestion_decided(
-            SuggestionDecision(suggestion_id, row.camera_id, row.track_id, confirmed)
+            SuggestionDecision(
+                suggestion_id, row.camera_id, row.track_id, confirmed, device_id=row.device_id
+            )
         )
         return DecisionOut(suggestion_id=suggestion_id, status=status, examples_added=added)
 

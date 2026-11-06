@@ -1,9 +1,13 @@
 """Build the complete retained documents for one device from the DB and publish them."""
 
 import logging
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
+from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.events import StaffProfile, StaffProfiles
 from aivee_contracts.geometry import DeviceConfig
 from aivee_contracts.rules import RuleSet
@@ -93,27 +97,84 @@ class SuggestionDecision:
     camera_id: str
     track_id: int
     confirmed: bool
+    device_id: str = ""
+    """The device that made the suggestion; empty means the API's default device."""
 
 
 class EdgeCommands(Protocol):
-    """Tell the edge the owner's decision on a staff suggestion.
-
-    There is no contract/ACL topic for this yet (the edge may only read rules, profiles and
-    config), so the default implementation only logs. When a `commands` topic exists, an
-    MQTT implementation plugs in here without touching the staff service.
-    """
+    """Tell the edge the owner's decision on a staff suggestion."""
 
     async def suggestion_decided(self, decision: SuggestionDecision) -> None: ...
 
 
 class LoggingEdgeCommands:
+    """Records and logs decisions; used in tests and when the API runs without MQTT."""
+
     def __init__(self) -> None:
         self.decisions: list[SuggestionDecision] = []
 
     async def suggestion_decided(self, decision: SuggestionDecision) -> None:
         self.decisions.append(decision)
         log.info(
-            "suggestion %s %s (not sent to the edge: no commands topic yet)",
+            "suggestion %s %s (MQTT disabled: not sent to the edge)",
             decision.suggestion_id,
             "confirmed" if decision.confirmed else "rejected",
+        )
+
+
+QOS_COMMAND = 1
+
+
+def _new_id() -> str:
+    return str(uuid.uuid4())
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class MqttEdgeCommands:
+    """Sends an `EdgeCommand` on the suggesting device's `commands` topic (QoS 1, not
+    retained: a stale decision must not be replayed to a later track with the same id)."""
+
+    def __init__(
+        self,
+        publisher: EdgePublisher,
+        site: str,
+        default_device: str,
+        *,
+        clock: Callable[[], datetime] = _now,
+        new_id: Callable[[], str] = _new_id,
+    ) -> None:
+        self._publisher = publisher
+        self._site = site
+        self._default_device = default_device
+        self._clock = clock
+        self._new_id = new_id
+
+    async def suggestion_decided(self, decision: SuggestionDecision) -> None:
+        device = decision.device_id or self._default_device
+        command = EdgeCommand(
+            command_id=self._new_id(),
+            kind="confirm_staff" if decision.confirmed else "reject_staff",
+            camera_id=decision.camera_id,
+            track_id=decision.track_id,
+            suggestion_id=decision.suggestion_id,
+            at=self._clock(),
+        )
+        topic = Topics(site=self._site, device=device).commands
+        try:
+            await self._publisher.publish(
+                topic, command.model_dump_json().encode(), qos=QOS_COMMAND, retain=False
+            )
+        except PublisherUnavailable as e:
+            # The decision is already saved; only the live track's role is not updated.
+            log.warning("command %s for %s not sent (%s)", command.kind, decision.suggestion_id, e)
+            return
+        log.info(
+            "command %s sent to %s suggestion=%s track=%d",
+            command.kind,
+            device,
+            decision.suggestion_id,
+            decision.track_id,
         )
