@@ -192,3 +192,45 @@ class PushSubscriptionRow(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     """The logged-in user who subscribed (0003_auth_tenancy); alerts go to members only."""
+
+
+VIDEO_STATUSES = ("queued", "running", "done", "failed")
+
+
+class VideoUploadRow(Base):
+    """A recorded clip uploaded for analysis (aivee_api.videos). Its alerts are ordinary
+    event rows of the virtual camera `camera_id` (`video-<id>`) on the upload device; the
+    clip position of an alert is `at - clip_epoch`."""
+
+    __tablename__ = "video_uploads"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    location_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
+    camera_id: Mapped[str] = mapped_column(String(64), unique=True)
+    device_id: Mapped[str] = mapped_column(String(64))
+    source_camera_id: Mapped[str | None] = mapped_column(String(64))
+    filename: Mapped[str] = mapped_column(Text)
+    path: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    rotate: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
+    duration_s: Mapped[float | None] = mapped_column(Float)
+    events: Mapped[int] = mapped_column(Integer, default=0)
+    error_ro: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_video_uploads_created_by_id")
+    )
+    created_by_name: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    clip_epoch: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """The instant the edge counts clip positions from (set when the run starts)."""
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'done', 'failed')", name="video_upload_status"
+        ),
+        CheckConstraint("rotate IN (0, 90, 180, 270)", name="video_upload_rotate"),
+    )
