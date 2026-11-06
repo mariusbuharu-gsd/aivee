@@ -4,6 +4,7 @@ AiVee alerts restaurant staff when a guest waits too long. Rules are written in 
 staff are recognised by appearance and behaviour (never by face); everything runs on the edge.
 
 ## Read first
+- `docs/README.md` — map of the docs, decisions log, frontend/backend handbooks, worktree setup
 - `docs/plans/2026-11-06-aivee-design.md` — what and why
 - `docs/plans/2026-11-06-aivee-implementation.md` — tasks, owners, milestones
 
