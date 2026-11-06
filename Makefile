@@ -37,6 +37,17 @@ edge:
 fake-edge:
 	uv run python tools/fake_edge.py --scenario $(SCENARIO) --speed $(SPEED)
 
+.PHONY: edge-usb
+# Phone camera over USB (stable where venue Wi-Fi stalls the MJPEG stream). Needs USB debugging allowed
+# and IP Webcam started (FPS limit 15, quality 50). TARGET_FPS=30 stays above the 15 fps source so the
+# frame pacing keeps every frame.
+USB_PORT ?= 28080
+ADB ?= $(shell command -v adb 2>/dev/null || echo $(HOME)/.local/bin/adb)
+edge-usb:
+	@$(ADB) devices | grep -q '	device$$' || { echo "edge-usb: no authorised adb device. Plug the phone in, enable USB debugging and accept 'Allow USB debugging'." >&2; exit 1; }
+	$(ADB) forward tcp:$(USB_PORT) tcp:8080
+	ROTATE=90 APPEARANCE=true TARGET_FPS=30 uv run python -m aivee_edge --source http://localhost:$(USB_PORT)/video
+
 .PHONY: data-dirs
 # Create bind-mounted dirs as the current user before `make up` (Docker would create them as root).
 data-dirs:

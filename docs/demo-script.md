@@ -8,8 +8,8 @@ screen names, button labels and alert texts are copied from the code.
 | Who | Plays | Holds |
 |---|---|---|
 | **Marius** | narrator, drives the dashboard | laptop (owner, `owner@aivee.demo`), projector |
-| **Vasi** | the guest | 2–3 cups, sits at **Masa 1** |
-| **Radu** | the waiter, wearing the uniform | phone logged in as `staff@aivee.demo` (Ana Ospătar), Alerte page open |
+| **Radu** | the guest | 2–3 cups, sits at **Masa 1** |
+| **Vasi** | the staff member, wearing the black jacket | phone logged in as `staff@aivee.demo` (Ana Ospătar), Alerte page open |
 
 ## Set-up the demo assumes
 
@@ -23,7 +23,7 @@ screen names, button labels and alert texts are copied from the code.
   - "Anunță dacă o masă rămâne nedebarasată un minut după ce au plecat clienții" — check that "Ce am înțeles"
     shows 1 minute before confirming (the eval's default for this kind of request is 5 min).
 - The raised-hand rule is **not** created yet: it is the one written live in step 2.
-- Radu's uniform is enrolled (photos on the staff profile) and/or Radu has been confirmed once
+- Vasi, in the black jacket, is enrolled as the staff profile (photos on the profile) and/or has been confirmed once
   through "Pare angajat — confirmi?", so the edge already tags him as staff (light blue box).
 
 ## Timeline (total 4:00)
@@ -41,7 +41,7 @@ screen names, button labels and alert texts are copied from the code.
 | 6b | 3:20 | "Masa 1: nedebarasată de 1 min" arrives | 0:20 |
 | — | 3:40 | Close: one sentence + team | 0:20 |
 
-The two 1-minute waits overlap with talking: Vasi sits down during step 1, and the cups are left before
+The two 1-minute waits overlap with talking: Radu sits down during step 1, and the cups are left before
 Istoric and Metrici.
 
 ### 1. Login → location → live (0:00–0:20)
@@ -49,9 +49,9 @@ Istoric and Metrici.
 - **Marius:** open `http://localhost:5173/intra` → Email `owner@aivee.demo`, Parolă → **Intră în cont**.
 - **Marius:** in the sidebar, the location shows **Terasa demo** (a dropdown when the owner has more than one
   location) → **Live**.
-- **Vasi:** at 0:15, walk into the frame and sit at Masa 1.
-- **Expected:** the camera tile with the live video, the zone outlines, a white box on Vasi (guest) and a light
-  blue box on Radu (staff) standing near the bar.
+- **Radu:** at 0:15, walk into the frame and sit at Masa 1.
+- **Expected:** the camera tile with the live video, the zone outlines, a white box on Radu (guest) and a light
+  blue box on Vasi (staff) standing near the bar.
 - **Say:** "A normal camera, nothing to buy. In the demo this laptop stands in for our cloud server. And because
   it is just a laptop CPU, the same software can run on the customer's own PC: that is the edge option. AiVee
   sees roles, not faces."
@@ -76,40 +76,40 @@ Istoric and Metrici.
 
 ### 3. The guest waits → alert (0:55–1:20)
 
-- **Marius:** go back to **Live** (or **Alerte**). Talk about the minute while it runs: "Vasi sat down at 0:15.
+- **Marius:** go back to **Live** (or **Alerte**). Talk about the minute while it runs: "Radu sat down at 0:15.
   Nobody from staff has come. At one minute AiVee raises it."
 - **Expected at ~1:15:** in the dashboard a coral alert **"Masa 1: neservită de 1 min"** with a **Merg eu**
-  button; in the Telegram group a message with the blurred snapshot; on Radu's phone a push notification.
-- **Radu:** show the phone notification to the jury.
-- **Fallback:** no alert after 1:30 → check Dispozitive (device online?) and that Radu is not inside Masa 1.
+  button; in the Telegram group a message with the blurred snapshot; on Vasi's phone a push notification.
+- **Vasi:** show the phone notification to the jury.
+- **Fallback:** no alert after 1:30 → check Dispozitive (device online?) and that Vasi is not inside Masa 1.
   Still nothing → `make fake-edge SCENARIO=unattended SPEED=2` (opens after ~30 s, staff arrives at ~48 s).
   Telegram silent but dashboard OK → carry on; Telegram is a notifier, not the pipeline. Push silent →
   carry on with Telegram (push needs HTTPS on the phone).
 
 ### 4. "Merg eu" → arrived → closed (1:20–2:00)
 
-- **Radu:** tap the notification (opens **Alerte**) → **Merg eu**.
+- **Vasi:** tap the notification (opens **Alerte**) → **Merg eu**.
 - **Expected:** the timeline under the alert: **Deschisă** → **Preluată** (Ana Ospătar, "reacție …").
-- **Radu:** walk to Masa 1 and **stay at least 5 s** (`ARRIVE_S`); serve Vasi.
+- **Vasi:** walk to Masa 1 and **stay at least 5 s** (`ARRIVE_S`); serve Radu.
 - **Expected:** **Ajuns** ("drum …"), a second Telegram message "Ana Ospătar a ajuns la Masa 1 după …", then
   **Închisă** with "așteptare …".
 - **Say:** "Arrival is what the camera saw, not a button a busy waiter forgets. Wait, reaction and travel are
   measured, per alert."
-- **Fallback:** no "Ajuns" → Radu is probably tagged as guest: stand still, fully in the zone, 5 s more. If the
+- **Fallback:** no "Ajuns" → Vasi is probably tagged as guest: stand still, fully in the zone, 5 s more. If the
   alert closes without arrival, show the "fără preluare" / closed state and move on. "Merg eu" returns an error
   → someone already took it (409); refresh.
 
 ### 5. The guest raises a hand (2:00–2:20)
 
-- **Radu:** step out of Masa 1. **Vasi:** raise a hand clearly above the shoulder, 2–3 s.
+- **Vasi:** step out of Masa 1. **Radu:** raise a hand clearly above the shoulder, 2–3 s.
 - **Expected:** alert **"Masa 1: un client cheamă"** within a few seconds, Telegram + push.
 - **Say:** "That is the rule we wrote two minutes ago, already running."
 - **Fallback:** `make fake-edge SCENARIO=hand SPEED=2` (the scripted guest is at Masa 2). Pose only runs inside
-  table zones: Vasi must be fully in Masa 1.
+  table zones: Radu must be fully in Masa 1.
 
 ### 6. Cups left → "masă nedebarasată" (2:20, result at ~3:20)
 
-- **Vasi and Radu:** leave Masa 1 and the frame; the cups stay on the table.
+- **Radu and Vasi:** leave Masa 1 and the frame; the cups stay on the table.
 - **Expected after ~1 min:** **"Masa 1: nedebarasată de 1 min"** in Alerte and on Telegram.
 - **Fallback:** cups not detected (small objects, top-down angle) → `make fake-edge SCENARIO=uncleared SPEED=4`
   (opens after 60 simulated seconds, ~15 s at speed 4).
@@ -132,15 +132,21 @@ Istoric and Metrici.
 ### Close (3:40–4:00)
 
 "AiVee: the staff's extra pair of eyes, configured in Romanian, private by design, with the cameras you already
-have. In our EU cloud as standard, or on your own PC if the video must never leave. Marius, Vasi, Radu — thank you."
+have. In our EU cloud as standard, or on your own PC if the video must never leave. Marius, Radu, Vasi — thank you."
 
 ## Pre-demo checklist (T−30 min)
 
-- [ ] Phone (camera) on the charger, IP Webcam running, `http://<phone>:8080/video` opens on the laptop.
-- [ ] Radu's phone charged, logged in as `staff@aivee.demo`, Alerte open, **Notificări pe telefon** = active,
+- [ ] Camera phone on USB to the laptop, USB debugging allowed ("Allow USB debugging" accepted), IP Webcam
+      started (**Start server**) with FPS limit 15 and quality 50. USB, because the venue Wi-Fi stalls the stream.
+- [ ] Camera phone charging, screen kept on (no sleep, no lock).
+- [ ] Vasi's phone charged, logged in as `staff@aivee.demo`, Alerte open, **Notificări pe telefon** = active,
       **Trimite un test** received. Do not disturb off, volume up.
-- [ ] `make up` healthy; `make seed` run; `make edge SOURCE=http://<phone>:8080/video ROTATE=90` running;
-      Dispozitive shows `edge-01` online.
+- [ ] `make up` healthy; `make seed` run; `make edge-usb` running (adb forward to port 28080, ROTATE=90,
+      APPEARANCE=true, TARGET_FPS=30); Dispozitive shows `edge-01` online.
+- [ ] Staff profile enrolled with 8–10 photos of Vasi in the black jacket (front, side, back), uploaded on the
+      Alerte page or with `POST /api/staff/photos`; Live shows Vasi with the light blue (staff) box.
+- [ ] Arrival rehearsed: Vasi walks to Masa 1 and stands still 3–4 s by the table, so "a ajuns" fires
+      (`ARRIVE_S` = 5 s counts from entering the zone).
 - [ ] Zones clean: Masa 1, Masa 2, Intrare drawn on today's camera position (the camera did not move).
       Nobody sitting at a table zone before the demo (no stale alerts); Alerte has no open alert.
 - [ ] Rules created (`make seed` creates accounts only, not rules): unattended 1 min and uncleared 1 min
@@ -150,9 +156,10 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
 - [ ] Backup clips present and playing: `ls recordings/` — one clip per scene, made with
       `make record SOURCE=http://<phone>:8080/video SECONDS=60 ROTATE=90 NAME=<scene>`.
 - [ ] Fake edge tested once: `make fake-edge SCENARIO=unattended SPEED=10`.
-- [ ] Wi-Fi fallback: laptop hotspot configured; phone and camera phone know it; after switching, update the
-      phone's IP in `SOURCE` and the dashboard URL on Radu's phone.
-- [ ] Radu in uniform; Vasi has the cups.
+- [ ] Wi-Fi fallback (USB fails): laptop hotspot configured; phone and camera phone know it;
+      `ROTATE=90 APPEARANCE=true TARGET_FPS=30 make edge SOURCE=http://<phone>:8080/video`, and update the
+      dashboard URL on Vasi's phone.
+- [ ] Vasi in the black jacket; Radu has the cups.
 - [ ] Laptop on power, screen sleep off, browser zoom so the alert card is readable from the back.
 
 ## Elevator pitch (60 s, Romanian)
@@ -207,7 +214,7 @@ devices with roles per location. Today's limits: one broker, one Postgres and on
 **5. Accuracy and false alarms?**
 Rule translation is measured: 20/20 on our Romanian eval, median 2.4 s. Vision precision on recorded clips is
 not measured yet, so we do not quote a number. False alarms are kept down by design: conditions need a
-duration (one minute, not one frame), a 1.5 s grace for flicker, role hysteresis (staff above 0.7, guest
+duration (one minute, not one frame), a 5 s grace for detector flicker (an alert closes about 5 s after the guest really leaves), role hysteresis (staff above 0.7, guest
 below 0.4), arrival only after 5 s in the zone, a cooldown per rule, and the owner confirms staff suggestions.
 Rules stay drafts until a human confirms them.
 

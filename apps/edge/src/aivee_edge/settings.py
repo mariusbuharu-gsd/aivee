@@ -8,9 +8,9 @@ ROTATIONS = (0, 90, 180, 270)
 
 class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_EDGE_USER, MQTT_EDGE_PASSWORD, SITE, DEVICE,
-    CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE,
-    YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH, STAFF_W_APPEARANCE, STAFF_W_STANDING,
-    STAFF_W_BEHAVIOUR."""
+    CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, GRACE_S, DETECTOR_MODEL, POSE_MODEL,
+    APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH, STAFF_W_APPEARANCE,
+    STAFF_W_STANDING, STAFF_W_BEHAVIOUR."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
@@ -47,7 +47,9 @@ class EdgeSettings(BaseSettings):
     blur: bool = True
     yunet_model: str = "models/face_detection_yunet_2023mar.onnx"
 
-    grace_s: float = 1.5
+    grace_s: float = 5.0
+    """Seconds a person may be missing from a zone and still count as present: bridges detector
+    flicker at low fps, so an alert closes about this long after the guest really leaves."""
     arrive_s: float = 5.0
     """Seconds a staff member must stay in an open alert's zone to count as arrived."""
     metrics_interval_s: float = 5.0

@@ -126,7 +126,12 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
 
 ## Edge pipeline facts
 - INT8 OpenVINO on the i7-1355U: ~20 FPS detection, ~12 FPS with pose; phone stream 8–11 FPS in practice.
-- Engine `grace_s=1.5`; tracks forgotten after 5 s; role hysteresis 0.7 / 0.4 (staff at ≥ 0.7, back to guest at ≤ 0.4); owner confirm / reject overrides.
+- Phone camera over USB (`make edge-usb`: `adb forward tcp:28080 tcp:8080`, edge reads `http://localhost:28080/video`):
+  stable 15 fps, while venue Wi-Fi stalled the MJPEG stream up to 1.8 s. `Cv2Source` emits a frame only after
+  1/`TARGET_FPS` s, so set `TARGET_FPS` above the source rate (≥ 2×, e.g. 30 for 15): the default 10 against a
+  15 fps stream drops every other frame and runs at ~7 fps.
+- Engine `grace_s=5` (`GRACE_S`): a guest missing for up to 5 s still counts as present, so an alert closes ~5 s after
+  the guest leaves (1.5 s closed alerts on detector flicker at low fps); tracks forgotten after 5 s; role hysteresis 0.7 / 0.4 (staff at ≥ 0.7, back to guest at ≤ 0.4); owner confirm / reject overrides.
 - Staff score (`domain/role.py`): `(w_a·appearance + w_s·standing + w_b·behaviour) / Σ w of the signals available`,
   defaults `STAFF_W_APPEARANCE=0.60`, `STAFF_W_STANDING=0.25`, `STAFF_W_BEHAVIOUR=0.15`. Standing counts only next to
   appearance: with no appearance score (no profiles, or not embedded yet) the score is behaviour alone, so standing
