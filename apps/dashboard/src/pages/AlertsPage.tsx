@@ -10,6 +10,7 @@ import { SuggestionCard } from '../components/SuggestionCard';
 import { useAuth } from '../auth/context';
 import { useLiveData, zoneName } from '../state/context';
 import { EmptyState, Segmented } from '../ui/controls';
+import { BusyLabel } from '../ui/Eyes';
 import './AlertsPage.css';
 
 type Filter = 'all' | 'open' | 'closed';
@@ -178,7 +179,9 @@ export function AlertsPage() {
                     aria-busy={moreBusy}
                     onClick={showMore}
                   >
-                    {moreBusy ? 'Se încarcă…' : 'Mai multe'}
+                    <BusyLabel busy={moreBusy} idle="Mai multe">
+                      Se încarcă…
+                    </BusyLabel>
                   </button>
                   {moreError && (
                     <p className="error small" role="alert">

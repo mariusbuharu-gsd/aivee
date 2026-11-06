@@ -17,6 +17,7 @@ import {
 import { Banner } from '../ui/Banner';
 import { Select } from '../ui/Select';
 import { EmptyState, Segmented, Skeleton } from '../ui/controls';
+import { BusyLabel } from '../ui/Eyes';
 import './HistoryPage.css';
 
 const KINDS: { value: string; label: string }[] = [
@@ -271,7 +272,9 @@ export function HistoryPage() {
           aria-busy={moreBusy}
           onClick={more}
         >
-          {moreBusy ? 'Se încarcă…' : 'Mai vechi'}
+          <BusyLabel busy={moreBusy} idle="Mai vechi">
+            Se încarcă…
+          </BusyLabel>
         </button>
       )}
       {moreError && (
