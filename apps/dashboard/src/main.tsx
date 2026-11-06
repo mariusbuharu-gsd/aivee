@@ -5,7 +5,6 @@ import { App } from './App';
 import { createApi } from './api/client';
 import { ApiContext } from './api/context';
 import { AuthProvider } from './auth/AuthProvider';
-import { LiveDataProvider } from './state/LiveData';
 import './styles.css';
 import './pwa/register';
 
@@ -16,9 +15,7 @@ createRoot(document.getElementById('root') as HTMLElement).render(
     <ApiContext.Provider value={api}>
       <AuthProvider>
         <BrowserRouter>
-          <LiveDataProvider>
-            <App />
-          </LiveDataProvider>
+          <App />
         </BrowserRouter>
       </AuthProvider>
     </ApiContext.Provider>

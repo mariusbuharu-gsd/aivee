@@ -4,17 +4,22 @@ import { CameraTile } from '../components/CameraTile';
 import { MetricsStrip } from '../components/MetricsStrip';
 import { RuleComposer } from '../components/RuleComposer';
 import { SuggestionCard } from '../components/SuggestionCard';
+import { useAuth } from '../auth/context';
 import { useLiveData, zoneName } from '../state/context';
 
 export function LivePage() {
-  const { cameras, alerts, suggestions, metrics, loading, addRule, dropSuggestion } = useLiveData();
+  const { cameras, alerts, suggestions, metrics, loading, addRule, dropSuggestion, cases, ack } =
+    useLiveData();
+  const { can } = useAuth();
   const firstOnline = cameras.find((c) => c.online) ?? cameras[0];
   return (
     <div className="page page-live">
       <header className="page-head">
         <h1>Live</h1>
       </header>
-      {firstOnline && <RuleComposer cameraId={firstOnline.id} onCreated={addRule} compact />}
+      {firstOnline && can('rules.manage') && (
+        <RuleComposer cameraId={firstOnline.id} onCreated={addRule} compact />
+      )}
       <MetricsStrip metrics={metrics} />
       <div className="live-grid">
         <section aria-label="Camere" className="cameras">
@@ -22,9 +27,11 @@ export function LivePage() {
           {!loading && cameras.length === 0 && (
             <div className="card">
               <p>Nicio cameră configurată.</p>
-              <Link to="/dispozitive" className="btn btn-primary">
-                Adaugă cameră
-              </Link>
+              {can('devices.manage') && (
+                <Link to="/dispozitive" className="btn btn-primary">
+                  Adaugă cameră
+                </Link>
+              )}
             </div>
           )}
           {cameras.map((c) => (
@@ -38,15 +45,23 @@ export function LivePage() {
               Toate
             </Link>
           </div>
-          {suggestions.slice(0, 1).map((s) => (
-            <SuggestionCard
-              key={s.suggestion_id}
-              suggestion={s}
-              cameraName={cameras.find((c) => c.id === s.camera_id)?.name}
-              onResolved={dropSuggestion}
-            />
-          ))}
-          <AlertFeed items={alerts.slice(0, 8)} zoneName={(id) => zoneName(cameras, id)} />
+          {can('staff.review') &&
+            suggestions
+              .slice(0, 1)
+              .map((s) => (
+                <SuggestionCard
+                  key={s.suggestion_id}
+                  suggestion={s}
+                  cameraName={cameras.find((c) => c.id === s.camera_id)?.name}
+                  onResolved={dropSuggestion}
+                />
+              ))}
+          <AlertFeed
+            items={alerts.slice(0, 8)}
+            zoneName={(id) => zoneName(cameras, id)}
+            cases={cases}
+            onAck={can('alerts.ack') ? ack : undefined}
+          />
         </aside>
       </div>
     </div>

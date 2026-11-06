@@ -2,107 +2,131 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ApiContext } from '../api/context';
+import { MockApi } from '../api/mock';
+import { MOCK_INVITE_TOKEN, MOCK_PASSWORD } from '../api/mockAccounts';
+import { InvitePage } from '../pages/InvitePage';
 import { LoginPage } from '../pages/LoginPage';
 import { RegisterPage } from '../pages/RegisterPage';
 import { AuthProvider } from './AuthProvider';
 import { RequireAuth } from './RequireAuth';
-import { passwordStrength, SESSION_KEY } from './session';
+import { passwordStrength, safeNext } from './session';
 
 function renderAt(path: string) {
-  return render(
-    <AuthProvider>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/intra" element={<LoginPage />} />
-          <Route path="/cont-nou" element={<RegisterPage />} />
-          <Route element={<RequireAuth />}>
-            <Route path="/" element={<h1>Live</h1>} />
-            <Route path="/dispozitive" element={<h1>Dispozitive</h1>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
-    </AuthProvider>,
+  const api = new MockApi({ latencyMs: 0, autoplay: false });
+  render(
+    <ApiContext.Provider value={api}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/intra" element={<LoginPage />} />
+            <Route path="/cont-nou" element={<RegisterPage />} />
+            <Route path="/invitatie/:token" element={<InvitePage />} />
+            <Route element={<RequireAuth />}>
+              <Route path="/" element={<h1>Live</h1>} />
+              <Route path="/alerte" element={<h1>Alerte</h1>} />
+              <Route path="/locatii" element={<h1>Locații</h1>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthProvider>
+    </ApiContext.Provider>,
   );
+  return api;
 }
 
-beforeEach(() => {
-  localStorage.clear();
-  sessionStorage.clear();
-});
+beforeEach(() => localStorage.clear());
 
 describe('auth', () => {
-  it('sends a signed-out visitor to the login page', () => {
+  it('sends a signed-out visitor to the login page', async () => {
     renderAt('/');
-    expect(screen.getByRole('heading', { name: 'Intră în cont' })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'Intră în cont' })).toBeVisible();
   });
 
-  it('signs in and returns to the page that was asked for', async () => {
+  it('signs in and returns to the page that was asked for (notification links)', async () => {
     const user = userEvent.setup();
-    renderAt('/dispozitive');
-    await user.type(screen.getByLabelText('Email'), 'ana@restaurant.ro');
-    await user.type(screen.getByLabelText('Parolă'), 'parola-demo');
+    renderAt('/alerte');
+    await user.type(await screen.findByLabelText('Email'), 'staff@aivee.demo');
+    await user.type(screen.getByLabelText('Parolă'), MOCK_PASSWORD);
     await user.click(screen.getByRole('button', { name: 'Intră în cont' }));
-    expect(await screen.findByRole('heading', { name: 'Dispozitive' })).toBeVisible();
-    expect(localStorage.getItem(SESSION_KEY)).toContain('ana@restaurant.ro');
+    expect(await screen.findByRole('heading', { name: 'Alerte' })).toBeVisible();
   });
 
-  it('keeps the session only for this tab when "remember me" is off', async () => {
+  it('shows the API message for a wrong password', async () => {
     const user = userEvent.setup();
     renderAt('/intra');
-    await user.type(screen.getByLabelText('Email'), 'ana@restaurant.ro');
-    await user.type(screen.getByLabelText('Parolă'), 'parola-demo');
-    await user.click(screen.getByLabelText('Ține-mă minte pe acest dispozitiv'));
+    await user.type(await screen.findByLabelText('Email'), 'staff@aivee.demo');
+    await user.type(screen.getByLabelText('Parolă'), 'gresit');
     await user.click(screen.getByRole('button', { name: 'Intră în cont' }));
-    expect(await screen.findByRole('heading', { name: 'Live' })).toBeVisible();
-    expect(localStorage.getItem(SESSION_KEY)).toBeNull();
-    expect(sessionStorage.getItem(SESSION_KEY)).toContain('ana@restaurant.ro');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Email sau parolă greșită.');
   });
 
-  it('rejects an invalid email with a Romanian message', async () => {
+  it('rejects an invalid email before calling the API', async () => {
     const user = userEvent.setup();
     renderAt('/intra');
-    await user.type(screen.getByLabelText('Email'), 'ana');
+    await user.type(await screen.findByLabelText('Email'), 'ana');
     await user.type(screen.getByLabelText('Parolă'), 'x');
     await user.click(screen.getByRole('button', { name: 'Intră în cont' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Scrie o adresă de email validă.');
   });
 
-  it('registers an owner and continues to adding a device', async () => {
+  it('registers an owner and continues to creating the first location', async () => {
     const user = userEvent.setup();
     renderAt('/cont-nou');
-    await user.type(screen.getByLabelText('Numele tău'), 'Ana Pop');
-    await user.type(screen.getByLabelText('Email'), 'ana@restaurant.ro');
-    await user.type(screen.getByLabelText('Numele locației'), 'Bistro Ana');
-    await user.click(screen.getByLabelText('Terasă / bar'));
-    await user.type(screen.getByLabelText('Parolă'), 'o-parola-lunga');
+    await user.type(await screen.findByLabelText('Numele tău'), 'Ana Pop');
+    await user.type(screen.getByLabelText('Email'), 'ana@bistro.ro');
+    await user.type(screen.getByLabelText('Numele firmei'), 'Bistro Ana SRL');
+    await user.type(screen.getByLabelText('Parolă'), 'parola-lunga');
     await user.click(screen.getByRole('checkbox', { name: /Sunt de acord/ }));
     await user.click(screen.getByRole('button', { name: 'Creează contul și continuă' }));
-    expect(await screen.findByRole('heading', { name: 'Dispozitive' })).toBeVisible();
-    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) ?? '{}');
-    expect(saved).toMatchObject({ name: 'Ana Pop', venue: 'Bistro Ana', venueType: 'bar' });
+    expect(await screen.findByRole('heading', { name: 'Locații' })).toBeVisible();
   });
 
-  it('asks for a 10-character password and the terms before registering', async () => {
+  it('asks for an 8-character password and the terms before registering', async () => {
     const user = userEvent.setup();
     renderAt('/cont-nou');
-    await user.type(screen.getByLabelText('Numele tău'), 'Ana');
-    await user.type(screen.getByLabelText('Email'), 'ana@restaurant.ro');
-    await user.type(screen.getByLabelText('Numele locației'), 'Bistro');
-    await user.type(screen.getByLabelText('Parolă'), 'scurta');
+    await user.type(await screen.findByLabelText('Numele tău'), 'Ana');
+    await user.type(screen.getByLabelText('Email'), 'ana@bistro.ro');
+    await user.type(screen.getByLabelText('Numele firmei'), 'Bistro');
+    await user.type(screen.getByLabelText('Parolă'), 'scurt');
     await user.click(screen.getByRole('button', { name: 'Creează contul și continuă' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Parola are nevoie de minim 10 caractere.');
-    await user.type(screen.getByLabelText('Parolă'), '-mai-lunga');
+    expect(screen.getByRole('alert')).toHaveTextContent('Parola are nevoie de minim 8 caractere.');
+    await user.type(screen.getByLabelText('Parolă'), '-mai-lung');
     await user.click(screen.getByRole('button', { name: 'Creează contul și continuă' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Bifează acordul ca să continui.');
   });
+
+  it('accepts an invite and lands in the app', async () => {
+    const user = userEvent.setup();
+    renderAt(`/invitatie/${MOCK_INVITE_TOKEN}`);
+    expect(
+      await screen.findByRole('heading', { name: 'Intră în echipa Terasa demo' }),
+    ).toBeVisible();
+    await user.type(screen.getByLabelText('Numele tău'), 'Dan Nou');
+    await user.type(screen.getByLabelText('Parolă'), 'parola-noua');
+    await user.click(screen.getByRole('button', { name: 'Acceptă invitația' }));
+    expect(await screen.findByRole('heading', { name: 'Live' })).toBeVisible();
+  });
+
+  it('explains an expired or unknown invite', async () => {
+    renderAt('/invitatie/nu-exista');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invitația nu mai este valabilă.');
+  });
 });
 
-describe('passwordStrength', () => {
+describe('session helpers', () => {
   it('scores length and variety from 0 to 4', () => {
     expect(passwordStrength('')).toBe(0);
-    expect(passwordStrength('scurta')).toBe(1);
+    expect(passwordStrength('scurt')).toBe(1);
     expect(passwordStrength('parolalunga')).toBe(2);
     expect(passwordStrength('ParolaLunga7')).toBe(3);
     expect(passwordStrength('Parola-Lunga-2026!')).toBe(4);
+  });
+
+  it('follows only same-app paths after sign-in', () => {
+    expect(safeNext('/alerte?id=1')).toBe('/alerte?id=1');
+    expect(safeNext('//evil.example')).toBe('/');
+    expect(safeNext('https://evil.example')).toBe('/');
+    expect(safeNext(null)).toBe('/');
   });
 });

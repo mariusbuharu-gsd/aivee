@@ -109,3 +109,40 @@ describe('HttpApi', () => {
     expect(b?.snapshot_url).toBeNull();
   });
 });
+
+describe('HttpApi accounts (auth-roles-audit spec)', () => {
+  it('sends the session cookie and scopes resources to the current location', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json([]), json([]), json({ user: {} }));
+    api.setLocation('terasa');
+    await api.listCameras();
+    await api.listAlertCases({ location_id: 'centru', state: 'open' });
+    await api.me();
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/cameras?location_id=terasa');
+    expect(fetch.mock.calls[0]?.[1]?.credentials).toBe('include');
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'http://api:8000/api/alerts?location_id=centru&state=open',
+    );
+    expect(fetch.mock.calls[2]?.[0]).toBe('http://api:8000/api/auth/me');
+  });
+
+  it('announces a 401 so the app returns to /intra, except for the auth calls', async () => {
+    const api = new HttpApi('http://api:8000');
+    const seen = vi.fn();
+    window.addEventListener('aivee:unauthorized', seen);
+    const err = { detail: { code: 'unauthenticated', message_ro: 'Intră în cont.' } };
+    mockFetch(json(err, 401), json(err, 401));
+    await expect(api.listRules()).rejects.toMatchObject({ status: 401 });
+    await expect(api.me()).rejects.toMatchObject({ status: 401 });
+    expect(seen).toHaveBeenCalledTimes(1);
+    window.removeEventListener('aivee:unauthorized', seen);
+  });
+
+  it('acknowledges an alert with "Merg eu"', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));
+    await api.ackAlert('e-1');
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/alerts/e-1/ack');
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
+  });
+});

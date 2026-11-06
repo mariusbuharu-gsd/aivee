@@ -3,7 +3,19 @@
 import type { DeviceStatus, Rule, StaffSuggestion, Zone } from '../contracts';
 import {
   ApiError,
+  UNAUTHORIZED_EVENT,
+  type AlertCase,
   type AlertView,
+  type AuditPage,
+  type AuditQuery,
+  type Invite,
+  type InviteInfo,
+  type Location,
+  type Me,
+  type Member,
+  type RegisterInput,
+  type Role,
+  type ServiceMetrics,
   type ApiClient,
   type CameraView,
   type DashboardMetrics,
@@ -68,8 +80,9 @@ export class HttpApi implements ApiClient {
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(`${this.base}${path}`, {
+      res = await fetch(`${this.base}${this.scoped(path)}`, {
         ...init,
+        credentials: 'include',
         headers:
           init?.body instanceof FormData
             ? init.headers
@@ -77,6 +90,9 @@ export class HttpApi implements ApiClient {
       });
     } catch {
       throw new ApiError('Serverul nu răspunde. Verificați conexiunea.', 'network');
+    }
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     }
     if (!res.ok) throw await toApiError(res);
     if (res.status === 204) return undefined as T;
@@ -202,4 +218,116 @@ export class HttpApi implements ApiClient {
       ws?.close();
     };
   }
+
+  // --- Accounts, locations, audit, alert lifecycle (docs/plans/2026-11-06-auth-roles-audit.md) ---
+
+  private location: string | null = null;
+
+  setLocation(locationId: string | null) {
+    this.location = locationId;
+  }
+
+  /** Location-scoped endpoints get `location_id` unless the caller passed one. */
+  private scoped(path: string): string {
+    const global = /^\/api\/(auth|invites|locations)(\/|$|\?)/.test(path);
+    if (!this.location || global || /[?&]location_id=/.test(path)) return path;
+    return `${path}${path.includes('?') ? '&' : '?'}location_id=${encodeURIComponent(this.location)}`;
+  }
+
+  private post<T>(path: string, body?: unknown) {
+    return this.request<T>(path, {
+      method: 'POST',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
+  me() {
+    return this.request<Me>('/api/auth/me');
+  }
+
+  login(email: string, password: string) {
+    return this.post<Me>('/api/auth/login', { email, password });
+  }
+
+  register(input: RegisterInput) {
+    return this.post<Me>('/api/auth/register', input);
+  }
+
+  async logout() {
+    await this.post<unknown>('/api/auth/logout');
+  }
+
+  getInvite(token: string) {
+    return this.request<InviteInfo>(`/api/invites/${encodeURIComponent(token)}`);
+  }
+
+  acceptInvite(token: string, input: { name: string; password: string }) {
+    return this.post<Me>(`/api/invites/${encodeURIComponent(token)}/accept`, input);
+  }
+
+  listLocations() {
+    return this.request<Location[]>('/api/locations');
+  }
+
+  createLocation(location: Location) {
+    return this.post<Location>('/api/locations', location);
+  }
+
+  updateLocation(id: string, patch: Partial<Omit<Location, 'id'>>) {
+    return this.request<Location>(`/api/locations/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async deleteLocation(id: string) {
+    await this.request<unknown>(`/api/locations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  listMembers(locationId: string) {
+    return this.request<Member[]>(`/api/locations/${encodeURIComponent(locationId)}/members`);
+  }
+
+  updateMember(locationId: string, userId: string, role: Role) {
+    return this.request<Member>(
+      `/api/locations/${encodeURIComponent(locationId)}/members/${encodeURIComponent(userId)}`,
+      { method: 'PATCH', body: JSON.stringify({ role }) },
+    );
+  }
+
+  async removeMember(locationId: string, userId: string) {
+    await this.request<unknown>(
+      `/api/locations/${encodeURIComponent(locationId)}/members/${encodeURIComponent(userId)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  createInvite(input: { location_id: string; role: Role; email: string }) {
+    return this.post<Invite>('/api/invites', input);
+  }
+
+  listAudit(q: AuditQuery) {
+    return this.request<AuditPage>(`/api/audit?${query(q)}`);
+  }
+
+  listAlertCases(q: { location_id: string; state?: string; limit?: number }) {
+    return this.request<AlertCase[]>(`/api/alerts?${query(q)}`);
+  }
+
+  ackAlert(eventId: string) {
+    return this.post<AlertCase>(`/api/alerts/${encodeURIComponent(eventId)}/ack`);
+  }
+
+  getServiceMetrics(q: { location_id: string; from?: string; to?: string }) {
+    return this.request<ServiceMetrics>(`/api/metrics/service?${query(q)}`);
+  }
+}
+
+/** Query string from the defined, non-empty values. */
+function query(params: object): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+  }
+  return q.toString();
 }

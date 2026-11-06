@@ -1,51 +1,47 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../auth/context';
-import { isEmail, MIN_PASSWORD, passwordStrength, type VenueType } from '../auth/session';
+import { isEmail, MIN_PASSWORD, passwordStrength } from '../auth/session';
 import { AuthShell } from '../components/AuthShell';
-
-const VENUES: { id: VenueType; label: string }[] = [
-  { id: 'restaurant', label: 'Restaurant' },
-  { id: 'bar', label: 'Terasă / bar' },
-  { id: 'event', label: 'Eveniment' },
-];
-
-const STRENGTH = [
-  '',
-  'Prea scurtă.',
-  'Parolă bună.',
-  'Parolă puternică.',
-  'Parolă foarte puternică.',
-];
+import { PasswordMeter } from '../components/PasswordMeter';
 
 const STEPS = [
-  ['Creezi contul și locația', 'Acum, pe pagina asta.'],
-  ['Conectezi dispozitivul și camera', 'Un calculator din local, cu adresa camerei.'],
-  ['Desenezi mesele și scrii prima regulă', 'În română, ca unui coleg.'],
+  ['Creezi contul firmei', 'Acum, pe pagina asta. Tu devii proprietarul.'],
+  ['Adaugi locația și camera', 'Restaurant, terasă, eveniment sau magazin.'],
+  ['Desenezi zonele și scrii prima regulă', 'În română, ca unui coleg.'],
 ];
 
 export function RegisterPage() {
-  const { signIn } = useAuth();
+  const { register, status } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [venue, setVenue] = useState('');
-  const [venueType, setVenueType] = useState<VenueType>('restaurant');
+  const [org, setOrg] = useState('');
   const [password, setPassword] = useState('');
   const [terms, setTerms] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const strength = passwordStrength(password);
 
-  function submit(e: FormEvent) {
+  if (status === 'authed' && !busy) return <Navigate to="/" replace />;
+
+  async function submit(e: FormEvent) {
     e.preventDefault();
+    if (busy) return;
     if (!name.trim()) return setError('Scrie-ți numele.');
     if (!isEmail(email)) return setError('Scrie o adresă de email validă.');
-    if (!venue.trim()) return setError('Scrie numele locației.');
+    if (!org.trim()) return setError('Scrie numele firmei.');
     if (password.length < MIN_PASSWORD)
       return setError(`Parola are nevoie de minim ${MIN_PASSWORD} caractere.`);
     if (!terms) return setError('Bifează acordul ca să continui.');
-    signIn({ name: name.trim(), email: email.trim(), venue: venue.trim(), venueType }, true);
-    navigate('/dispozitive', { replace: true });
+    setBusy(true);
+    setError(null);
+    try {
+      await register({ org_name: org.trim(), name: name.trim(), email: email.trim(), password });
+      navigate('/locatii', { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nu am putut crea contul.');
+      setBusy(false);
+    }
   }
 
   return (
@@ -94,29 +90,15 @@ export function RegisterPage() {
           </label>
         </div>
         <label className="field">
-          <span>Numele locației</span>
+          <span>Numele firmei</span>
           <input
             className="input"
             autoComplete="organization"
-            value={venue}
-            onChange={(e) => setVenue(e.target.value)}
-            placeholder="ex. Bistro Central"
+            value={org}
+            onChange={(e) => setOrg(e.target.value)}
+            placeholder="ex. Bistro Central SRL"
           />
         </label>
-        <fieldset className="choices">
-          <legend>Tip de locație</legend>
-          {VENUES.map((v) => (
-            <label key={v.id} className="choice">
-              <input
-                type="radio"
-                name="venueType"
-                checked={venueType === v.id}
-                onChange={() => setVenueType(v.id)}
-              />
-              {v.label}
-            </label>
-          ))}
-        </fieldset>
         <label className="field">
           <span>Parolă</span>
           <input
@@ -128,19 +110,12 @@ export function RegisterPage() {
             aria-describedby="pw-hint"
           />
         </label>
-        <div className="meter" aria-hidden="true">
-          {[1, 2, 3, 4].map((n) => (
-            <span key={n} className={n <= strength ? 'is-on' : undefined} />
-          ))}
-        </div>
-        <span id="pw-hint" className="small muted">
-          {STRENGTH[strength]} Minim {MIN_PASSWORD} caractere.
-        </span>
+        <PasswordMeter id="pw-hint" strength={passwordStrength(password)} />
         <label className="check">
           <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
           <span>
             Sunt de acord cu termenii și cu felul în care prelucrăm imaginile: fețele se blurează
-            local, video-ul nu pleacă din restaurant.
+            local, video-ul nu pleacă din locație.
           </span>
         </label>
         {error && (
@@ -148,7 +123,7 @@ export function RegisterPage() {
             {error}
           </p>
         )}
-        <button type="submit" className="btn btn-primary btn-block">
+        <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           Creează contul și continuă
         </button>
         <p className="auth-switch">

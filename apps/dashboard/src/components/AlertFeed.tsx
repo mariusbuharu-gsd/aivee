@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { AlertItem } from '../alerts/fold';
+import type { AlertCase } from '../api/client';
+import { duration } from '../alerts/format';
 import { Icon } from './Icon';
 
 const time = (iso: string) =>
@@ -7,8 +9,7 @@ const time = (iso: string) =>
 
 function waited(a: AlertItem): string {
   const end = a.closed_at ? Date.parse(a.closed_at) : Date.now();
-  const s = Math.max(0, Math.round((end - Date.parse(a.opened_at)) / 1000));
-  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+  return duration((end - Date.parse(a.opened_at)) / 1000);
 }
 
 export function AlertFeed({
@@ -16,17 +17,24 @@ export function AlertFeed({
   zoneName,
   showSnapshot = false,
   emptyText = 'Nicio alertă încă.',
+  cases = {},
+  onAck,
 }: {
   items: AlertItem[];
   zoneName: (zoneId: string) => string;
   showSnapshot?: boolean;
   emptyText?: string;
+  /** Lifecycle per alert key; adds the timeline. */
+  cases?: Record<string, AlertCase>;
+  /** Shows "Merg eu" on open alerts nobody took yet (omit when the role cannot ack). */
+  onAck?: (eventId: string) => Promise<void>;
 }) {
   if (items.length === 0) return <p className="muted empty">{emptyText}</p>;
   return (
     <ul className="feed" aria-label="Alerte">
       {items.map((a) => {
         const open = a.closed_at === null;
+        const lifecycle = cases[a.key];
         return (
           <li key={a.key} className={`feed-item ${open ? 'is-open' : 'is-closed'}`}>
             {showSnapshot && <Snapshot url={a.snapshot_url} />}
@@ -44,7 +52,11 @@ export function AlertFeed({
               <p className="muted small mono">
                 {open ? `deschisă de ${waited(a)}` : `rezolvată în ${waited(a)}`}
               </p>
+              {lifecycle && <Timeline c={lifecycle} />}
             </div>
+            {open && onAck && !lifecycle?.acknowledged_at && (
+              <AckButton onAck={() => onAck(a.key)} zone={zoneName(a.zone_id)} />
+            )}
           </li>
         );
       })}
@@ -72,5 +84,80 @@ function Snapshot({ url }: { url: string | null }) {
         onError={() => setFailed(url)}
       />
     </a>
+  );
+}
+
+function AckButton({ onAck, zone }: { onAck: () => Promise<void>; zone: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="ack">
+      <button
+        type="button"
+        className="btn btn-accent"
+        disabled={busy}
+        aria-label={`Merg eu la ${zone}`}
+        onClick={async () => {
+          setBusy(true);
+          setError(null);
+          try {
+            await onAck();
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Nu am putut prelua alerta.');
+            setBusy(false);
+          }
+        }}
+      >
+        Merg eu
+      </button>
+      {error && (
+        <p className="error small" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** opened → preluată → ajuns → închisă, with the time between steps. */
+export function Timeline({ c }: { c: AlertCase }) {
+  const skippedAck = !c.acknowledged_at && !!c.arrived_at;
+  const steps: { label: string; at: string | null; note?: string; gap?: string }[] = [
+    { label: 'Deschisă', at: c.opened_at },
+    {
+      label: 'Preluată',
+      at: c.acknowledged_at,
+      note: skippedAck ? 'fără preluare' : (c.acknowledged_by ?? undefined),
+      gap: c.reaction_s !== null ? `reacție ${duration(c.reaction_s)}` : undefined,
+    },
+    {
+      label: 'Ajuns',
+      at: c.arrived_at,
+      gap: c.travel_s !== null ? `drum ${duration(c.travel_s)}` : undefined,
+    },
+    {
+      label: 'Închisă',
+      at: c.closed_at,
+      gap: c.wait_s !== null ? `așteptare ${duration(c.wait_s)}` : undefined,
+    },
+  ];
+  const current = steps.reduce((last, s, i) => (s.at ? i : last), 0);
+  return (
+    <ol className="timeline" aria-label="Desfășurarea alertei">
+      {steps.map((s, i) => (
+        <li
+          key={s.label}
+          className={`tl-step ${s.at ? 'is-done' : ''} ${i === current && !c.closed_at ? 'is-now' : ''}`}
+        >
+          <span className="tl-dot" aria-hidden="true" />
+          <span className="tl-label">{s.label}</span>
+          <span className="tl-meta mono">
+            {s.at ? time(s.at) : (s.note ?? '—')}
+            {s.at && s.note ? ` · ${s.note}` : ''}
+          </span>
+          {s.gap && <span className="tl-gap mono">{s.gap}</span>}
+        </li>
+      ))}
+    </ol>
   );
 }

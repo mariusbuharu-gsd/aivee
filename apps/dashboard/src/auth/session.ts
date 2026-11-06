@@ -1,20 +1,10 @@
-// Demo sign-in: the backend has no accounts yet (multi-tenant auth is out of scope for the
-// hackathon), so the session lives in the browser. Swap `saveSession`/`loadSession` for API
-// calls when the backend grows an auth endpoint; the pages only use the AuthContext.
+// Small helpers shared by the sign-in forms. The session itself is an HttpOnly cookie set by
+// the API (docs/plans/2026-11-06-auth-roles-audit.md); the browser never sees the token.
+import type { Role } from '../api/client';
 
-export type VenueType = 'restaurant' | 'bar' | 'event';
-
-export interface Session {
-  name: string;
-  email: string;
-  venue: string;
-  venueType: VenueType;
-}
-
-export const SESSION_KEY = 'aivee.session';
-export const MIN_PASSWORD = 10;
-
+export const MIN_PASSWORD = 8;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LOCATION_KEY = 'aivee.location';
 
 export const isEmail = (value: string) => EMAIL.test(value.trim());
 
@@ -24,35 +14,34 @@ export function passwordStrength(password: string): 0 | 1 | 2 | 3 | 4 {
   if (password.length < MIN_PASSWORD) return 1;
   let score = 2;
   if (/[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)) score++;
-  if (password.length >= 14 && /[^A-Za-z0-9]/.test(password)) score++;
+  if (password.length >= 12 && /[^A-Za-z0-9]/.test(password)) score++;
   return Math.min(score, 4) as 2 | 3 | 4;
 }
 
-function isSession(value: unknown): value is Session {
-  const s = value as Partial<Session> | null;
-  return !!s && typeof s.email === 'string' && typeof s.name === 'string';
+export const ROLE_LABEL: Record<Role, string> = {
+  owner: 'Proprietar',
+  manager: 'Manager',
+  staff: 'Personal',
+};
+
+/** Only same-app paths are followed after sign-in. */
+export function safeNext(next: string | null | undefined): string {
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
 }
 
-export function loadSession(): Session | null {
-  for (const store of [localStorage, sessionStorage]) {
-    try {
-      const raw = store.getItem(SESSION_KEY);
-      const parsed: unknown = raw ? JSON.parse(raw) : null;
-      if (isSession(parsed)) return parsed;
-    } catch {
-      /* storage blocked or corrupt: treat as signed out */
-    }
-  }
-  return null;
-}
-
-export function saveSession(session: Session | null, remember = true) {
+export function loadLocationId(): string | null {
   try {
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-    if (session)
-      (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, JSON.stringify(session));
+    return localStorage.getItem(LOCATION_KEY);
   } catch {
-    /* the session still holds in memory for this visit */
+    return null;
+  }
+}
+
+export function saveLocationId(id: string | null) {
+  try {
+    if (id) localStorage.setItem(LOCATION_KEY, id);
+    else localStorage.removeItem(LOCATION_KEY);
+  } catch {
+    /* the choice holds for this visit */
   }
 }

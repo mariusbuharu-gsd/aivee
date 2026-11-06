@@ -75,7 +75,7 @@ export interface DashboardMetrics {
   alert_latency_ms: number | null;
 }
 
-export interface ApiClient {
+export interface ApiClient extends AccountApi {
   readonly kind: 'mock' | 'http';
   listCameras(): Promise<CameraView[]>;
   createCamera(camera: NewCamera): Promise<CameraView>;
@@ -105,3 +105,168 @@ export async function createApi(baseUrl = import.meta.env.VITE_API_URL): Promise
   const { MockApi } = await import('./mock');
   return new MockApi();
 }
+
+// ---------------------------------------------------------------------------------------------
+// Accounts, locations, audit history and the alert lifecycle.
+// Contract: docs/plans/2026-11-06-auth-roles-audit.md (decisions D19–D24).
+
+export type Role = 'owner' | 'manager' | 'staff';
+export type Permission =
+  | 'alerts.view'
+  | 'alerts.ack'
+  | 'staff.review'
+  | 'staff.enrol'
+  | 'rules.manage'
+  | 'devices.manage'
+  | 'users.manage'
+  | 'locations.manage'
+  | 'audit.view'
+  | 'audit.view.own';
+export type LocationType = 'restaurant' | 'terrace' | 'event' | 'shop' | 'other';
+
+export interface MeLocation {
+  id: string;
+  name: string;
+  type: string;
+  role: Role;
+  permissions: string[];
+}
+
+export interface Me {
+  user: { id: string; name: string; email: string };
+  org: { id: string; name: string };
+  is_owner: boolean;
+  locations: MeLocation[];
+}
+
+export interface RegisterInput {
+  org_name: string;
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface Location {
+  id: string;
+  name: string;
+  type: string;
+  telegram_chat_id?: string | null;
+}
+
+export interface Member {
+  user_id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
+
+export interface Invite {
+  invite_url: string;
+  expires_at: string;
+}
+
+export interface InviteInfo {
+  org_name: string;
+  location_name: string;
+  role: Role;
+  email: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  at: string;
+  location_id: string | null;
+  actor: { kind: 'user' | 'device' | 'system'; id: string; name: string };
+  kind: string;
+  target: { type: string; id: string; label: string } | null;
+  summary_ro: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface AuditQuery {
+  location_id: string;
+  actor?: string;
+  /** Exact kind or a prefix ending in "." (e.g. "rule."). */
+  kind?: string;
+  /** ISO time; only entries strictly before it (paging). */
+  before?: string;
+  /** ISO time; only entries at or after it (period filter). */
+  from?: string;
+  limit?: number;
+}
+
+export interface AuditPage {
+  items: AuditEntry[];
+  next_before: string | null;
+}
+
+/** One alert folded over its lifecycle: opened → acknowledged → arrived → closed. */
+export interface AlertCase {
+  event_id: string;
+  rule_id: string;
+  location_id: string;
+  camera_id: string;
+  zone_id: string;
+  zone_name: string;
+  summary_ro: string;
+  opened_at: string;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+  arrived_at: string | null;
+  closed_at: string | null;
+  wait_s: number | null;
+  reaction_s: number | null;
+  travel_s: number | null;
+}
+
+export interface DurationStat {
+  median_s: number | null;
+  p90_s: number | null;
+}
+
+/** `GET /api/metrics/service`: how long guests wait and how fast the team reacts. */
+export interface ServiceMetrics {
+  location_id: string;
+  from: string | null;
+  to: string | null;
+  alerts: number;
+  wait: DurationStat;
+  reaction: DurationStat;
+  travel: DurationStat;
+}
+
+export interface AccountApi {
+  me(): Promise<Me>;
+  login(email: string, password: string): Promise<Me>;
+  register(input: RegisterInput): Promise<Me>;
+  logout(): Promise<void>;
+  getInvite(token: string): Promise<InviteInfo>;
+  acceptInvite(token: string, input: { name: string; password: string }): Promise<Me>;
+  /** The location the other calls are scoped to (`location_id`); null = the API default. */
+  setLocation(locationId: string | null): void;
+  listLocations(): Promise<Location[]>;
+  createLocation(location: Location): Promise<Location>;
+  updateLocation(id: string, patch: Partial<Omit<Location, 'id'>>): Promise<Location>;
+  deleteLocation(id: string): Promise<void>;
+  listMembers(locationId: string): Promise<Member[]>;
+  updateMember(locationId: string, userId: string, role: Role): Promise<Member>;
+  removeMember(locationId: string, userId: string): Promise<void>;
+  createInvite(input: { location_id: string; role: Role; email: string }): Promise<Invite>;
+  listAudit(query: AuditQuery): Promise<AuditPage>;
+  listAlertCases(query: {
+    location_id: string;
+    state?: string;
+    limit?: number;
+  }): Promise<AlertCase[]>;
+  /** "Merg eu". 409 when someone already took it. */
+  ackAlert(eventId: string): Promise<AlertCase>;
+  getServiceMetrics(query: {
+    location_id: string;
+    from?: string;
+    to?: string;
+  }): Promise<ServiceMetrics>;
+}
+
+/** Fired on window when the API answers 401, so the app can return to /intra. */
+export const UNAUTHORIZED_EVENT = 'aivee:unauthorized';

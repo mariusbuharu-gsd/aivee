@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AlertView, CameraView, DashboardMetrics } from '../api/client';
+import type { AlertCase, AlertView, CameraView, DashboardMetrics } from '../api/client';
 import { useApi } from '../api/context';
+import { useAuth } from '../auth/context';
 import type { Rule, StaffSuggestion, Zone } from '../contracts';
 import { foldAlerts } from '../alerts/fold';
 import { LiveDataContext, type LiveData } from './context';
@@ -17,6 +18,40 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { location, can } = useAuth();
+  const locationId = location?.id ?? null;
+  const canView = can('alerts.view');
+  const [cases, setCases] = useState<Record<string, AlertCase>>({});
+
+  // Alert lifecycle: load once, then re-read whenever an alert event arrives (opened/arrived/closed).
+  useEffect(() => {
+    if (!locationId || !canView) return;
+    let alive = true;
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const load = () =>
+      api.listAlertCases({ location_id: locationId, limit: 100 }).then(
+        (rows) => alive && setCases(Object.fromEntries(rows.map((c) => [c.event_id, c]))),
+        () => undefined,
+      );
+    void load();
+    const off = api.subscribeAlerts(() => {
+      clearTimeout(pending);
+      pending = setTimeout(load, 300);
+    });
+    return () => {
+      alive = false;
+      clearTimeout(pending);
+      off();
+    };
+  }, [api, locationId, canView]);
+
+  const ack = useCallback(
+    async (eventId: string) => {
+      const c = await api.ackAlert(eventId);
+      setCases((prev) => ({ ...prev, [c.event_id]: c }));
+    },
+    [api],
+  );
 
   useEffect(() => {
     let alive = true;
@@ -88,8 +123,12 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       addRule,
       addCamera,
       dropSuggestion,
+      cases,
+      ack,
     }),
     [
+      cases,
+      ack,
       cameras,
       rules,
       events,
