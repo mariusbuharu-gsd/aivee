@@ -33,9 +33,12 @@ test('the history filters by kind and keeps the period', async ({ page }) => {
 
 test('metrics show wait, reaction and travel with how many alerts they cover', async ({ page }) => {
   await signIn(page, 'manager', MOCK_PASSWORD, '/metrici');
-  for (const label of ['Așteptare', 'Reacție', 'Drum']) {
+  await expect(page.locator('.service-headline')).toContainText(/Clienții au așteptat de obicei/);
+  await expect(page.locator('.service-lead')).toContainText(/Așteptare: .*din \d+ alert/);
+  for (const label of ['Reacție', 'Drum']) {
     await expect(page.locator('.service-cell', { hasText: label })).toContainText(/din \d+ alert/);
   }
+  await expect(page.getByText(/ținta ta · 1 min/)).toBeVisible();
 });
 
 test('the owner creates an invite link to copy', async ({ page }) => {

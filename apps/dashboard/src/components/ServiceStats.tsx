@@ -3,31 +3,26 @@ import type { DurationStat, ServiceMetrics } from '../api/client';
 import { useApi } from '../api/context';
 import { useLocationId } from '../auth/context';
 import { duration } from '../alerts/format';
+import { barTones, headline, periodPhrase, serviceTarget, shortDuration } from '../metrics/insight';
 import { Banner } from '../ui/Banner';
 
-const PERIODS = [
-  { value: 1, label: 'Azi' },
-  { value: 7, label: '7 zile' },
-  { value: 30, label: '30 de zile' },
-];
-
-const CELLS: { key: 'wait' | 'reaction' | 'travel'; label: string; hint: string }[] = [
-  {
-    key: 'wait',
-    label: 'Așteptare',
-    hint: 'de la alertă până ajunge cineva (sau se închide alerta)',
-  },
+const TILES: { key: 'reaction' | 'travel'; label: string; hint: string }[] = [
   { key: 'reaction', label: 'Reacție', hint: 'de la alertă până apasă cineva „Merg eu”' },
   { key: 'travel', label: 'Drum', hint: 'de la „Merg eu” până ajunge cineva' },
 ];
 
 const fmt = (s: number | null) => (s === null ? '—' : duration(s));
+const based = (s: DurationStat | undefined) =>
+  s ? ` · din ${s.count} ${s.count === 1 ? 'alertă' : 'alerte'}` : '';
 
-/** Wait / reaction / travel medians and p90 for the current location. */
-export function ServiceStats() {
+/**
+ * How fast guests were served over the last `days` days: a sentence with the median wait and
+ * how it compares with the span just before, then reaction, travel and alert count as tiles,
+ * then the wait per day against the owner's own target.
+ */
+export function ServiceStats({ days }: { days: number }) {
   const api = useApi();
   const locationId = useLocationId();
-  const [days, setDays] = useState(7);
   const [data, setData] = useState<ServiceMetrics | null>(null);
   const [prev, setPrev] = useState<ServiceMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,31 +54,40 @@ export function ServiceStats() {
     };
   }, [api, locationId, days]);
 
+  const h = data ? headline(days, data.wait.median_s, prev?.wait.median_s ?? null) : null;
+
   return (
     <section aria-labelledby="service-h" className="service">
-      <div className="side-head">
-        <h2 id="service-h">Servire</h2>
-        <div className="segmented" role="group" aria-label="Perioadă">
-          {PERIODS.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              className="btn btn-seg"
-              aria-pressed={days === p.value}
-              onClick={() => setDays(p.value)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <h2 id="service-h" className="sr-only">
+        Servire
+      </h2>
       {error && (
         <Banner tone="error" title="Nu am putut încărca servirea.">
           {error}
         </Banner>
       )}
+      <div className="service-lead">
+        <p className="service-headline">
+          {!h ? (
+            'Se încarcă…'
+          ) : h.value === null ? (
+            h.rest
+          ) : (
+            <>
+              Clienții au așteptat de obicei <strong>{h.value}</strong>
+              {h.rest}
+            </>
+          )}
+        </p>
+        {data && data.wait.median_s !== null && (
+          <p className="small muted">
+            Așteptare: mediană · p90 {fmt(data.wait.p90_s)}
+            {based(data.wait)} · de la alertă până ajunge cineva (sau se închide alerta)
+          </p>
+        )}
+      </div>
       <dl className="service-grid">
-        {CELLS.map((c) => {
+        {TILES.map((c) => {
           const s: DurationStat | undefined = data?.[c.key];
           const p: DurationStat | undefined = prev?.[c.key];
           return (
@@ -91,47 +95,56 @@ export function ServiceStats() {
               <dt>{c.label}</dt>
               <dd>
                 <span className="service-value mono">{fmt(s?.median_s ?? null)}</span>
+                <Delta now={s?.median_s ?? null} before={p?.median_s ?? null} />
                 <span className="small muted">
                   mediană · p90 {fmt(s?.p90_s ?? null)}
-                  {s ? ` · din ${s.count} ${s.count === 1 ? 'alertă' : 'alerte'}` : ''}
+                  {based(s)}
                 </span>
-                <Delta now={s?.median_s ?? null} before={p?.median_s ?? null} days={days} />
-                <span className="small muted">{c.hint}</span>
+                <span className="small muted service-hint">{c.hint}</span>
               </dd>
             </div>
           );
         })}
+        <div className="service-cell">
+          <dt>Alerte</dt>
+          <dd>
+            <span className="service-value mono">{data ? data.alerts : '—'}</span>
+            <span className="small muted">{periodPhrase(days)}</span>
+          </dd>
+        </div>
       </dl>
-      <p className="muted small">{data ? `${data.alerts} alerte în perioadă.` : 'Se încarcă…'}</p>
       <WaitTrend />
     </section>
   );
 }
 
-const SINCE: Record<number, string> = {
-  1: 'față de ieri',
-  7: 'față de cele 7 zile dinainte',
-  30: 'față de cele 30 de zile dinainte',
-};
-
 /** Shorter is better for every measure here: down is good news. */
-function Delta({ now, before, days }: { now: number | null; before: number | null; days: number }) {
+function Delta({ now, before }: { now: number | null; before: number | null }) {
   if (now === null || before === null) return null;
   const d = Math.round(now - before);
   if (Math.abs(d) < 1) return <span className="delta small">la fel ca înainte</span>;
   const better = d < 0;
   return (
     <span className={`delta small ${better ? 'is-better' : 'is-worse'}`}>
-      {better ? '↓' : '↑'} {duration(Math.abs(d))} {SINCE[days] ?? ''}
+      <span aria-hidden="true">{better ? '↓' : '↑'}</span> {duration(Math.abs(d))}
+      <span className="sr-only">{better ? ' mai puțin' : ' mai mult'} decât înainte</span>
     </span>
   );
 }
 
-/** Median wait per day over the last 7 days. */
+const TONE_WORDS = {
+  slowest: 'cea mai lentă zi',
+  over: 'peste țintă',
+  under: 'sub țintă',
+  empty: 'fără alerte',
+} as const;
+
+/** Median wait per day over the last 7 days, against the unserved-table rule's time. */
 function WaitTrend() {
   const api = useApi();
   const locationId = useLocationId();
   const [days, setDays] = useState<{ day: Date; wait: number | null }[] | null>(null);
+  const [target, setTarget] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     const spans = Array.from({ length: 7 }, (_, i) => {
@@ -156,30 +169,84 @@ function WaitTrend() {
       (rows) => alive && setDays(rows),
       () => alive && setDays(null),
     );
+    // No rules (or no right to read them) just means no target line.
+    api.listRules().then(
+      (rules) => alive && setTarget(serviceTarget(rules)),
+      () => alive && setTarget(null),
+    );
     return () => {
       alive = false;
     };
   }, [api, locationId]);
   if (!days || days.every((d) => d.wait === null)) return null;
-  const max = Math.max(...days.map((d) => d.wait ?? 0), 1);
+  // Headroom above the tallest bar for its value label.
+  const top = Math.max(...days.map((d) => d.wait ?? 0), target ?? 0, 1) * 1.12;
+  const pct = (s: number) => Math.max(3, (s / top) * 100);
+  const tones = barTones(
+    days.map((d) => d.wait),
+    target,
+  );
+  const weekday = (d: Date) => d.toLocaleDateString('ro-RO', { weekday: 'short' });
   return (
-    <figure className="trend">
-      <figcaption className="small muted">Așteptarea pe zile (mediană), ultimele 7 zile</figcaption>
-      <ol className="trend-bars">
-        {days.map((d) => {
-          const label = d.day.toLocaleDateString('ro-RO', { weekday: 'short' });
-          return (
-            <li key={d.day.toISOString()} aria-label={`${label}: ${fmt(d.wait)}`}>
-              <span className="trend-value mono small">{fmt(d.wait)}</span>
-              <span
-                className="trend-bar"
-                style={{ height: `${d.wait === null ? 0 : Math.max(4, (d.wait / max) * 100)}%` }}
-              />
-              <span className="trend-day small muted">{label}</span>
-            </li>
-          );
-        })}
+    <figure className="card trend">
+      <figcaption className="trend-head">
+        <strong>Așteptarea pe zile</strong>
+        <span className="small muted">mediană, ultimele 7 zile</span>
+      </figcaption>
+      <div className="trend-plot">
+        {target !== null && (
+          <div className="trend-target" style={{ bottom: `${pct(target)}%` }} aria-hidden="true" />
+        )}
+        <ol className="trend-bars" aria-label="Așteptarea pe zile">
+          {days.map((d, i) => {
+            const tone = tones[i] ?? 'empty';
+            const label = weekday(d.day);
+            return (
+              <li
+                key={d.day.toISOString()}
+                className={`is-${tone}`}
+                aria-label={`${label}: ${fmt(d.wait)}${tone === 'empty' ? '' : `, ${TONE_WORDS[tone]}`}`}
+              >
+                {d.wait !== null && (
+                  <>
+                    <span className="trend-bar" style={{ height: `${pct(d.wait)}%` }} />
+                    <span className="trend-value mono" style={{ bottom: `${pct(d.wait)}%` }}>
+                      {shortDuration(d.wait)}
+                    </span>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+      <ol className="trend-days" aria-hidden="true">
+        {days.map((d, i) => (
+          <li key={d.day.toISOString()} className={i === days.length - 1 ? 'is-today' : undefined}>
+            {i === days.length - 1 ? 'azi' : weekday(d.day)}
+          </li>
+        ))}
       </ol>
+      <p className="trend-legend small muted">
+        {target !== null && (
+          <>
+            <span>
+              <i className="sw is-target" aria-hidden="true" />{' '}
+              <strong>ținta ta · {duration(target)}</strong>
+            </span>
+            <span>
+              <i className="sw is-over" aria-hidden="true" /> peste țintă
+            </span>
+            <span>
+              <i className="sw is-under" aria-hidden="true" /> sub țintă
+            </span>
+          </>
+        )}
+        <span>
+          <i className="sw is-slowest" aria-hidden="true" /> cea mai lentă zi
+        </span>
+        {target !== null && <span>Ținta e timpul din regula pentru mese neservite.</span>}
+      </p>
     </figure>
   );
 }

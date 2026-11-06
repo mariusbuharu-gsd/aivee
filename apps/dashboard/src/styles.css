@@ -2543,56 +2543,6 @@ label.btn:focus-within {
   align-items: center;
 }
 
-/* Metrics: comparison and 7-day trend */
-.delta {
-  font-weight: 600;
-  color: var(--muted);
-}
-.delta.is-better {
-  color: var(--ok);
-}
-.delta.is-worse {
-  color: var(--coral-strong);
-}
-.trend {
-  margin: 8px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.trend-bars {
-  list-style: none;
-  margin: 0;
-  padding: 12px;
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  height: 180px;
-  background: var(--surface);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius);
-}
-.trend-bars li {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.trend-bar {
-  width: min(28px, 70%);
-  border-radius: 6px 6px 2px 2px;
-  background: var(--ink);
-}
-.trend-bars li:last-child .trend-bar {
-  background: var(--coral);
-}
-.trend-value {
-  white-space: nowrap;
-  font-size: 0.7rem;
-}
-
 /* History */
 .filters .select,
 .filters .seg-field {
