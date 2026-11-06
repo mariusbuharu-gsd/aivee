@@ -97,3 +97,49 @@ def test_duration_ro(seconds: float, text: str) -> None:
 def test_zone_name_from_summary() -> None:
     assert zone_name_from_summary("Masa 4: neservită de 2 min") == "Masa 4"
     assert zone_name_from_summary("fără două puncte") is None
+
+
+# -- closed by the system when the device goes away --------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "reason"),
+    [
+        ("online", "offline", "device_offline"),
+        ("offline", "offline", "device_offline"),  # a late or repeated offline: still close
+        (None, "offline", "device_offline"),
+        ("offline", "online", "device_restarted"),  # fresh engine: old alerts are stale
+        ("online", "online", None),  # retained re-delivery (ingest restart): keep them open
+        (None, "online", None),  # first time seen: nothing of it can be open
+    ],
+)
+def test_system_close_reason(before: str | None, after: str, reason: str | None) -> None:
+    from aivee_api.alerts.domain import system_close_reason
+
+    assert system_close_reason(before, after) == reason
+
+
+def test_closed_by() -> None:
+    from aivee_api.alerts.domain import closed_by
+
+    assert closed_by(None, None) is None
+    assert closed_by(at(1), None) == "edge"
+    assert closed_by(at(1), "device_offline") == "system"
+
+
+def test_system_close_texts() -> None:
+    from aivee_api.alerts.domain import device_closed_note_ro, system_close_summary_ro
+
+    assert (
+        system_close_summary_ro("Masa 1", "device_offline")
+        == "Alerta de la Masa 1 s-a închis: dispozitivul s-a deconectat"
+    )
+    assert (
+        system_close_summary_ro("Masa 1", "device_restarted")
+        == "Alerta de la Masa 1 s-a închis: dispozitivul a repornit"
+    )
+    note = device_closed_note_ro
+    assert note("edge-01", "device_offline", 1) == "edge-01 s-a deconectat — o alertă închisă"
+    assert note("edge-01", "device_offline", 2) == "edge-01 s-a deconectat — 2 alerte închise"
+    assert note("edge-01", "device_restarted", 3) == "edge-01 a repornit — 3 alerte închise"
+    assert note("edge-01", "device_offline", 21) == "edge-01 s-a deconectat — 21 de alerte închise"

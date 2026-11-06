@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 import pytest
 from aivee_api.alerts.audit import AlertAuditEntry, get_audit_writer
+from aivee_api.alerts.repository import AlertRepository
 from aivee_api.db.repositories import DeviceRepository
 from aivee_api.deps import Services
 from aivee_api.edge.publisher import RecordingPublisher
@@ -24,6 +25,7 @@ from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
 from aivee_api.main import create_app
 from aivee_api.settings import ApiSettings
 from aivee_contracts.events import AlertEvent
+from aivee_contracts.topics import Topics
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
@@ -59,7 +61,9 @@ class Notifier:
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         self.opened.append(event)
 
-    async def send_text(self, text: str, tag: str | None = None) -> None:
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None
+    ) -> None:
         self.texts.append(text)
 
 
@@ -196,7 +200,19 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
         assert r.status_code == 200, r.text
         assert r.json()["state"] == "acknowledged"
 
-        closed = await until("closed")
+        # The waiter's arrival also ends the situation: the edge publishes `arrived` and
+        # `closed` in the same frame, and the shared subscription hands them to different
+        # replicas, which may commit `closed` first. The alert is complete once both are
+        # folded and the arrival message is out, not at the first `closed` view.
+        async def complete() -> dict[str, Any]:
+            while True:
+                views = await alerts()
+                texts = [t for n in notifiers for t in n.texts]
+                if views and views[0]["state"] == "closed" and views[0]["arrived_at"] and texts:
+                    return views[0]
+                await asyncio.sleep(0.05)
+
+        closed = await asyncio.wait_for(complete(), 30)
         await run
     finally:
         await asyncio.to_thread(edge.stop)
@@ -219,3 +235,47 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
     kinds = sorted(e.kind for e in audit.entries)
     assert kinds == ["alert.acknowledged", "alert.arrived", "alert.closed", "alert.opened"]
     assert all(e.location_id for e in audit.entries)
+
+
+async def test_closed_before_arrived_still_folds_the_arrival(
+    sessions: async_sessionmaker[AsyncSession], site: str, tmp_path: Path, audit: Audit
+) -> None:
+    """Two replicas may commit the same frame's `closed` before its `arrived`."""
+    from datetime import UTC, datetime, timedelta
+
+    async with sessions() as s:
+        await DeviceRepository(s).ensure_device(site, "edge-01")
+        await s.commit()
+    notifier = Notifier()
+    handler = IngestHandler(sessions, tmp_path, notifier, audit=audit)
+    t0 = datetime.now(UTC) - timedelta(seconds=40)
+
+    def event(state: str, after_s: float) -> bytes:
+        return (
+            AlertEvent(
+                event_id=str(uuid.uuid4()),
+                rule_id="demo-unattended",
+                camera_id="cam-01",
+                zone_id="masa-1",
+                state=state,  # type: ignore[arg-type]
+                at=t0 + timedelta(seconds=after_s),
+                summary_ro="Masa 1: neservită de 1 min",
+            )
+            .model_dump_json()
+            .encode()
+        )
+
+    topic = Topics(site=site, device="edge-01").events
+    await handler.handle(topic, event("opened", 0))
+    await handler.handle(topic, event("closed", 35))
+    await handler.handle(topic, event("arrived", 35))
+
+    async with sessions() as s:
+        [view] = await AlertRepository(s).views(limit=5)
+    assert view.state == "closed" and view.arrived_at is not None and view.wait_s == 35
+    assert notifier.texts == ["Un angajat a ajuns la Masa 1 după 35 s"]
+    assert sorted(e.kind for e in audit.entries) == [
+        "alert.arrived",
+        "alert.closed",
+        "alert.opened",
+    ]

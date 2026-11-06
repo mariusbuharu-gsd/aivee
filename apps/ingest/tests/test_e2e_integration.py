@@ -85,7 +85,9 @@ UNATTENDED = {
 class QuietNotifier:
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None: ...
 
-    async def send_text(self, text: str, tag: str | None = None) -> None: ...
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None
+    ) -> None: ...
 
 
 def _free_port() -> int:

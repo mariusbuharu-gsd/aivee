@@ -2,15 +2,24 @@
 (= its own event_id), the acknowledgement and the folded `arrived_at` / `closed_at`.
 Callers own the transaction (commit)."""
 
+import uuid
 from collections.abc import Collection, Sequence
 from datetime import datetime
+from typing import cast
 
 from aivee_contracts.events import AlertEvent
 from sqlalchemy import Select, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.alerts.auth import CurrentUser
-from aivee_api.alerts.domain import Lifecycle, zone_name_from_summary
+from aivee_api.alerts.domain import (
+    CloseReason,
+    Lifecycle,
+    closed_by,
+    system_close_summary_ro,
+    zone_name_from_summary,
+)
 from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.models import Camera, Device, EventRow
 
@@ -38,6 +47,8 @@ def to_view(row: EventRow, location_id: str | None, zone_names: dict[str, str]) 
         acknowledged_by_id=row.acknowledged_by_id if row.acknowledged_at else None,
         arrived_at=row.arrived_at,
         closed_at=row.closed_at,
+        closed_by=closed_by(row.closed_at, row.closed_reason),
+        closed_reason=cast("CloseReason | None", row.closed_reason),
         wait_s=life.wait_s,
         reaction_s=life.reaction_s,
         travel_s=life.travel_s,
@@ -84,6 +95,12 @@ class AlertRepository:
     async def link(self, event: AlertEvent, device_id: str) -> str | None:
         """After storing `event`: point its row at the alert and fold its time into the
         opened row. Returns the alert id (the opened event's id), None if unknown."""
+        alert_id, _ = await self.link_folded(event, device_id)
+        return alert_id
+
+    async def link_folded(self, event: AlertEvent, device_id: str) -> tuple[str | None, bool]:
+        """`link`, and whether the event changed the alert (False for a late `closed`
+        after the system already closed it, or a repeated `arrived`)."""
         if event.state == "opened":
             alert_id: str | None = event.event_id
         else:
@@ -101,18 +118,61 @@ class AlertRepository:
                 .limit(1)
             )
         if alert_id is None:
-            return None
+            return None, False
         await self.s.execute(
             update(EventRow).where(EventRow.event_id == event.event_id).values(alert_id=alert_id)
         )
-        if event.state != "opened":
-            column = EventRow.arrived_at if event.state == "arrived" else EventRow.closed_at
-            await self.s.execute(
-                update(EventRow)
-                .where(EventRow.event_id == alert_id, column.is_(None))
-                .values({column.key: event.at})
+        if event.state == "opened":
+            return alert_id, True
+        column = EventRow.arrived_at if event.state == "arrived" else EventRow.closed_at
+        folded = await self.s.execute(
+            update(EventRow)
+            .where(EventRow.event_id == alert_id, column.is_(None))
+            .values({column.key: event.at})
+            .returning(EventRow.id)
+        )
+        return alert_id, folded.first() is not None
+
+    async def close_open_for_device(
+        self, device_id: str, at: datetime, reason: CloseReason
+    ) -> list[AlertView]:
+        """Close every alert of the device that is still open, as the system.
+
+        Each close also stores a `closed` event row (a deterministic id per alert and
+        reason, so a second replica inserts nothing), which moves the live feed. Returns
+        the alerts this call closed; callers serialise per device."""
+        closed = await self.s.execute(
+            update(EventRow)
+            .where(
+                EventRow.state == "opened",
+                EventRow.device_id == device_id,
+                EventRow.closed_at.is_(None),
+                EventRow.at <= at,
             )
-        return alert_id
+            .values(closed_at=at, closed_reason=reason)
+            .returning(EventRow.event_id)
+        )
+        alert_ids = [alert_id for (alert_id,) in closed.all()]
+        if not alert_ids:
+            return []
+        views = await self.views(alert_ids=alert_ids, limit=len(alert_ids))
+        for view in views:
+            await self.s.execute(
+                insert(EventRow)
+                .values(
+                    event_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{view.event_id}/{reason}")),
+                    device_id=device_id,
+                    rule_id=view.rule_id,
+                    camera_id=view.camera_id,
+                    zone_id=view.zone_id,
+                    state="closed",
+                    at=at,
+                    summary_ro=system_close_summary_ro(view.zone_name, reason),
+                    alert_id=view.event_id,
+                )
+                .on_conflict_do_nothing(index_elements=[EventRow.event_id])
+            )
+        return views
 
     # -- api ---------------------------------------------------------------------------
 

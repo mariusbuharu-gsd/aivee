@@ -2,14 +2,23 @@
 
 Scope (audit.view / audit.view.own): owner → the whole organization; manager → their
 locations; staff → their own actions. Everyone also sees their own actions.
+
+Entries without a location (auth.login, auth.logout, auth.login_failed) still show under a
+`location_id` filter: for an owner every one of the org, for a manager those whose actor
+is a member of that location, for staff their own.
 """
 
+from collections.abc import Collection
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from aivee_api.accounts.models import Membership
 from aivee_api.audit.models import AuditRow
 from aivee_api.audit.repository import AuditRepository, Visibility
 from aivee_api.auth.deps import CurrentUser
@@ -75,6 +84,26 @@ def visibility(p: Principal) -> Visibility:
     return Visibility(p.org_id, location_ids=p.locations_with(AUDIT_VIEW), actor_id=p.user_id)
 
 
+@dataclass(frozen=True)
+class LocationScope:
+    visibility: Visibility
+    unlocated_actor_ids: Collection[str] | None  # None: every location-less entry visible
+
+
+async def location_scope(s: AsyncSession, p: Principal, location_id: str) -> LocationScope:
+    """What a reader sees under `location_id` (a location they belong to)."""
+    if p.is_owner:
+        return LocationScope(Visibility(p.org_id, all_rows=True), None)
+    if p.can(AUDIT_VIEW, location_id):
+        # The whole location is theirs; location-less entries only of its members.
+        members = await s.scalars(
+            select(Membership.user_id).where(Membership.location_id == location_id)
+        )
+        return LocationScope(Visibility(p.org_id, all_rows=True), set(members.all()))
+    # audit.view.own: their own actions there and their own location-less ones.
+    return LocationScope(Visibility(p.org_id, actor_id=p.user_id), None)
+
+
 @router.get("")
 async def list_audit(
     s: SessionDep,
@@ -94,9 +123,16 @@ async def list_audit(
         if not before.isdigit():
             raise Invalid("Cursorul `before` nu este valid.")
         cursor = int(before)
+    scope = visibility(p)
+    unlocated_actors: Collection[str] | None = None
+    if location_id is not None:
+        where = await location_scope(s, p, location_id)
+        scope, unlocated_actors = where.visibility, where.unlocated_actor_ids
     rows = await AuditRepository(s).query(
-        visibility(p),
+        scope,
         location_id=location_id,
+        with_unlocated=location_id is not None,
+        unlocated_actor_ids=unlocated_actors,
         actor_id=actor,
         kind=kind,
         before=cursor,

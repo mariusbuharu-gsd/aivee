@@ -47,7 +47,9 @@ class Recording:
         if self.fail:
             raise RuntimeError("boom")
 
-    async def send_text(self, text: str, tag: str | None = None) -> None:
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None
+    ) -> None:
         self.calls.append(f"{tag}:{text}")
         if self.fail:
             raise RuntimeError("boom")
@@ -136,6 +138,10 @@ async def test_web_push_sends_summary_and_zone_name_and_opens_alerts(sessions: A
     assert msg["title"] == "Alertă AiVee · Masa 1"
     assert msg["body"] == "Masa așteaptă de 5 minute"
     assert msg["url"] == "/alerte" and msg["tag"] == "e1"
+
+    note = "edge-01 s-a deconectat — o alertă închisă"
+    await WebPushNotifier(sessions, sender).send_text(note, "e1", title="AiVee · Dispozitiv")
+    assert sender.sent[-1][1]["title"] == "AiVee · Dispozitiv"
 
 
 @pytest.mark.integration

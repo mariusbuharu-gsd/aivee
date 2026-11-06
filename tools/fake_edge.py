@@ -17,7 +17,9 @@ Scenarios (simulated seconds; --speed compresses wall time):
 
 Zones come from the retained `config` (DeviceConfig): the camera is --camera-id, else the
 first retained camera with zones, and the scenario's places (Masa 1, Intrare, ...) map onto
-its zones by tag, so alerts carry the dashboard's camera and zone ids. Rules come from the
+its zones by tag, so alerts carry the dashboard's camera and zone ids. The waiter always
+serves the zone the guests sit in, even when retained zones overlap; extra `demo-*` zones
+only give him tables to walk between. Rules come from the
 retained `rules` for that camera. When nothing is retained (or with --demo) a built-in demo
 layout and rule set is used, and the script says so.
 """
@@ -36,6 +38,7 @@ from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import Action, Condition, Rule
+from aivee_edge.domain.geometry import point_in_polygon
 from aivee_edge.domain.observation import BBox, Frame, ObjectObs, TrackObs
 from aivee_edge.domain.ports import ConfigSource, EventPublisher, Image
 from aivee_edge.domain.pose import Keypoint
@@ -136,23 +139,62 @@ def _overlaps(a: Zone, b: Zone, margin: float = 0.0) -> bool:
     return ax1 - margin < bx2 and bx1 < ax2 + margin and ay1 - margin < by2 and by1 < ay2 + margin
 
 
+SPREAD = 0.05
+"""How far (demo-sized) scripted people stand from a place's spot: guests side by side."""
+
+
+def _spot(zone: Zone, others: Sequence[Zone], spread: float) -> tuple[float, float]:
+    """Where people stand in `zone`: its centre, unless that (or a neighbour `spread`
+    away) is also inside another zone; then the free point closest to the centre."""
+    centre = _centre(zone)
+    x1, y1, x2, y2 = _box(zone)
+    steps = 40
+    candidates = [
+        (x1 + (x2 - x1) * i / steps, y1 + (y2 - y1) * j / steps)
+        for i in range(1, steps)
+        for j in range(1, steps)
+    ]
+
+    def free(p: tuple[float, float]) -> bool:
+        row = [(p[0] + d, p[1]) for d in (-spread, 0.0, spread)]
+        return all(point_in_polygon(q, zone.polygon) for q in row) and not any(
+            point_in_polygon(q, o.polygon) for q in row for o in others
+        )
+
+    if free(centre):
+        return centre
+    spots = [p for p in candidates if free(p)]
+    if not spots:
+        return centre
+    return min(spots, key=lambda p: (p[0] - centre[0]) ** 2 + (p[1] - centre[1]) ** 2)
+
+
+def _centre(zone: Zone) -> tuple[float, float]:
+    poly = zone.polygon
+    return (sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly))
+
+
 @dataclass(frozen=True)
 class Layout:
-    """The camera the pipeline sees, and which zone stands in for each demo place.
+    """The camera the pipeline sees, which zone each scenario place is, and where the
+    waiter walks.
 
     Scenarios are scripted against the demo places (`masa-1`, `intrare`, ...). On a retained
-    camera each place maps to a zone with the same tag, in order, wrapping around when there
-    are fewer, so alerts carry the dashboard's camera and zone ids.
+    camera a place is the retained zone with the same tag and index; a place without one
+    (more demo tables than retained ones) is the first retained zone of its tag, so a
+    scenario's guests, and the waiter who serves them, are always in the same zone.
 
-    Demo places left without a zone of their own (a missing tag, or more demo tables than
-    retained ones) are added to the pipeline's camera as `demo-*` zones where they do not
-    overlap a retained zone: the waiter needs several tables and the kitchen to walk through
-    to be recognised as staff. `waypoints` is where the waiter walks for each place."""
+    `waypoints` only drive behaviour: the waiter needs several tables and the kitchen to
+    walk through to be recognised as staff. A waypoint is a retained zone only when it
+    overlaps no other zone (else walking there would also count at the guests' table);
+    otherwise it is a `demo-*` zone added where it overlaps no retained zone. People
+    stand at `spots`: inside their zone and, when zones overlap, outside the others."""
 
     camera: CameraConfig
     places: dict[str, Zone]
     waypoints: dict[str, Zone]
     missing_tags: list[str] = field(default_factory=list)
+    spots: dict[str, tuple[float, float]] = field(default_factory=dict)
 
     @classmethod
     def demo(cls, camera_id: str) -> "Layout":
@@ -174,30 +216,37 @@ class Layout:
             zones = by_tag.get(demo.tag, [])
             if not zones and demo.tag not in missing:
                 missing.append(demo.tag)
-            if i < len(zones):
-                places[demo.id] = waypoints[demo.id] = zones[i]
-                continue
+            own = zones[i] if i < len(zones) else None
+            clean = own is not None and not any(
+                _overlaps(own, z) for z in camera.zones if z is not own
+            )
             stand_in = demo
-            if not any(_overlaps(demo, z) for z in camera.zones):
+            needs_stand_in = own is None or (not clean and demo.id in WAITER_ROUND)
+            if needs_stand_in and not any(_overlaps(demo, z) for z in camera.zones):
                 stand_in = demo.model_copy(
                     update={"id": f"demo-{demo.id}", "name": f"{demo.name} (demo)"}
                 )
                 extras.append(stand_in)
-            places[demo.id] = zones[i % len(zones)] if zones else stand_in
-            waypoints[demo.id] = stand_in
+            places[demo.id] = own or (zones[0] if zones else stand_in)
+            waypoints[demo.id] = own if clean and own is not None else stand_in
         pipeline_camera = camera.model_copy(update={"zones": [*camera.zones, *extras]})
-        return cls(pipeline_camera, places, waypoints, missing)
+        spots: dict[str, tuple[float, float]] = {}
+        for place, zone in places.items():
+            others = [z for z in pipeline_camera.zones if z.id != zone.id]
+            scale = min(1.0, _width(zone) / DEMO_WIDTH)
+            spots[place] = _spot(zone, others, SPREAD * scale)
+        return cls(pipeline_camera, places, waypoints, missing, spots)
 
     @staticmethod
     def _centre_of(zone: Zone) -> tuple[float, float]:
-        poly = zone.polygon
-        return (sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly))
+        return _centre(zone)
 
     def centre(self, place: str) -> tuple[float, float]:
-        return self._centre_of(self.places[place])
+        """Where people stand at `place` (its spot; the zone's centre on the demo layout)."""
+        return self.spots.get(place) or _centre(self.places[place])
 
     def waypoint(self, place: str) -> tuple[float, float]:
-        return self._centre_of(self.waypoints[place])
+        return _centre(self.waypoints[place])
 
     def scale(self, place: str) -> float:
         """Offsets inside a place are scripted for demo-sized zones; shrink them to fit."""
