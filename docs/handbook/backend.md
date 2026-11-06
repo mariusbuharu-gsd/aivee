@@ -110,6 +110,20 @@ Ingest: `$share/ingest/aivee/+/+/events` (split between replicas) plus `status`,
 and `metrics` on every replica. ACL: each edge user writes only its own device topics (`%u`), so `DEVICE`
 must equal `MQTT_EDGE_USER` (`edge-01`).
 
+## API endpoints
+
+The auth, locations, members, invites, audit and alert endpoints are listed in
+`docs/plans/2026-11-06-auth-roles-audit.md`. Additions since then:
+
+| Method | Path | Permission | Body → Response |
+|---|---|---|---|
+| DELETE | `/api/cameras/{id}` | `devices.manage` at the camera's location (else 404) | → 204. Zones and rules go too; events and alerts stay. Open alerts close as `closed_by: "system"`, `closed_reason: "camera_deleted"`. Retained `config` and `rules` are republished. Audit `camera.deleted` (`before` = the camera) + `alert.closed` per open alert |
+| GET | `/api/invites?location_id=` | `users.manage` (default: first location) | → `[{id, email, role, location_id, created_by: {id, name} \| null, created_at, expires_at}]`, newest first, pending only (not accepted, revoked or expired). A manager sees only `staff` invites |
+| DELETE | `/api/invites/{id}` | `users.manage`; a manager may revoke only `staff` invites (else 403) | → 204, idempotent. 404 outside the caller's locations, 409 if already accepted. Audit `user.invite_revoked` (once) |
+
+A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 410
+`{detail: {code: "gone", message_ro: "Invitația a fost anulată."}}`. Neither the token nor its hash is returned.
+
 ## Edge pipeline facts
 - INT8 OpenVINO on the i7-1355U: ~20 FPS detection, ~12 FPS with pose; phone stream 8–11 FPS in practice.
 - Engine `grace_s=1.5`; tracks forgotten after 5 s; role hysteresis 0.7 / 0.4; behaviour 0.5 + appearance 0.5.
