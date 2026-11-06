@@ -33,7 +33,7 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | Route | Page | Permission | Purpose |
 |---|---|---|---|
 | `/` | Live | `alerts.view` | camera tiles, live video with detection boxes (staff light blue, guests white), alert feed, staff suggestions |
-| `/alerte` | Alerte | `alerts.view` | alerts with "Merg eu" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; "Notificări pe telefon" |
+| `/alerte` | Alerte | `alerts.view` | alerts with "Merg eu" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare, Reacție, Drum: median and p90), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică |
 | `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră" |
@@ -70,7 +70,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | GET/PUT | `/api/cameras/{id}/zones` | PUT replaces all zones |
 | GET/POST | `/api/rules` · GET/PATCH/DELETE `/api/rules/{id}` | |
 | POST | `/api/rules/from-text` | `{camera_id, text, save?}` → `{rule, explanation_ro, saved}`; may answer a clarifying question |
-| GET | `/api/alerts?state=&limit=` | folded `AlertView` with `wait_s`, `reaction_s`, `travel_s`, `unacknowledged_arrival` |
+| GET | `/api/alerts?state=&limit=` | folded `AlertView` with `wait_s`, `reaction_s`, `travel_s`, `unacknowledged_arrival`, `verification {status, summary_ro, object_ro}` and `before_snapshot_url` (object_gone) |
 | POST | `/api/alerts/{event_id}/ack` | "Merg eu"; 409 when someone already took it |
 | GET | `/api/metrics/service?from&to` | `{alerts, unacknowledged_arrivals, wait, reaction, travel}`, each `{count, median_s, p90_s}` |
 | GET | `/api/events?limit=` · `/api/snapshots/{id}` | raw events · blurred JPEG |
