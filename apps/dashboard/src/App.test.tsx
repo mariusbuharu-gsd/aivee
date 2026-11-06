@@ -37,6 +37,7 @@ describe('App with the mock API', () => {
 
   it('hides configuration from staff and keeps them out of it', async () => {
     const rules = vi.spyOn(MockApi.prototype, 'listRules');
+    const suggestions = vi.spyOn(MockApi.prototype, 'listSuggestions');
     renderApp('/reguli', 'staff@aivee.demo');
     const nav = await screen.findByRole('navigation', { name: 'Principal' });
     expect(within(nav).getByRole('link', { name: /Alerte/ })).toBeInTheDocument();
@@ -45,7 +46,10 @@ describe('App with the mock API', () => {
     expect(await screen.findByRole('heading', { name: 'Live' })).toBeVisible();
     // The API answers 403 to staff on every /api/rules* call, so the UI never asks.
     expect(rules).not.toHaveBeenCalled();
+    // Suggestions are staff.review only; a 403 there used to blank the whole live data load.
+    expect(suggestions).not.toHaveBeenCalled();
     rules.mockRestore();
+    suggestions.mockRestore();
   });
 
   it('lets the owner switch between locations', async () => {
