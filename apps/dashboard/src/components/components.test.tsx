@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { AlertItem } from '../alerts/fold';
@@ -166,6 +166,9 @@ describe('AlertFeed', () => {
     expect(shots).toHaveLength(2);
     expect(shots[0]).toHaveAttribute('src', 'http://api/api/snapshots/e-2');
     expect(shots[1]?.tagName).not.toBe('IMG');
+    fireEvent.error(shots[0] as HTMLElement);
+    const after = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
+    expect(after.map((el) => el.tagName)).not.toContain('IMG');
   });
 
   it('shows an empty state', () => {

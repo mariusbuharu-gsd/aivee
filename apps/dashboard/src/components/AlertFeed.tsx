@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { AlertItem } from '../alerts/fold';
 import { Icon } from './Icon';
 
@@ -28,26 +29,7 @@ export function AlertFeed({
         const open = a.closed_at === null;
         return (
           <li key={a.key} className={`feed-item ${open ? 'is-open' : 'is-closed'}`}>
-            {showSnapshot &&
-              (a.snapshot_url ? (
-                <a
-                  className="snapshot snapshot-img"
-                  href={a.snapshot_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <img
-                    src={a.snapshot_url}
-                    alt="Captură cu fețele estompate"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </a>
-              ) : (
-                <div className="snapshot" role="img" aria-label="Captură cu fețele estompate">
-                  <Icon name="snapshot" size={22} />
-                </div>
-              ))}
+            {showSnapshot && <Snapshot url={a.snapshot_url} />}
             <div className="feed-body">
               <div className="feed-head">
                 <span className={`pill ${open ? 'pill-alert' : 'pill-muted'}`}>
@@ -67,5 +49,28 @@ export function AlertFeed({
         );
       })}
     </ul>
+  );
+}
+
+/** The face-blurred JPEG when it loads; the camera placeholder when missing or unreachable. */
+function Snapshot({ url }: { url: string | null }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!url || failed === url) {
+    return (
+      <div className="snapshot" role="img" aria-label="Captură cu fețele estompate">
+        <Icon name="snapshot" size={22} />
+      </div>
+    );
+  }
+  return (
+    <a className="snapshot snapshot-img" href={url} target="_blank" rel="noreferrer">
+      <img
+        src={url}
+        alt="Captură cu fețele estompate"
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(url)}
+      />
+    </a>
   );
 }
