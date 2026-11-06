@@ -102,3 +102,21 @@ describe('TeamPage', () => {
     expect(await screen.findByText('Link copiat')).toBeInTheDocument();
   });
 });
+
+describe('TeamPage notifications', () => {
+  it('says quietly who gets alerts on the phone, and nothing about performance', async () => {
+    const api = fakeApi({
+      listMembers: vi.fn(async (): Promise<Member[]> => [
+        { user_id: 'u-a', name: 'Ana', email: 'ana@x.ro', role: 'staff', push_enabled: true },
+        { user_id: 'u-b', name: 'Bogdan', email: 'bo@x.ro', role: 'staff', push_enabled: false },
+      ]),
+      getTelegramStatus: vi.fn(async () => ({ connected: true, chat_title: 'Tura de seară' })),
+    });
+    renderWithApi(<TeamPage />, api);
+    const ana = (await screen.findByText('Ana')).closest('li') as HTMLElement;
+    const bogdan = screen.getByText('Bogdan').closest('li') as HTMLElement;
+    expect(within(ana).getByText('notificări pornite')).toBeInTheDocument();
+    expect(within(bogdan).getByText('fără notificări pe telefon')).toBeInTheDocument();
+    expect(await screen.findByText(/grupul Telegram „Tura de seară”/)).toBeInTheDocument();
+  });
+});

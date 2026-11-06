@@ -9,8 +9,11 @@ import { MOCK_PASSWORD } from '../api/mockAccounts';
 import { AuthProvider } from '../auth/AuthProvider';
 import { Toaster } from '../ui/Toaster';
 
-function renderApp(path = '/dispozitive', email = 'manager@aivee.demo') {
-  const api = new MockApi({ latencyMs: 0, autoplay: false });
+function renderApp(
+  path = '/dispozitive',
+  email = 'manager@aivee.demo',
+  api = new MockApi({ latencyMs: 0, autoplay: false }),
+) {
   api.accounts.login(email, MOCK_PASSWORD);
   render(
     <ApiContext.Provider value={api}>
@@ -97,5 +100,42 @@ describe('DevicesPage', () => {
     );
     expect(list).toHaveBeenCalled();
     expect(await screen.findByText(/tot nu răspunde/)).toBeInTheDocument();
+  });
+
+  it('says when an online camera last sent a frame and how long an offline one is gone', async () => {
+    renderApp();
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    expect(await within(sala).findByText(/^ultima imagine acum \d+ s$/)).toBeInTheDocument();
+    const terrace = screen.getByRole('listitem', { name: 'Camera Terasă' });
+    expect(await within(terrace).findByText('offline de 14 min')).toBeInTheDocument();
+  });
+
+  it('shows a recent blurred still on each camera card', async () => {
+    renderApp();
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    const img = await within(sala).findByRole('img', { name: /Captură de la Sala principală/ });
+    expect(img.getAttribute('src')).toMatch(/^data:image\/svg\+xml,/);
+    expect(within(sala).getByText(/^captură de acum \d+ s$/)).toBeInTheDocument();
+  });
+
+  it('keeps a quiet placeholder when there is no still', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    vi.spyOn(api, 'captureFrame').mockRejectedValue(new Error('404'));
+    renderApp(undefined, undefined, api);
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    expect(await within(sala).findByText('Nicio captură încă')).toBeInTheDocument();
+    expect(within(sala).queryByRole('img', { name: /Captură de la/ })).toBeNull();
   });
 });

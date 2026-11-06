@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router';
 import type { CameraView, Location } from '../api/client';
 import { useApi } from '../api/context';
 import { TelegramConnect } from '../components/TelegramConnect';
+import { camerasCount } from '../rules/count';
 import { useAuth } from '../auth/context';
 import { LOCATION_TYPES, locationTypeLabel as typeLabel } from '../auth/session';
 import { Banner } from '../ui/Banner';
@@ -37,6 +38,10 @@ function locationId(name: string, taken: readonly string[]) {
 const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "2/3 camere online", "nicio cameră". */
+const camerasLabel = ({ total, online }: { total: number; online: number }) =>
+  total === 0 ? camerasCount(0) : `${online}/${camerasCount(total)} online`;
 
 export function LocationsPage() {
   const api = useApi();
@@ -117,6 +122,15 @@ export function LocationsPage() {
 
   const taken = locations.map((l) => l.id);
 
+  /** Every location's counts from `GET /api/locations`; else the current one's camera list. */
+  const cameraCounts = (l: Location) => {
+    if (l.cameras_total !== undefined) {
+      return { total: l.cameras_total, online: l.cameras_online ?? 0 };
+    }
+    if (location?.id !== l.id || !cameras) return null;
+    return { total: cameras.length, online: cameras.filter((c) => c.online).length };
+  };
+
   async function run(action: () => Promise<unknown>) {
     setError(null);
     try {
@@ -158,8 +172,9 @@ export function LocationsPage() {
             </EmptyState>
           ) : (
             <ul className="locations">
-              {locations.map((l) =>
-                editing === l.id ? (
+              {locations.map((l) => {
+                const counts = cameraCounts(l);
+                return editing === l.id ? (
                   <li key={l.id} className="location-row">
                     <LocationForm
                       initial={l}
@@ -199,11 +214,7 @@ export function LocationsPage() {
                       <span className="small muted">
                         {[
                           typeLabel(l.type),
-                          location?.id === l.id && cameras
-                            ? cameras.length === 0
-                              ? 'nicio cameră'
-                              : `${cameras.filter((c) => c.online).length}/${plural(cameras.length, 'cameră', 'camere')} online`
-                            : null,
+                          counts ? camerasLabel(counts) : null,
                           l.id in alertsToday
                             ? plural(alertsToday[l.id] ?? 0, 'alertă azi', 'alerte azi')
                             : null,
@@ -224,9 +235,9 @@ export function LocationsPage() {
                         { label: 'Șterge locația…', danger: true, onSelect: () => setDeleting(l) },
                       ]}
                     />
-                    {(!l.telegram_chat_id || (location?.id === l.id && cameras?.length === 0)) && (
+                    {(!l.telegram_chat_id || counts?.total === 0) && (
                       <div className="location-needs">
-                        {location?.id === l.id && cameras?.length === 0 && (
+                        {counts?.total === 0 && (
                           <button
                             type="button"
                             className="btn btn-primary"
@@ -241,8 +252,8 @@ export function LocationsPage() {
                       </div>
                     )}
                   </li>
-                ),
-              )}
+                );
+              })}
             </ul>
           )}
         </section>

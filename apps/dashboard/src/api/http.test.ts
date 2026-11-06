@@ -299,3 +299,57 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
   });
 });
+
+describe('HttpApi counts', () => {
+  it('asks for 7 days of rule stats at the current location', async () => {
+    const api = new HttpApi('http://api:8000');
+    const stats = { days: ['2026-11-06'], rules: [{ rule_id: 'r-1', total: 2, per_day: [2] }] };
+    const fetch = mockFetch(json(stats));
+    api.setLocation('terasa');
+    expect(await api.getRuleStats()).toEqual(stats);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'http://api:8000/api/rules/stats?days=7&location_id=terasa',
+    );
+  });
+});
+
+describe('HttpApi camera frames', () => {
+  const api = new HttpApi('http://api:8000');
+  afterEach(() => vi.restoreAllMocks());
+
+  it('fetches the blurred still with the session cookie and reads its time', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:frame-1');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+    const fetch = mockFetch(
+      new Response(new Blob(['jpeg'], { type: 'image/jpeg' }), {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg', 'X-Frame-At': '2026-11-06T19:00:00+00:00' },
+      }),
+    );
+    const frame = await api.captureFrame('cam 1');
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/cameras/cam%201/frame');
+    expect(fetch.mock.calls[0]?.[1]?.credentials).toBe('include');
+    expect(frame.url).toBe('blob:frame-1');
+    expect(frame.at).toBe('2026-11-06T19:00:00+00:00');
+    frame.release();
+    expect(revoke).toHaveBeenCalledWith('blob:frame-1');
+  });
+
+  it('turns a missing frame into the API error', async () => {
+    mockFetch(
+      json({ detail: { code: 'not_found', message_ro: 'Nu există încă o imagine.' } }, 404),
+    );
+    await expect(api.captureFrame('cam-1')).rejects.toMatchObject({
+      status: 404,
+      message: 'Nu există încă o imagine.',
+    });
+  });
+
+  it('passes last_seen through from /api/devices', async () => {
+    mockFetch(
+      json([{ device: 'edge-01', state: 'online', last_seen: '2026-11-06T19:00:00Z', site: 's' }]),
+    );
+    const [d] = await api.listDevices();
+    expect(d?.last_seen).toBe('2026-11-06T19:00:00Z');
+  });
+});

@@ -1,6 +1,6 @@
 """Locations of an organization and their members (users.manage, locations.manage)."""
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.accounts.models import Membership, User
@@ -14,20 +14,48 @@ from aivee_api.auth.permissions import (
     can_assign,
 )
 from aivee_api.auth.principal import FORBIDDEN, NO_LOCATION, Principal
-from aivee_api.db.models import Site
+from aivee_api.db.models import Camera, Device, PushSubscriptionRow, Site
 from aivee_api.errors import Conflict, Forbidden, NotFound
 from aivee_api.locations.schemas import (
     LocationIn,
     LocationOut,
     LocationPatch,
+    LocationSummary,
     MemberOut,
     location_json,
     location_out,
 )
+from aivee_api.videos.kind import not_upload
 
 NO_MEMBER = "Utilizatorul nu există."
 TARGET_FIELDS = frozenset({"service_target_s"})
 NULLABLE_FIELDS = frozenset({"telegram_chat_id", "service_target_s"})
+
+
+async def camera_counts(s: AsyncSession, location_ids: list[str]) -> dict[str, tuple[int, int]]:
+    """location id → (cameras, cameras whose device is online); uploaded clips left out."""
+    if not location_ids:
+        return {}
+    online = func.count().filter(Device.state == "online")
+    rows = await s.execute(
+        select(Device.site_id, func.count(), online)
+        .join(Camera, Camera.device_id == Device.id)
+        .where(Device.site_id.in_(location_ids), not_upload(Device.id, Camera.id))
+        .group_by(Device.site_id)
+    )
+    return {site: (total, on) for site, total, on in rows.all()}
+
+
+async def push_users(s: AsyncSession, user_ids: list[str]) -> set[str]:
+    """The users among `user_ids` with at least one Web Push subscription."""
+    if not user_ids:
+        return set()
+    found = await s.scalars(
+        select(PushSubscriptionRow.user_id)
+        .where(PushSubscriptionRow.user_id.in_(user_ids))
+        .distinct()
+    )
+    return {u for u in found if u is not None}
 
 
 class LocationService:
@@ -42,12 +70,21 @@ class LocationService:
             raise NotFound(NO_LOCATION)
         return row
 
-    async def visible(self) -> list[LocationOut]:
+    async def visible(self) -> list[LocationSummary]:
+        ids = [loc.id for loc in self._p.locations]
+        counts = await camera_counts(self._s, ids)
         out = []
-        for loc in self._p.locations:
-            row = await self._s.get(Site, loc.id)
+        for loc_id in ids:
+            row = await self._s.get(Site, loc_id)
             if row is not None:
-                out.append(location_out(row))
+                total, online = counts.get(loc_id, (0, 0))
+                out.append(
+                    LocationSummary(
+                        **location_out(row).model_dump(),
+                        cameras_total=total,
+                        cameras_online=online,
+                    )
+                )
         return out
 
     async def create(self, data: LocationIn) -> LocationOut:
@@ -140,7 +177,8 @@ class MemberService:
             MemberOut(user_id=u.id, name=u.name, email=u.email, role=role)  # type: ignore[arg-type]
             for u, role in rows
         ]
-        return out
+        push = await push_users(self._s, [m.user_id for m in out])
+        return [m.model_copy(update={"push_enabled": m.user_id in push}) for m in out]
 
     async def _target(self, location_id: str, user_id: str) -> tuple[User, Membership | None]:
         user = await self._s.get(User, user_id)

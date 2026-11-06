@@ -39,6 +39,14 @@ class LocationOut(BaseModel):
     service_target_s: int | None = None
 
 
+class LocationSummary(LocationOut):
+    """`GET /api/locations`: a location with its live cameras (uploaded clips not counted)."""
+
+    cameras_total: int = 0
+    cameras_online: int = 0
+    """Cameras whose device is online."""
+
+
 def location_out(row: Site) -> LocationOut:
     return LocationOut(
         id=row.id,
@@ -59,6 +67,8 @@ class MemberOut(BaseModel):
     name: str
     email: str
     role: Literal["owner", "manager", "staff"]
+    push_enabled: bool = False
+    """The member has a Web Push subscription (a phone or browser that gets the alerts)."""
 
 
 class MemberPatch(BaseModel):

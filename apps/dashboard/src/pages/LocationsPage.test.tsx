@@ -53,3 +53,20 @@ describe('LocationsPage cards and the new-location dialog', () => {
     );
   });
 });
+
+describe('LocationsPage cameras', () => {
+  it('shows every location’s camera count, not only the current one’s', async () => {
+    const api = fakeApi({
+      listLocations: vi.fn(async () => [
+        { ...DEMO, cameras_total: 3, cameras_online: 2 },
+        { id: 'centru', name: 'Bistro Centru', type: 'restaurant', cameras_total: 0 },
+      ]),
+    });
+    renderWithApi(<LocationsPage />, api);
+    expect(await screen.findByText(/2\/3 camere online/)).toBeInTheDocument();
+    const centru = screen.getByText('Bistro Centru').closest('li') as HTMLElement;
+    expect(within(centru).getByText(/nicio cameră/)).toBeInTheDocument();
+    // An empty location other than the current one offers its first camera too.
+    expect(within(centru).getByRole('button', { name: 'Adaugă prima cameră' })).toBeVisible();
+  });
+});

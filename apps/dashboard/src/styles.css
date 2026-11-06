@@ -2461,6 +2461,26 @@ label.btn:focus-within {
 .member-role {
   flex: 0 0 170px;
 }
+/* Whether the member's phone gets the alerts: a small dot, never a score. */
+.member-push {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.member-push::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted-2);
+}
+.member-push.is-on::before {
+  background: var(--ok);
+}
+.team-telegram {
+  margin: -4px 0 10px;
+}
 .menu-spacer {
   width: var(--tap);
   flex: none;

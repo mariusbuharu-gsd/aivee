@@ -43,6 +43,28 @@ export interface CameraView extends CameraConfig {
   online: boolean;
 }
 
+/** `GET /api/devices`: the edge's status plus when the API last heard from it. */
+export interface DeviceView extends DeviceStatus {
+  site?: string;
+  /**
+   * ISO time of the last status or metrics message (the edge sends metrics every ~5 s), so
+   * while online it is at most a few seconds old; once offline it is when the device went away.
+   */
+  last_seen?: string | null;
+}
+
+/**
+ * The newest face-blurred still of a camera (`GET /api/cameras/{id}/frame`). Today it is the
+ * whole-frame snapshot of the camera's latest alert, so it can be minutes or hours old: show `at`.
+ */
+export interface CameraFrame {
+  /** Usable as `<img src>`; a `blob:` URL over HTTP, so call `release()` when done with it. */
+  url: string;
+  /** ISO time the frame was taken, null when unknown. */
+  at: string | null;
+  release(): void;
+}
+
 /** What the "Adaugă cameră" form sends. `id` must match the edge's CAMERA_ID. */
 export interface NewCamera {
   id: string;
@@ -85,6 +107,13 @@ export interface SavedZones {
   zones: Zone[];
   /** E.g. overlapping zones; saved anyway, shown to the user. */
   warnings_ro: string[];
+}
+
+/** `GET /api/rules/stats?days=N`: alerts each rule raised per (UTC) day, oldest day first. */
+export interface RuleStats {
+  /** ISO dates (`YYYY-MM-DD`), the last N days up to today. */
+  days: string[];
+  rules: { rule_id: string; total: number; per_day: number[] }[];
 }
 
 /** A rule drafted from Romanian text; not saved until the user confirms it. */
@@ -181,7 +210,12 @@ export interface ApiClient extends AccountApi {
   updateCamera(id: string, patch: CameraPatch): Promise<CameraView>;
   /** Removes the camera with its zones and rules; past alerts stay, open ones close. */
   deleteCamera(id: string): Promise<void>;
-  listDevices(): Promise<DeviceStatus[]>;
+  listDevices(): Promise<DeviceView[]>;
+  /**
+   * The newest face-blurred still of the camera, for a thumbnail or the zone-drawing background.
+   * Rejects with an ApiError (404 `not_found` until the camera has sent one).
+   */
+  captureFrame(cameraId: string): Promise<CameraFrame>;
   saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones>;
   listRules(): Promise<Rule[]>;
   /** Translate a Romanian request into a draft rule; nothing is saved. */
@@ -191,6 +225,8 @@ export interface ApiClient extends AccountApi {
   /** Pause/resume (`enabled`) or edit a saved rule; the edge gets the new version. */
   updateRule(id: string, patch: RulePatch): Promise<Rule>;
   deleteRule(id: string): Promise<void>;
+  /** Alerts per rule per day over the last `days` days (default 7), current location. */
+  getRuleStats(days?: number): Promise<RuleStats>;
   listAlerts(): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
   listSuggestions(): Promise<SuggestionView[]>;
@@ -270,6 +306,9 @@ export interface Location {
    * (1–3600); null when not set. Owners and managers (`rules.manage`) may change it.
    */
   service_target_s?: number | null;
+  /** `GET /api/locations` only: live cameras at the location, and those whose device is online. */
+  cameras_total?: number;
+  cameras_online?: number;
 }
 
 /** "Conectează Telegram" deep links (`POST /api/locations/{id}/telegram/link`), single use. */
@@ -291,6 +330,8 @@ export interface Member {
   name: string;
   email: string;
   role: Role;
+  /** Has a Web Push subscription: their phone or browser gets the alerts. */
+  push_enabled?: boolean;
 }
 
 export interface Invite {

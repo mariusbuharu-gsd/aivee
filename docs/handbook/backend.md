@@ -78,6 +78,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | POST | `/api/rules/from-text` | `rules.manage`; `{camera_id, text, save?}` → `{rule, explanation_ro, saved}` |
 | GET | `/api/events` | `alerts.view`; raw AlertEvents + `device_id`, `snapshot_url` |
 | GET | `/api/snapshots/{id}` | `alerts.view` (event) or `staff.review` (suggestion); blurred JPEG; `{event_id}-before` is an object change's before image, with the event's rights |
+| GET | `/api/cameras/{id}/frame` | `alerts.view`; the camera's newest face-blurred still (today: its latest alert's whole-frame snapshot), time in `X-Frame-At`, `no-store`; 404 until one exists |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
 | POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed |
 | GET | `/api/metrics/verification` | `alerts.view`; `?location_id` → `{location_id, counts: [{rule_id, status, alerts}]}` |

@@ -37,10 +37,17 @@ async def test_cors_allows_the_dashboard(client: httpx.AsyncClient) -> None:
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
+async def test_cors_exposes_the_frame_time(client: httpx.AsyncClient) -> None:
+    """The dashboard reads `X-Frame-At` of `/api/cameras/{id}/frame` from another origin."""
+    r = await client.get("/healthz", headers={"Origin": "http://localhost:5173"})
+    assert "x-frame-at" in r.headers["access-control-expose-headers"].lower()
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [
         ("GET", "/api/snapshots/ev-1"),
+        ("GET", "/api/cameras/cam1/frame"),
         ("GET", "/api/auth/me"),
         ("GET", "/api/cameras"),
         ("POST", "/api/rules"),
