@@ -11,8 +11,6 @@ from aivee_api.metrics.cache import MetricsCache
 from aivee_api.settings import ApiSettings
 from aivee_contracts.events import Metrics
 
-JPEG = b"\xff\xd8\xff\xe0fake-jpeg\xff\xd9"
-
 
 def _no_db() -> Any:
     raise AssertionError("this route must not touch the database")
@@ -39,18 +37,39 @@ async def test_cors_allows_the_dashboard(client: httpx.AsyncClient) -> None:
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
 
 
-async def test_snapshot_is_served_as_jpeg(client: httpx.AsyncClient, settings: ApiSettings) -> None:
-    (settings.snapshot_dir / "ev-1.jpg").write_bytes(JPEG)
-    r = await client.get("/api/snapshots/ev-1")
-    assert r.status_code == 200
-    assert r.headers["content-type"] == "image/jpeg"
-    assert r.content == JPEG
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/snapshots/ev-1"),
+        ("GET", "/api/auth/me"),
+        ("GET", "/api/cameras"),
+        ("POST", "/api/rules"),
+        ("GET", "/api/events"),
+        ("GET", "/api/audit"),
+        ("GET", "/api/locations"),
+        ("POST", "/api/invites"),
+    ],
+)
+async def test_no_cookie_is_401_without_touching_the_db(
+    settings: ApiSettings,
+    publisher: RecordingPublisher,
+    translator: Any,
+    services_factory: Any,
+    method: str,
+    path: str,
+) -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-
-@pytest.mark.parametrize("event_id", ["missing", "..%2F..%2Fetc%2Fpasswd", "a.b"])
-async def test_snapshot_missing_or_unsafe_is_404(client: httpx.AsyncClient, event_id: str) -> None:
-    r = await client.get(f"/api/snapshots/{event_id}")
-    assert r.status_code == 404
+    # Sessions may be opened (lazily, as routes declare them) but never used: nothing listens.
+    unreachable = async_sessionmaker(create_async_engine("postgresql+asyncpg://x@127.0.0.1:9/x"))
+    app = create_app(services_factory(settings, unreachable, publisher, translator))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        r = await client.request(method, path, json={})
+    assert r.status_code == 401
+    assert r.json()["detail"]["code"] == "unauthenticated"
+    assert r.json()["detail"]["message_ro"]
 
 
 async def test_publisher_without_broker_raises_unavailable(settings: ApiSettings) -> None:

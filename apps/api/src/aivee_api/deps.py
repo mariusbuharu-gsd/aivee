@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aivee_api.auth.ratelimit import LoginRateLimiter
 from aivee_api.edge.live import LiveDetections
 from aivee_api.edge.sync import EdgeCommands, EdgeSync
 from aivee_api.metrics.cache import MetricsCache
@@ -25,6 +26,7 @@ class Services:
     enroller: Enroller | None = None
     metrics: MetricsCache = field(default_factory=MetricsCache)
     live: LiveDetections = field(default_factory=LiveDetections)
+    login_limiter: LoginRateLimiter = field(default_factory=LoginRateLimiter)
 
 
 def get_services(request: Request) -> Services:

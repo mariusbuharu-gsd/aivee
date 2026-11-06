@@ -87,11 +87,20 @@ def test_web_push_sender_needs_keys() -> None:
 
 @pytest.fixture
 async def api_db(
-    settings: ApiSettings, sessions: Any, publisher: Any, translator: Any, services_factory: Any
+    settings: ApiSettings,
+    sessions: Any,
+    publisher: Any,
+    translator: Any,
+    services_factory: Any,
+    tenancy_factory: Any,
+    login: Any,
 ) -> AsyncIterator[tuple[httpx.AsyncClient, FakeSender]]:
+    """Logged in as staff@t.ro (location `test`)."""
+    await tenancy_factory(sessions)
     sender = FakeSender()
     app = _app(services_factory(settings, sessions, publisher, translator), VAPID, sender)
     async with _client(app) as c:
+        await login(c, "staff@t.ro")
         yield c, sender
 
 
@@ -131,7 +140,7 @@ async def test_unsubscribe_removes_and_is_idempotent(
 
 
 @pytest.mark.integration
-async def test_test_push_reaches_every_subscription(
+async def test_test_push_reaches_the_users_subscriptions(
     api_db: tuple[httpx.AsyncClient, FakeSender],
 ) -> None:
     c, sender = api_db
@@ -141,6 +150,51 @@ async def test_test_push_reaches_every_subscription(
     assert r.status_code == 200 and r.json() == {"sent": 2, "removed": 0, "failed": 0}
     assert {e for e, _ in sender.sent} == {SUB["endpoint"], "https://push.example/2"}
     assert sender.sent[0][1]["url"] == "/alerte"
+
+
+@pytest.mark.integration
+async def test_push_routes_need_a_login(
+    settings: ApiSettings, sessions: Any, publisher: Any, translator: Any, services_factory: Any
+) -> None:
+    app = _app(services_factory(settings, sessions, publisher, translator), VAPID, FakeSender())
+    async with _client(app) as c:
+        assert (await c.post("/api/push/subscribe", json=SUB)).status_code == 401
+        assert (await c.post("/api/push/test")).status_code == 401
+        r = await c.request("DELETE", "/api/push/subscribe", json={"endpoint": "https://x"})
+        assert r.status_code == 401
+
+
+@pytest.mark.integration
+async def test_subscription_belongs_to_the_user_and_alerts_reach_only_the_location(
+    api_db: tuple[httpx.AsyncClient, FakeSender], sessions: Any, client_factory: Any, login: Any
+) -> None:
+    from aivee_api.push.service import push_to_location
+
+    staff, sender = api_db
+    await staff.post("/api/push/subscribe", json=SUB)  # staff@t.ro → `test`
+    async with sessions() as s:
+        repo = PushSubscriptionRepository(s)
+        await repo.upsert(Subscription("https://p/owner", "k", "a"), user_id="u-owner")
+        await repo.upsert(Subscription("https://p/other", "k", "a"), user_id="u-other")
+        await repo.upsert(Subscription("https://p/xowner", "k", "a"), user_id="u-xowner")
+        await repo.upsert(Subscription("https://p/anon", "k", "a"))
+        await s.commit()
+
+    msg = PushMessage(title="t", body="b")
+    await push_to_location(sessions, sender, msg, "test")
+    assert {e for e, _ in sender.sent} == {SUB["endpoint"], "https://p/owner"}
+    sender.sent.clear()
+    await push_to_location(sessions, sender, msg, "far")
+    assert {e for e, _ in sender.sent} == {"https://p/xowner"}
+
+    # the test push reaches only the caller's own devices; others' endpoints are not theirs
+    sender.sent.clear()
+    assert (await staff.post("/api/push/test")).json()["sent"] == 1
+    assert [e for e, _ in sender.sent] == [SUB["endpoint"]]
+    r = await staff.request("DELETE", "/api/push/subscribe", json={"endpoint": "https://p/owner"})
+    assert r.status_code == 204
+    async with sessions() as s:
+        assert len(await PushSubscriptionRepository(s).for_user("u-owner")) == 1
 
 
 @pytest.mark.integration

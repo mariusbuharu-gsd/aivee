@@ -1,20 +1,20 @@
-"""Seam to the auth stream (A). Until it lands, everyone is a demo user who sees everything.
+"""Alert permissions over the logged-in user (aivee_api.auth).
 
-Swap at merge — either replace the bodies of `require_ack` / `require_view`, or override
-them in `create_app`:
-
-    app.dependency_overrides[require_ack] = <dep returning Access for "alerts.ack">
-    app.dependency_overrides[require_view] = <dep returning Access for "alerts.view">
-
-`Access.locations` is the set of location ids the user holds the permission in (None =
-every location, e.g. an owner). The alert services return 404 for anything outside it.
+`Access.locations` is the set of location ids the user holds the permission in (an owner:
+every location of the organization). The alert services return 404 for anything outside
+it. A `?location_id=` the user can see but lacks the permission at is 403; one the user
+cannot see is 404 (the services also check it).
 """
 
-import re
 from dataclasses import dataclass
 from typing import Annotated, Protocol
 
-from fastapi import Depends, Header
+from fastapi import Depends, Query
+
+from aivee_api.auth.deps import CurrentUser as LoggedIn
+from aivee_api.auth.permissions import ALERTS_ACK, ALERTS_VIEW
+from aivee_api.auth.principal import FORBIDDEN, Principal
+from aivee_api.errors import Forbidden
 
 
 class CurrentUser(Protocol):
@@ -26,12 +26,9 @@ class CurrentUser(Protocol):
 
 
 @dataclass(frozen=True)
-class DemoUser:
+class AlertUser:
     id: str
     name: str
-
-
-DEMO_USER = DemoUser(id="demo", name="Demo")
 
 
 @dataclass(frozen=True)
@@ -43,26 +40,27 @@ class Access:
         return self.locations is None or location_id in self.locations
 
 
-def _slug(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "demo"
+def access_for(principal: Principal, permission: str, location_id: str | None) -> Access:
+    """403 when the user holds `permission` nowhere, or not at a visible `location_id`."""
+    if location_id is not None and principal.role_at(location_id) is not None:
+        principal.authorize(permission, location_id)
+    locations = frozenset(principal.locations_with(permission))
+    if not locations and principal.locations:
+        raise Forbidden(FORBIDDEN)
+    return Access(AlertUser(principal.user_id, principal.name), locations)
 
 
-async def demo_user(
-    x_demo_user: Annotated[str | None, Header(description="Demo: acting user's name")] = None,
-) -> CurrentUser:
-    """`X-Demo-User: Ana` acts as Ana (id `demo-ana`); without it, the demo user."""
-    name = (x_demo_user or "").strip()
-    return DemoUser(id=f"demo-{_slug(name)}", name=name) if name else DEMO_USER
+LocationQuery = Annotated[str | None, Query(max_length=64)]
 
 
-async def require_ack(user: Annotated[CurrentUser, Depends(demo_user)]) -> Access:
+async def require_ack(principal: LoggedIn, location_id: LocationQuery = None) -> Access:
     """Permission `alerts.ack`."""
-    return Access(user)
+    return access_for(principal, ALERTS_ACK, location_id)
 
 
-async def require_view(user: Annotated[CurrentUser, Depends(demo_user)]) -> Access:
+async def require_view(principal: LoggedIn, location_id: LocationQuery = None) -> Access:
     """Permission `alerts.view`."""
-    return Access(user)
+    return access_for(principal, ALERTS_VIEW, location_id)
 
 
 AckAccess = Annotated[Access, Depends(require_ack)]
