@@ -70,7 +70,9 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      args: { UV_EXTRAS: "--extra ml" }
+      # Slim by default (~0.5 GB): photo enrolment then answers 503 with a Romanian message.
+      # API_UV_EXTRAS="--extra ml" adds the enrolment models (CPU torch; ~2.6 GB image).
+      args: { UV_EXTRAS: "${API_UV_EXTRAS:-}" }
     image: aivee-api:dev
     env_file: .env
     environment:
