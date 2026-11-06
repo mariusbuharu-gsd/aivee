@@ -71,7 +71,9 @@ class SituationEngine:
         to_datetime: Callable[[float], datetime] = utc_from_timestamp,
         grace_s: float = 0.0,
     ) -> None:
-        self._states = {z.id: ZoneState(z, grace_s=grace_s) for z in zones}
+        self._grace_s = grace_s
+        self._states: dict[str, ZoneState] = {}
+        self._zone_names: dict[str, str] = {}
         self._id_factory = id_factory
         self._camera_id = camera_id
         self._to_datetime = to_datetime
@@ -79,10 +81,21 @@ class SituationEngine:
         self._last_opened: dict[AlertKey, float] = {}
         self._rules: list[Rule] = []
         self.update_rules(rules)
+        self.update_zones(zones)
 
     def update_rules(self, rules: list[Rule]) -> None:
         """Replace the active rule set; alerts of removed rules close on the next step."""
         self._rules = [r for r in rules if r.enabled and r.camera_id == self._camera_id]
+
+    def update_zones(self, zones: list[Zone]) -> None:
+        """Replace the zones. Unchanged zones keep their timers; a moved or re-tagged zone
+        starts over; alerts of removed zones close on the next step."""
+        old = self._states
+        self._states = {
+            z.id: old[z.id] if z.id in old and old[z.id].zone == z else ZoneState(z, self._grace_s)
+            for z in zones
+        }
+        self._zone_names.update({z.id: z.name for z in zones})
 
     def step(self, frame: Frame) -> list[AlertEvent]:
         now = frame.ts
@@ -113,7 +126,7 @@ class SituationEngine:
 
     def _close(self, key: AlertKey, now: float) -> AlertEvent:
         self._open.discard(key)
-        return self._event(key, "closed", now, f"{self._states[key[1]].zone.name}: rezolvat")
+        return self._event(key, "closed", now, f"{self._zone_names[key[1]]}: rezolvat")
 
     def _event(
         self, key: AlertKey, state: Literal["opened", "closed"], now: float, summary: str

@@ -216,3 +216,36 @@ def test_injected_clock_converts_frame_time() -> None:
     )
     [ev] = eng.step(Frame(ts=7, tracks=(guest(TABLE1, hand=True),)))
     assert ev.at == base.replace(second=7)
+
+
+def test_update_zones_keeps_state_of_unchanged_zones() -> None:
+    eng = engine(UNATTENDED, zones=(TABLE1,))
+    play(eng, seated(TABLE1, 0, 590))
+    eng.update_zones([TABLE1, TABLE2])
+    events = eng.step(Frame(ts=600, tracks=(guest(TABLE1),)))
+    assert [(e.state, e.zone_id) for e in events] == [("opened", "t1")]
+
+
+def test_update_zones_adds_new_zones() -> None:
+    eng = engine(CALLS, zones=(TABLE1,))
+    eng.update_zones([TABLE1, TABLE2])
+    events = eng.step(Frame(ts=0, tracks=(guest(TABLE2, hand=True),)))
+    assert [(e.state, e.zone_id) for e in events] == [("opened", "t2")]
+
+
+def test_removing_a_zone_closes_its_open_alerts() -> None:
+    eng = engine(CALLS, zones=(TABLE1, TABLE2))
+    eng.step(Frame(ts=0, tracks=(guest(TABLE1, hand=True),)))
+    eng.update_zones([TABLE2])
+    events = eng.step(Frame(ts=1, tracks=(guest(TABLE1, hand=True),)))
+    assert [(e.state, e.zone_id, e.summary_ro) for e in events] == [
+        ("closed", "t1", "Masa 1: rezolvat")
+    ]
+
+
+def test_moved_zone_restarts_its_timers() -> None:
+    eng = engine(UNATTENDED, zones=(TABLE1,))
+    play(eng, seated(TABLE1, 0, 590))
+    moved = TABLE1.model_copy(update={"polygon": square(0.0, 0.0, size=0.3)})
+    eng.update_zones([moved])
+    assert eng.step(Frame(ts=600, tracks=(guest(moved),))) == []
