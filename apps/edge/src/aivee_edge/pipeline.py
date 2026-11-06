@@ -11,6 +11,7 @@ they change, so edits in the dashboard take effect without a restart.
 import logging
 import threading
 import uuid
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -26,6 +27,7 @@ from aivee_edge.domain.engine import SituationEngine, utc_from_timestamp
 from aivee_edge.domain.geometry import foot_point, point_in_polygon
 from aivee_edge.domain.observation import BBox, Frame, TrackObs
 from aivee_edge.domain.ports import (
+    CommandSource,
     ConfigSource,
     EventPublisher,
     FrameSource,
@@ -94,6 +96,7 @@ class EdgePipeline:
         embedder: Embedder | None = None,
         profiles: Callable[[], StaffProfiles | None] | None = None,
         snapshots: SnapshotMaker | None = None,
+        commands: CommandSource | None = None,
         grace_s: float = 1.5,
         embed_interval_s: float = 2.0,
         forget_after_s: float = 5.0,
@@ -110,6 +113,9 @@ class EdgePipeline:
         self._embedder = embedder
         self._profiles = profiles
         self._snapshots = snapshots or NoSnapshot()
+        self._commands = commands
+        self._camera_id = camera_id
+        self._seen_commands: deque[str] = deque(maxlen=1000)
         self._embed_interval_s = embed_interval_s
         self._forget_after_s = forget_after_s
 
@@ -157,6 +163,40 @@ class EdgePipeline:
                 "zones reloaded count=%d names=%s", len(zones), ",".join(z.name for z in zones)
             )
 
+    def apply_commands(self) -> None:
+        """Apply the owner's confirm/reject decisions to the tracks they name.
+
+        Runs on the pipeline thread, so the classifier is never touched concurrently.
+        Commands for another camera, a track that is no longer tracked or an id already
+        applied (QoS 1 may redeliver) are dropped.
+        """
+        if self._commands is None:
+            return
+        for cmd in self._commands.take_commands():
+            if cmd.command_id in self._seen_commands:
+                continue
+            self._seen_commands.append(cmd.command_id)
+            if cmd.camera_id != self._camera_id or cmd.track_id not in self._last_seen:
+                log.info(
+                    "command_ignored command_id=%s kind=%s camera=%s track=%d",
+                    cmd.command_id,
+                    cmd.kind,
+                    cmd.camera_id,
+                    cmd.track_id,
+                )
+                continue
+            if cmd.kind == "confirm_staff":
+                self.classifier.confirm(cmd.track_id)
+            else:
+                self.classifier.reject(cmd.track_id)
+            log.info(
+                "command_applied command_id=%s kind=%s track=%d suggestion_id=%s",
+                cmd.command_id,
+                cmd.kind,
+                cmd.track_id,
+                cmd.suggestion_id,
+            )
+
     # -- loop ----------------------------------------------------------------------
 
     def step(self) -> StepResult | None:
@@ -166,6 +206,7 @@ class EdgePipeline:
             return None
         ts, image = item
         self.reload()
+        self.apply_commands()
 
         frame = self._detector.detect(image, ts)
         frame, posed = self._raised_hands(image, frame)

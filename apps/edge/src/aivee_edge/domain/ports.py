@@ -6,6 +6,7 @@ Adapters in `aivee_edge.adapters` implement these protocols; tests use fakes.
 
 from typing import Protocol
 
+from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.events import AlertEvent, Metrics, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig
 from aivee_contracts.rules import Rule
@@ -33,6 +34,14 @@ class EventPublisher(Protocol):
     def publish_suggestion(self, suggestion: StaffSuggestion) -> None: ...
 
     def publish_metrics(self, metrics: Metrics) -> None: ...
+
+
+class CommandSource(Protocol):
+    """The owner's decisions sent by the API (MQTT `commands` in production)."""
+
+    def take_commands(self) -> list[EdgeCommand]:
+        """Commands received since the last call (thread-safe; each returned once)."""
+        ...
 
 
 class ConfigSource(Protocol):

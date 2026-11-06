@@ -3,13 +3,14 @@
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import count
 
+from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfile, StaffProfiles, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, Zone
 from aivee_contracts.rules import Action, Condition, Rule
 from aivee_edge.domain.observation import BBox, Frame, TrackObs
 from aivee_edge.domain.ports import Image
 from aivee_edge.domain.pose import Keypoint
-from aivee_edge.pipeline import EdgePipeline
+from aivee_edge.pipeline import EdgePipeline, StepResult
 
 CAM = "cam-01"
 
@@ -300,3 +301,64 @@ def test_snapshot_only_for_opened_alerts() -> None:
     p = pipeline(frames, Config([CALLS], ZONES), rec, pose=OnceRaising(), snapshots=FakeSnapshots())
     p.run()
     assert [(e.state, snap) for e, snap in rec.alerts] == [("opened", b"jpeg"), ("closed", None)]
+
+
+# -- owner commands ------------------------------------------------------------------
+
+
+class FakeCommands:
+    def __init__(self) -> None:
+        self.pending: list[EdgeCommand] = []
+
+    def take_commands(self) -> list[EdgeCommand]:
+        out, self.pending = self.pending, []
+        return out
+
+
+def command(kind: str, track_id: int, *, camera_id: str = CAM, command_id: str = "") -> EdgeCommand:
+    return EdgeCommand.model_validate(
+        {
+            "command_id": command_id or f"{kind}-{track_id}",
+            "kind": kind,
+            "camera_id": camera_id,
+            "track_id": track_id,
+            "suggestion_id": "s1",
+            "at": "2026-11-06T12:00:00Z",
+        }
+    )
+
+
+def roles(result: object) -> dict[int, tuple[str, float]]:
+    assert isinstance(result, StepResult)
+    return {t.track_id: (t.role, t.staff_score) for t in result.frame.tracks}
+
+
+def test_owner_confirm_and_reject_override_the_role() -> None:
+    frames = [Frame(ts=float(t), tracks=(TrackObs(1, at(T1)),)) for t in range(4)]
+    commands = FakeCommands()
+    p = pipeline(frames, Config([], ZONES), Recorder(), commands=commands)
+
+    assert roles(p.step()) == {1: ("guest", 0.0)}
+    commands.pending = [command("confirm_staff", 1)]
+    assert roles(p.step()) == {1: ("staff", 1.0)}
+    commands.pending = [command("reject_staff", 1)]
+    assert roles(p.step()) == {1: ("guest", 0.0)}
+
+
+def test_commands_for_other_cameras_unknown_tracks_or_seen_twice_are_ignored() -> None:
+    frames = [Frame(ts=float(t), tracks=(TrackObs(1, at(T1)),)) for t in range(4)]
+    frames.append(Frame(ts=4.0, tracks=(TrackObs(1, at(T1)), TrackObs(42, at(T2)))))
+    commands = FakeCommands()
+    p = pipeline(frames, Config([], ZONES), Recorder(), commands=commands)
+    p.step()
+    commands.pending = [
+        command("confirm_staff", 1, camera_id="cam-99"),
+        command("confirm_staff", 42),  # not tracked (yet): dropped, not remembered
+    ]
+    assert roles(p.step()) == {1: ("guest", 0.0)}
+
+    commands.pending = [command("confirm_staff", 1, command_id="c1")]
+    p.step()
+    commands.pending = [command("reject_staff", 1, command_id="c1")]  # redelivered id
+    assert roles(p.step()) == {1: ("staff", 1.0)}
+    assert roles(p.step())[42][0] == "guest"

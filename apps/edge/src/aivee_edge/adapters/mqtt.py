@@ -6,13 +6,17 @@
 - Retained `rules`, `profiles` and `config` are cached; getters are thread-safe.
 - `camera()` prefers this device's camera from the retained `DeviceConfig` (matched by
   `camera_id`, else the first one) over the camera given at construction.
+- `commands` (not retained) are queued; the pipeline drains them with `take_commands()` on
+  its own thread, so the network thread never touches pipeline state.
 """
 
 import logging
 import threading
+from collections import deque
 from typing import Any
 
 import paho.mqtt.client as mqtt
+from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.events import (
     AlertEvent,
     DeviceStatus,
@@ -32,10 +36,11 @@ from pydantic import ValidationError
 log = logging.getLogger(__name__)
 
 SESSION_EXPIRY_S = 3600
+MAX_PENDING_COMMANDS = 256
 
 
 class MqttEdgeClient:
-    """Implements `EventPublisher` and `ConfigSource` for one edge device."""
+    """Implements `EventPublisher`, `ConfigSource` and `CommandSource` for one edge device."""
 
     def __init__(
         self,
@@ -60,6 +65,7 @@ class MqttEdgeClient:
         self._config: DeviceConfig | None = None
         self._rules: RuleSet | None = None
         self._profiles: StaffProfiles | None = None
+        self._commands: deque[EdgeCommand] = deque(maxlen=MAX_PENDING_COMMANDS)
         self.connected = threading.Event()
 
         self._client = mqtt.Client(
@@ -147,6 +153,14 @@ class MqttEdgeClient:
         with self._lock:
             return self._profiles
 
+    # -- CommandSource -------------------------------------------------------------
+
+    def take_commands(self) -> list[EdgeCommand]:
+        with self._lock:
+            out = list(self._commands)
+            self._commands.clear()
+        return out
+
     # -- callbacks -----------------------------------------------------------------
 
     def _status(self, state: str) -> str:
@@ -169,7 +183,12 @@ class MqttEdgeClient:
             log.error("MQTT connect refused: %s", reason)
             return
         client.subscribe(
-            [(self.topics.rules, 1), (self.topics.profiles, 1), (self.topics.config, 1)]
+            [
+                (self.topics.rules, 1),
+                (self.topics.profiles, 1),
+                (self.topics.config, 1),
+                (self.topics.commands, 1),
+            ]
         )
         client.publish(self.topics.status, self._status("online"), qos=1, retain=True)
         self.connected.set()
@@ -189,5 +208,10 @@ class MqttEdgeClient:
                 config = DeviceConfig.model_validate_json(msg.payload)
                 with self._lock:
                     self._config = config
+            elif msg.topic == self.topics.commands:
+                command = EdgeCommand.model_validate_json(msg.payload)
+                with self._lock:
+                    self._commands.append(command)
+                log.info("command received command_id=%s kind=%s", command.command_id, command.kind)
         except ValidationError:
             log.exception("ignoring invalid payload on %s", msg.topic)

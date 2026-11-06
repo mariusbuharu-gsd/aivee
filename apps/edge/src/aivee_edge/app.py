@@ -166,6 +166,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         embedder=vision.embedder,
         profiles=client.profiles,
         snapshots=vision.snapshots,
+        commands=client,
         grace_s=settings.grace_s,
         metrics_interval_s=settings.metrics_interval_s,
         to_datetime=wall_clock,

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.events import AlertEvent, DeviceStatus, Metrics, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import RuleSet
@@ -136,3 +137,29 @@ def test_subscribes_to_config_on_connect(monkeypatch: pytest.MonkeyPatch) -> Non
 
     edge._on_connect(edge._client, None, None, Ok(), None)  # type: ignore[arg-type]
     assert edge.topics.config in [t for t, _ in subs[0]]
+    assert (edge.topics.commands, 1) in subs[0]
+
+
+def _command_msg(edge: MqttEdgeClient, payload: bytes) -> Any:
+    class Msg:
+        topic = edge.topics.commands
+
+    Msg.payload = payload  # type: ignore[attr-defined]
+    return Msg()
+
+
+def test_commands_are_queued_until_the_pipeline_takes_them() -> None:
+    edge = MqttEdgeClient("localhost", 1883, "u", "pw", "s1", "edge-01")
+    cmd = EdgeCommand(
+        command_id="c1",
+        kind="confirm_staff",
+        camera_id="cam-01",
+        track_id=7,
+        suggestion_id="s1",
+        at=datetime.now(UTC),
+    )
+    assert edge.take_commands() == []
+    edge._on_message(edge._client, None, _command_msg(edge, cmd.model_dump_json().encode()))
+    edge._on_message(edge._client, None, _command_msg(edge, b"{bad"))  # ignored
+    assert edge.take_commands() == [cmd]
+    assert edge.take_commands() == []
