@@ -40,11 +40,22 @@ export function sentFps(times: readonly number[], now: number): number {
   return times.filter((t) => now - t < 1000).length;
 }
 
-/** Canvas size for a video frame: at most `max` px wide, same aspect ratio. */
-export function fitWidth(width: number, height: number, max = 640) {
-  if (width <= max) return { width, height };
-  return { width: max, height: Math.round((height * max) / width) };
+/**
+ * Every frame the server gets is 16:9: the Live tile and the zone editor show it 16:9, and
+ * zones and detection boxes are normalised to the whole frame.
+ */
+export const FRAME = { width: 640, height: 360 } as const;
+
+/** Where to draw a video into the frame: contain-fitted and centered, never cropped (black bars). */
+export function letterbox(width: number, height: number, frame = FRAME) {
+  const scale = Math.min(frame.width / width, frame.height / height);
+  const w = width * scale;
+  const h = height * scale;
+  return { x: (frame.width - w) / 2, y: (frame.height - h) / 2, width: w, height: h };
 }
+
+/** A phone held upright: its picture gets wide side bars in the 16:9 frame. */
+export const isPortrait = (width: number, height: number) => height > width;
 
 /** A cloud camera is fed by frames pushed for its own id (`mqtt-frames://<id>`). */
 export function isCloudCamera(c: Pick<CameraView, 'id' | 'source'>): boolean {

@@ -3,9 +3,11 @@ import { Link, useSearchParams } from 'react-router';
 import { useApi } from '../api/context';
 import { Icon } from '../components/Icon';
 import {
+  FRAME,
   createFrameSender,
-  fitWidth,
   isCloudCamera,
+  isPortrait,
+  letterbox,
   type FrameSender,
   type SendStatus,
 } from '../phone/sender';
@@ -51,6 +53,12 @@ export function PhoneCameraPage() {
   const [fps, setFps] = useState(0);
   const [sent, setSent] = useState(0);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [portrait, setPortrait] = useState(false);
+  // Rotating the phone changes the video size without a new stream: `resize` reports it.
+  const readShape = () => {
+    const v = videoRef.current;
+    setPortrait(!!v && isPortrait(v.videoWidth, v.videoHeight));
+  };
 
   function releaseCamera() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -200,7 +208,16 @@ export function PhoneCameraPage() {
       )}
 
       <div className="phone-preview on-night">
-        <video ref={videoRef} muted playsInline autoPlay aria-label="Previzualizare cameră" />
+        {/* 16:9 with contain, like the frame the server gets: the bars here are the bars there. */}
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          autoPlay
+          aria-label="Previzualizare cameră"
+          onLoadedMetadata={readShape}
+          onResize={readShape}
+        />
         {!running && <span className="phone-preview-idle">Camera e oprită</span>}
         <span
           className={`pill phone-status ${status === 'sending' ? 'pill-live' : 'pill-off'}`}
@@ -218,6 +235,12 @@ export function PhoneCameraPage() {
           </span>
         </span>
       </div>
+
+      {running && portrait && (
+        <p className="phone-hint" role="note">
+          <Icon name="info" /> Ține telefonul pe orizontală pentru imagine întreagă
+        </p>
+      )}
 
       {problem && (
         <Banner
@@ -264,14 +287,19 @@ export function PhoneCameraPage() {
   );
 }
 
-/** The current video picture as a JPEG at most 640 px wide; null until the video has a frame. */
+/**
+ * The current video picture as a 640x360 JPEG: contain-fitted and centered on black, so a phone
+ * held upright arrives whole with side bars, never cropped. Null until the video has a frame.
+ */
 function grab(video: HTMLVideoElement | null, canvas: HTMLCanvasElement): Promise<Blob | null> {
   if (!video || video.readyState < 2 || !video.videoWidth) return Promise.resolve(null);
-  const { width, height } = fitWidth(video.videoWidth, video.videoHeight);
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = FRAME.width;
+  canvas.height = FRAME.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return Promise.resolve(null);
-  ctx.drawImage(video, 0, 0, width, height);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, FRAME.width, FRAME.height);
+  const r = letterbox(video.videoWidth, video.videoHeight);
+  ctx.drawImage(video, r.x, r.y, r.width, r.height);
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY));
 }
