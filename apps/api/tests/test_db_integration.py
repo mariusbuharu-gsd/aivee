@@ -30,6 +30,7 @@ TABLES = {
     "staff_profiles",
     "staff_examples",
     "suggestions",
+    "push_subscriptions",
 }
 
 
