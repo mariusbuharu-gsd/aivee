@@ -1,14 +1,17 @@
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.alerts.audit import AuditWriter, acknowledged_entry
 from aivee_api.alerts.auth import Access
-from aivee_api.alerts.domain import Lifecycle, service_stats
+from aivee_api.alerts.domain import Lifecycle, service_stats, wait_heatmap
 from aivee_api.alerts.repository import AlertRepository
 from aivee_api.alerts.schemas import (
     AlertView,
+    HeatCellOut,
+    ServiceHeatmap,
     ServiceMetrics,
     VerificationCount,
     VerificationMetrics,
@@ -16,6 +19,9 @@ from aivee_api.alerts.schemas import (
 from aivee_api.errors import Conflict, NotFound
 
 DEFAULT_PERIOD = timedelta(days=1)
+HEATMAP_PERIOD = timedelta(days=7)
+# Locations have no timezone of their own yet; the venues are in Romania.
+LOCATION_TZ = "Europe/Bucharest"
 METRICS_MAX_ALERTS = 10_000
 _MISSING = "Alerta nu există."
 
@@ -99,6 +105,35 @@ async def service_metrics(
     )
     lives = [Lifecycle(v.opened_at, v.acknowledged_at, v.arrived_at, v.closed_at) for v in views]
     return ServiceMetrics.of(service_stats(lives), location_id, start, end)
+
+
+async def service_heatmap(
+    session: AsyncSession,
+    access: Access,
+    location_id: str | None,
+    start: datetime | None,
+    end: datetime | None,
+    now: Callable[[], datetime] = _now,
+) -> ServiceHeatmap:
+    """Alerts opened in [from, to) and their median wait per local weekday x hour."""
+    end = end or now()
+    start = start or end - HEATMAP_PERIOD
+    views = await AlertRepository(session).views(
+        location_ids=_locations(access, location_id),
+        opened_from=start,
+        opened_to=end,
+        live_only=True,
+        limit=METRICS_MAX_ALERTS,
+    )
+    lives = [Lifecycle(v.opened_at, v.acknowledged_at, v.arrived_at, v.closed_at) for v in views]
+    grid = wait_heatmap(lives, ZoneInfo(LOCATION_TZ))
+    return ServiceHeatmap(
+        location_id=location_id,
+        from_=start,
+        to=end,
+        timezone=LOCATION_TZ,
+        cells=[[HeatCellOut.of(c) for c in row] for row in grid],
+    )
 
 
 async def verification_metrics(

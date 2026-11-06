@@ -4,7 +4,14 @@ from typing import Literal
 from aivee_contracts.events import Verification
 from pydantic import BaseModel, Field
 
-from aivee_api.alerts.domain import AlertState, ClosedBy, CloseReason, Measure, ServiceStats
+from aivee_api.alerts.domain import (
+    AlertState,
+    ClosedBy,
+    CloseReason,
+    HeatCell,
+    Measure,
+    ServiceStats,
+)
 
 
 class AlertView(BaseModel):
@@ -102,6 +109,27 @@ class ServiceMetrics(BaseModel):
             reaction=MeasureOut.of(stats.reaction),
             travel=MeasureOut.of(stats.travel),
         )
+
+
+class HeatCellOut(BaseModel):
+    alerts: int
+    wait_median_s: float | None = Field(description="Median wait of the cell's alerts")
+
+    @classmethod
+    def of(cls, c: HeatCell) -> "HeatCellOut":
+        return cls(alerts=c.alerts, wait_median_s=c.wait_median_s)
+
+
+class ServiceHeatmap(BaseModel):
+    """`GET /api/metrics/service/heatmap`: when guests wait, by local weekday and hour."""
+
+    location_id: str | None
+    from_: datetime = Field(serialization_alias="from")
+    to: datetime
+    timezone: str = Field(description="IANA zone the weekdays and hours are counted in")
+    cells: list[list[HeatCellOut]] = Field(
+        description="7 rows (Monday first) of 24 hourly cells (00-23, local time)"
+    )
 
 
 class VerificationCount(BaseModel):

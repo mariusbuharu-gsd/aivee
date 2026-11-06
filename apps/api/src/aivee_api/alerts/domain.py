@@ -11,7 +11,7 @@
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from typing import Literal
 
 AlertState = Literal["opened", "acknowledged", "arrived", "closed"]
@@ -120,6 +120,29 @@ def service_stats(lives: Sequence[Lifecycle]) -> ServiceStats:
         reaction=Measure.of(life.reaction_s for life in lives),
         travel=Measure.of(life.travel_s for life in lives),
     )
+
+
+@dataclass(frozen=True)
+class HeatCell:
+    alerts: int
+    wait_median_s: float | None
+
+
+def wait_heatmap(lives: Iterable[Lifecycle], tz: tzinfo) -> list[list[HeatCell]]:
+    """Alerts and their median wait per local [weekday][hour]; weekday 0 is Monday.
+
+    Team-level only: who served is not part of a cell."""
+    alerts = [[0] * 24 for _ in range(7)]
+    waits: list[list[list[float]]] = [[[] for _ in range(24)] for _ in range(7)]
+    for life in lives:
+        local = life.opened_at.astimezone(tz)
+        day, hour = local.weekday(), local.hour
+        alerts[day][hour] += 1
+        if life.wait_s is not None:
+            waits[day][hour].append(life.wait_s)
+    return [
+        [HeatCell(alerts[d][h], percentile(waits[d][h], 0.5)) for h in range(24)] for d in range(7)
+    ]
 
 
 def duration_ro(seconds: float) -> str:
