@@ -36,7 +36,7 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | `/alerte` | Alerte | `alerts.view` | alerts with "Merg eu" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare, Reacție, Drum: median and p90), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text; open rules („dacă e foc”, „dacă vine un urs”) read Unde / Ce caută / Cât timp / Atunci, `anywhere` shows as „oriunde în imagine” (`src/rules/chips.ts`) |
-| `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră" |
+| `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră"; per camera "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile |
 | `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` |
 | `/video` | Analiză video | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
 | `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
@@ -84,6 +84,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | GET | `/api/devices` · `/api/metrics` | status, `last_seen` · `DashboardMetrics` (`alert_latency_ms` may be `null`) |
 | GET | `/api/staff/suggestions` · POST `.../{id}/confirm` · `.../{id}/reject` | |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | multipart field `photo` (images or a short video) |
+| POST | `/api/staff/capture` · `/api/staff/capture/{token}/confirm` | "Adaugă angajat" on a Dispozitive camera card (`components/StaffCapture.tsx`): capture ≈ 20 s, then confirm the kept candidates |
 | GET | `/api/push/public-key` | VAPID key; 503 when the server has no keys |
 | POST/DELETE | `/api/push/subscribe` | body = `PushSubscription.toJSON()` / `{endpoint}`; tied to the logged-in user |
 | POST | `/api/push/test` | test push to the caller's devices → `{sent, removed, failed}` |
