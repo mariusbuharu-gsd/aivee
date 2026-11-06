@@ -12,11 +12,12 @@ import {
   type RuleDraft,
   type Unsubscribe,
 } from './client';
+import { parseDetections } from '../live/detections';
 
 type WsMessage =
   | { type: 'alert'; data: AlertView }
   | { type: 'suggestion'; data: StaffSuggestion }
-  | { type: 'detections'; camera_id: string; data: Detection[] };
+  | { type: 'detections'; camera_id: string; data: unknown };
 
 /** `POST /api/rules/from-text` response. */
 interface FromTextOut {
@@ -165,12 +166,13 @@ export class HttpApi implements ApiClient {
     return this.listen((m) => m.type === 'suggestion' && cb(m.data));
   }
 
-  /** The API may never send `detections`; then the overlay simply stays empty. */
+  /** Live boxes for one camera; malformed frames are ignored (see `parseDetections`). */
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe {
-    return this.listen(
-      (m) =>
-        m.type === 'detections' && m.camera_id === cameraId && Array.isArray(m.data) && cb(m.data),
-    );
+    return this.listen((m) => {
+      if (m.type !== 'detections' || m.camera_id !== cameraId) return;
+      const detections = parseDetections(m.data);
+      if (detections) cb(detections);
+    });
   }
 
   /** One socket per subscriber, reconnecting with a fixed back-off. Good enough for a demo. */

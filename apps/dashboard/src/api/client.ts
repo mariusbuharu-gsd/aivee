@@ -3,6 +3,7 @@
 import type {
   AlertEvent,
   CameraConfig,
+  DetectedTrack,
   DeviceStatus,
   Metrics,
   Rule,
@@ -12,12 +13,17 @@ import type {
 
 export type Unsubscribe = () => void;
 
-/** One tracked person drawn over the live video (dashboard view model, not an MQTT contract). */
+/**
+ * One tracked person drawn over the live video, as `/ws/events` sends it. Fields come from the
+ * edge contract `DetectedTrack`; only the box differs (here `[x, y, width, height]`).
+ */
 export interface Detection {
-  track_id: number;
-  role: 'staff' | 'guest';
+  track_id: DetectedTrack['track_id'];
+  role: DetectedTrack['role'];
   /** Normalised [x, y, width, height] in [0,1]. */
   box: [number, number, number, number];
+  staff_score?: DetectedTrack['staff_score'];
+  raised_hand?: boolean;
 }
 
 /** A camera plus the online state of the device that serves it. */

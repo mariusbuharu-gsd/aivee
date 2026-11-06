@@ -18,6 +18,8 @@ const SCHEMAS = [
   'DeviceStatus',
   'Metrics',
   'StaffSuggestion',
+  'Detections',
+  'EdgeCommand',
 ];
 
 const BANNER =
@@ -63,6 +65,8 @@ const indexSrc = [
   "export type { DeviceStatus } from './DeviceStatus';",
   "export type { Metrics } from './Metrics';",
   "export type { StaffSuggestion } from './StaffSuggestion';",
+  "export type { Detections, DetectedTrack, DetectedObject } from './Detections';",
+  "export type { EdgeCommand } from './EdgeCommand';",
   '',
 ].join('\n');
 await writeFile(

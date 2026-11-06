@@ -4,6 +4,7 @@
 import type {
   AlertEvent,
   Condition,
+  Detections,
   DeviceStatus,
   Rule,
   StaffSuggestion,
@@ -20,6 +21,7 @@ import {
   type RuleDraft,
   type Unsubscribe,
 } from './client';
+import { fromContract } from '../live/detections';
 
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const wait = (ms: number) =>
@@ -383,11 +385,24 @@ export class MockApi implements ApiClient {
       const t = (Date.now() - start) / 1000;
       // Track 7 (staff) walks between the tables; two guests sit at table 2.
       const x = 0.42 + Math.sin(t / 4) * 0.3;
-      cb([
-        { track_id: 7, role: 'staff', box: [x, 0.22 + Math.cos(t / 3) * 0.04, 0.09, 0.4] },
-        { track_id: 12, role: 'guest', box: [0.44, 0.42, 0.09, 0.3] },
-        { track_id: 13, role: 'guest', box: [0.64, 0.43, 0.09, 0.29] },
-      ]);
+      // Shaped like the edge contract; guest 13 raises a hand now and then.
+      const y = 0.22 + Math.cos(t / 3) * 0.04;
+      const frame: Detections = {
+        camera_id: cameraId,
+        ts: new Date().toISOString(),
+        tracks: [
+          { track_id: 7, role: 'staff', staff_score: 0.86, bbox: [x, y, x + 0.09, y + 0.4] },
+          { track_id: 12, role: 'guest', staff_score: 0.1, bbox: [0.44, 0.42, 0.53, 0.72] },
+          {
+            track_id: 13,
+            role: 'guest',
+            staff_score: 0.08,
+            bbox: [0.64, 0.43, 0.73, 0.72],
+            raised_hand: Math.sin(t / 3) > 0.4,
+          },
+        ],
+      };
+      cb(fromContract(frame));
     };
     tick();
     const id = setInterval(tick, 400);
