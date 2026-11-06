@@ -126,8 +126,8 @@ export function DevicesPage() {
             </table>
           </div>
           <p className="muted small">
-            Cadre verificate = procentul de cadre trimise modelului greu. Restul rulează doar
-            detecția rapidă, pe dispozitiv.
+            Cadre verificate = procentul de cadre trimise modelului greu. Restul trec doar prin
+            detecția rapidă.
           </p>
         </section>
       )}

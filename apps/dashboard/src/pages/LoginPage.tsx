@@ -52,8 +52,8 @@ export function LoginPage() {
           </div>
           <h2 className="auth-claim">Ochii în plus ai personalului tău.</h2>
           <p className="auth-lead">
-            Video-ul rămâne în locație. În cont vezi doar alertele, regulile și cadre cu fețele
-            blurate.
+            Video-ul e analizat și aruncat, în cloud-ul nostru din UE sau, la cerere, pe un
+            calculator din locație. În cont vezi doar alertele, regulile și cadre cu fețele blurate.
           </p>
         </>
       }
