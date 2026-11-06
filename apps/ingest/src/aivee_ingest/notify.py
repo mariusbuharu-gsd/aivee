@@ -18,12 +18,22 @@ class Notifier(Protocol):
         """Tell the staff about a newly opened event. `snapshot` is a blurred JPEG."""
         ...
 
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        """A follow-up message, e.g. "Ana a ajuns la Masa 4 după 2 min 10 s". `tag` is the
+        alert's id (Web Push uses it to replace the alert's notification)."""
+        ...
 
-def alert_text(event: AlertEvent) -> str:
+
+def with_prefix(prefix: str, text: str) -> str:
+    return f"{prefix} {text}" if prefix else text
+
+
+def alert_text(event: AlertEvent, prefix: str = "") -> str:
     when = event.at.astimezone(LOCAL_TZ).strftime("%H:%M")
-    return (
+    return with_prefix(
+        prefix,
         f"Alertă AiVee: {event.summary_ro}\n"
-        f"Camera: {event.camera_id} · Zona: {event.zone_id} · Ora: {when}"
+        f"Camera: {event.camera_id} · Zona: {event.zone_id} · Ora: {when}",
     )
 
 
@@ -36,3 +46,6 @@ class LogNotifier:
             alert_text(event).replace("\n", " | "),
             snapshot.name if snapshot else "none",
         )
+
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        log.info("ALERT %s (alert: %s)", text, tag)

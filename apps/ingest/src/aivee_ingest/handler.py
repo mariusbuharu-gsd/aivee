@@ -8,6 +8,9 @@ import uuid
 from collections import deque
 from pathlib import Path
 
+from aivee_api.alerts.audit import AuditWriter, LoggingAuditWriter, arrival_ro, device_entry
+from aivee_api.alerts.repository import AlertRepository
+from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.repositories import DeviceRepository, EventRepository, SuggestionRepository
 from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion
 from aivee_contracts.topics import ROOT, Topics
@@ -32,8 +35,10 @@ class IngestHandler:
         snapshot_dir: Path,
         notifier: Notifier,
         snapshot_wait_s: float = 2.0,
+        audit: AuditWriter | None = None,
     ) -> None:
         self._sessions = sessions
+        self._audit = audit or LoggingAuditWriter()
         self._snapshots = snapshot_dir
         self._notifier = notifier
         self._snapshot_wait_s = snapshot_wait_s
@@ -63,8 +68,17 @@ class IngestHandler:
     async def _on_event(self, t: Topics, event: AlertEvent) -> None:
         self.handled_events.append(event.event_id)
         path = snapshot_name(event.event_id) if event.snapshot else None
+        view: AlertView | None = None
         async with self._sessions() as s:
             inserted = await EventRepository(s).insert_if_new(event, t.device, path)
+            if inserted:
+                # Same transaction: the row, its alert's folded times and the audit entry.
+                alerts = AlertRepository(s)
+                alert_id = await alerts.link(event, t.device)
+                view = await alerts.view(alert_id) if alert_id else None
+                entry = device_entry(view, event.state) if view else None
+                if entry is not None:
+                    await self._audit.append(s, entry)
             await s.commit()
         if not inserted:
             log.info("duplicate event %s ignored", event.event_id)
@@ -81,6 +95,11 @@ class IngestHandler:
             snapshot = await self._wait_snapshot(path) if path else None
             try:
                 await self._notifier.notify(event, snapshot)
+            except Exception:
+                log.exception("notifier failed for event %s", event.event_id)
+        elif event.state == "arrived" and view is not None:
+            try:
+                await self._notifier.send_text(arrival_ro(view), view.event_id)
             except Exception:
                 log.exception("notifier failed for event %s", event.event_id)
 

@@ -73,6 +73,21 @@ def test_alert_event_state_is_constrained() -> None:
         )
 
 
+def test_alert_event_accepts_arrived() -> None:
+    ev = AlertEvent.model_validate(
+        {
+            "event_id": "e1",
+            "rule_id": "r1",
+            "camera_id": "c",
+            "zone_id": "t1",
+            "state": "arrived",
+            "at": "2026-11-06T12:00:00Z",
+            "summary_ro": "Masa 1: a venit un angajat",
+        }
+    )
+    assert ev.state == "arrived"
+
+
 def test_topics_are_scoped_per_device() -> None:
     t = Topics(site="demo", device="edge-01")
     assert t.events == "aivee/demo/edge-01/events"

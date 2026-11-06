@@ -6,7 +6,7 @@
     <title>AiVee — ochii în plus ai personalului</title>
     <meta
       name="description"
-      content="AiVee anunță ospătarul pe telefon când un client așteaptă prea mult. Reguli scrise în română, fără recunoaștere facială, totul rulează local."
+      content="AiVee anunță personalul pe telefon când un client așteaptă prea mult, în restaurante, pe terase, la evenimente și în magazine. Reguli scrise în română, fără recunoaștere facială, totul rulează local."
     />
     <meta name="theme-color" content="#14161B" />
     <meta property="og:title" content="AiVee — ochii în plus ai personalului" />
@@ -22,6 +22,7 @@
       href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fredoka:wght@600&family=JetBrains+Mono:wght@500;700&display=swap"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="eyes.js"></script>
   </head>
   <body>
     <a class="skip" href="#continut">Sari la conținut</a>
@@ -29,7 +30,7 @@
     <header class="topbar">
       <div class="wrap topbar__inner">
         <a class="topbar__brand" href="#" aria-label="AiVee, începutul paginii">
-          <img src="brand/aivee-logo.svg" alt="AiVee" width="118" height="24" />
+          <img data-eyes src="brand/aivee-logo.svg" alt="AiVee" width="118" height="24" />
         </a>
         <nav aria-label="Secțiuni">
           <ul class="topbar__nav">
@@ -55,7 +56,7 @@
             </h1>
             <p class="lead">
               Pentru că nimeni nu are timp să se uite la ele. AiVee se uită în locul lor și
-              <strong>anunță ospătarul pe telefon când un client așteaptă prea mult.</strong>
+              <strong>anunță personalul pe telefon când un client așteaptă prea mult</strong>, fie că e la o masă, la casă sau la intrare.
             </p>
             <div class="hero__actions">
               <a class="btn btn--primary" href="#cum">Cum funcționează</a>
@@ -64,7 +65,7 @@
           </div>
           <figure class="alert-card" aria-label="Exemplu de alertă AiVee">
             <div class="alert-card__head">
-              <img src="brand/aivee-mark-white.svg" alt="" width="34" height="18" />
+              <img data-eyes src="brand/aivee-mark-white.svg" alt="" width="34" height="18" />
               <span>AiveeAlerts</span>
               <span class="alert-card__time num">acum</span>
             </div>
@@ -88,16 +89,16 @@
           <ol class="steps">
             <li class="step">
               <span class="step__n" aria-hidden="true">1</span>
-              <h3>Desenezi masa</h3>
+              <h3>Desenezi zona</h3>
               <p>
-                Pe o imagine de la camera pe care o ai deja, trasezi mesele și intrarea. Durează un
-                minut.
+                Pe o imagine de la camera pe care o ai deja, trasezi zonele care contează: mese,
+                casa, intrarea, un raft. Durează un minut.
               </p>
             </li>
             <li class="step">
               <span class="step__n" aria-hidden="true">2</span>
               <h3>Scrii regula în română</h3>
-              <p class="quote">„Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut.”</p>
+              <p class="quote">„Anunță personalul dacă la o masă nu a venit nimeni de 1 minut.”</p>
               <p>
                 AiVee îți arată ce a înțeles. Tu confirmi, modifici sau renunți. Nimic nu pornește
                 fără acordul tău.
@@ -108,13 +109,13 @@
               <h3>Primești alerta</h3>
               <p>
                 Pe telefon, cu o poză în care fețele sunt blurate. Alerta se închide singură când
-                ospătarul ajunge la masă.
+                cineva din personal ajunge în zonă.
               </p>
             </li>
           </ol>
           <p class="note">
-            Personalul îl înveți din 2–3 poze cu uniforma și o propoziție („ospătarii poartă tricou
-            bordo”). AiVee observă și cum se mișcă: cine trece pe la multe mese e probabil angajat. Te
+            Personalul îl înveți din 2–3 poze cu uniforma și o propoziție („personalul poartă tricou
+            bordo”). AiVee observă și cum se mișcă: cine trece pe la multe zone e probabil angajat. Te
             întreabă „Pare angajat — confirmi?” și învață din răspuns.
           </p>
         </div>
@@ -134,23 +135,23 @@
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
               </span>
               <h3>Masă neservită</h3>
-              <p>Clienții stau la masă și niciun ospătar nu a trecut pe la ei de X minute.</p>
-              <p class="card__rule">„Dacă niciun chelner nu a trecut pe la clienții de la masă de cinci minute, trimite o alertă.”</p>
+              <p>Clienții stau la masă și nimeni din personal nu a trecut pe la ei de X minute.</p>
+              <p class="card__rule">„Dacă nimeni din personal nu a trecut pe la clienții de la masă de cinci minute, trimite o alertă.”</p>
             </li>
             <li class="card">
               <span class="card__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 0 1 3 0v6m0-1V4a1.5 1.5 0 0 1 3 0v7m0-5a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.7L8 13" /></svg>
               </span>
               <h3>Clientul ridică mâna</h3>
-              <p>Un client face semn ospătarului sau cere nota. Alerta pleacă imediat.</p>
-              <p class="card__rule">„Dacă cineva ridică mâna la masă, cheamă ospătarul.”</p>
+              <p>Un client face semn că are nevoie de ajutor: la masă, la un raft, la un stand. Alerta pleacă imediat.</p>
+              <p class="card__rule">„Dacă cineva ridică mâna, cheamă pe cineva din personal.”</p>
             </li>
             <li class="card">
               <span class="card__icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><circle cx="6" cy="8" r="2.5" /><circle cx="12" cy="8" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M2.5 19a3.5 3.5 0 0 1 7 0M8.5 19a3.5 3.5 0 0 1 7 0M14.5 19a3.5 3.5 0 0 1 7 0" /></svg>
               </span>
               <h3>Coadă la intrare</h3>
-              <p>Câțiva oameni așteaptă la ușă și nu e nimeni de la personal să-i conducă la masă.</p>
+              <p>Câțiva oameni așteaptă la intrare sau la casă și nu e nimeni de la personal acolo.</p>
               <p class="card__rule">„Anunță-mă dacă sunt cel puțin 4 persoane la intrare și nu e nimeni de la personal acolo.”</p>
             </li>
             <li class="card">
@@ -184,7 +185,7 @@
             <li>
               <h3>Totul rămâne în local</h3>
               <p>
-                Imaginile sunt analizate pe un calculator din restaurant. Video-ul nu pleacă nicăieri;
+                Imaginile sunt analizate pe un calculator din locație. Video-ul nu pleacă nicăieri;
                 pleacă doar alerta.
               </p>
             </li>
@@ -261,7 +262,7 @@
       <!-- Community impact -->
       <section id="impact" class="section section--tint" aria-labelledby="impact-titlu">
         <div class="wrap">
-          <h2 id="impact-titlu">Pentru HoReCa din Sibiu</h2>
+          <h2 id="impact-titlu">Pentru locațiile din Sibiu</h2>
           <ul class="facts">
             <li>
               <h3>Restaurante mici</h3>
@@ -282,6 +283,13 @@
               <p>
                 La festivaluri și evenimente, cozile și mesele nedebarasate apar repede. Alertele vin
                 înainte să le observe clienții.
+              </p>
+            </li>
+            <li>
+              <h3>Magazine</h3>
+              <p>
+                Coada la casă crește sau un client caută pe cineva printre rafturi. AiVee cheamă
+                colegul liber înainte să plece clientul.
               </p>
             </li>
           </ul>
@@ -332,7 +340,7 @@
 
     <footer class="footer">
       <div class="wrap footer__inner">
-        <img src="brand/aivee-logo-white.svg" alt="AiVee" width="98" height="20" />
+        <img data-eyes src="brand/aivee-logo-white.svg" alt="AiVee" width="98" height="20" />
         <p>Astra Hack · Innovation Week Sibiu 2026 · Licență MIT</p>
         <a href="https://github.com/mariusbuharu-gsd/aivee">github.com/mariusbuharu-gsd/aivee</a>
       </div>

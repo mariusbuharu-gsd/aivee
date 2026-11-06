@@ -7,13 +7,14 @@ export type EventId = string;
 export type RuleId = string;
 export type CameraId = string;
 export type ZoneId = string;
-export type State = 'opened' | 'closed';
+export type State = 'opened' | 'arrived' | 'closed';
 export type At = string;
 export type SummaryRo = string;
 export type Snapshot = boolean;
 
 /**
- * Published by the edge when a rule's situation starts or stops holding.
+ * Published by the edge when a rule's situation starts or stops holding, and once in
+ * between (`arrived`) when a staff member has stayed in the zone for ARRIVE_S.
  */
 export interface AlertEvent {
   event_id: EventId;

@@ -5,13 +5,14 @@ from pydantic import BaseModel, Field
 
 
 class AlertEvent(BaseModel):
-    """Published by the edge when a rule's situation starts or stops holding."""
+    """Published by the edge when a rule's situation starts or stops holding, and once in
+    between (`arrived`) when a staff member has stayed in the zone for ARRIVE_S."""
 
     event_id: str = Field(description="UUID; idempotency key for ingest")
     rule_id: str
     camera_id: str
     zone_id: str
-    state: Literal["opened", "closed"]
+    state: Literal["opened", "arrived", "closed"]
     at: datetime
     summary_ro: str
     snapshot: bool = False

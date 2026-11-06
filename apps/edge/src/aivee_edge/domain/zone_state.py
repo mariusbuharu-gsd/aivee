@@ -4,6 +4,9 @@ A person is in a zone when their foot point is inside its polygon; an object whe
 its box centre is. Durations are measured on `Frame.ts` (seconds). A role or object
 missing for at most `grace_s` still counts as present, so a detector that drops a
 person for a frame does not reset their timers.
+
+With `arrive_s > 0` a staff member counts as present only once their foot point has
+stayed in the zone for `arrive_s`: a waiter walking past a table has not served it.
 """
 
 from aivee_contracts.geometry import Zone
@@ -20,9 +23,10 @@ def _has_role(track: TrackObs, role: Role) -> bool:
 
 
 class ZoneState:
-    def __init__(self, zone: Zone, grace_s: float = 0.0) -> None:
+    def __init__(self, zone: Zone, grace_s: float = 0.0, arrive_s: float = 0.0) -> None:
         self.zone = zone
         self.grace_s = grace_s
+        self.arrive_s = arrive_s
         self.started_at: float | None = None
         self.present_since: dict[Role, float | None] = dict.fromkeys(ROLES)
         self.last_seen: dict[Role, float | None] = dict.fromkeys(ROLES)
@@ -30,6 +34,8 @@ class ZoneState:
         self.objects_since: dict[str, float] = {}
         self._objects_last_seen: dict[str, float] = {}
         self._tracks: list[TrackObs] = []
+        self._staff_since: dict[int, float] = {}
+        self._staff_last_seen: dict[int, float] = {}
 
     @property
     def occupied_since(self) -> float | None:
@@ -42,9 +48,11 @@ class ZoneState:
             self.started_at = ts
         poly = self.zone.polygon
         self._tracks = [t for t in frame.tracks if point_in_polygon(foot_point(t.bbox), poly)]
+        settled = self._update_staff(ts)
 
         for role in ROLES:
-            if any(_has_role(t, role) for t in self._tracks):
+            here = settled if role == "staff" else any(_has_role(t, role) for t in self._tracks)
+            if here:
                 if self.present_since[role] is None:
                     self.present_since[role] = ts
                     if role == "guest":
@@ -67,6 +75,23 @@ class ZoneState:
             if label not in labels and self._expired(self._objects_last_seen[label], ts):
                 del self.objects_since[label]
                 del self._objects_last_seen[label]
+
+    def _update_staff(self, ts: float) -> bool:
+        """Track how long each staff member has stood in the zone; True when one of those
+        seen in this frame has stayed at least `arrive_s`."""
+        here = {t.track_id for t in self._tracks if t.role == "staff"}
+        for tid in here:
+            self._staff_since.setdefault(tid, ts)
+            self._staff_last_seen[tid] = ts
+        for tid in list(self._staff_since):
+            if tid not in here and self._expired(self._staff_last_seen[tid], ts):
+                del self._staff_since[tid]
+                del self._staff_last_seen[tid]
+        return any(ts - self._staff_since[tid] >= self.arrive_s for tid in here)
+
+    def staff_since(self) -> float | None:
+        """Since when the longest-staying staff member still here has been in the zone."""
+        return min(self._staff_since.values(), default=None)
 
     def _expired(self, last: float | None, now: float) -> bool:
         return last is None or now - last > self.grace_s
