@@ -1,6 +1,8 @@
 """Cloud mode over HTTPS (port 443 only): frames in from the connector, MJPEG out to the dashboard.
 
-    POST /api/ingest/frames/{camera_id}   HTTP Basic (STREAM_PUBLISH_USER/PASSWORD), one JPEG
+    POST /api/ingest/frames/{camera_id}   HTTP Basic (STREAM_PUBLISH_USER/PASSWORD), one JPEG;
+                                          or the dashboard session ("Folosește telefonul ca
+                                          cameră") with devices.manage, cloud cameras only
     GET  /api/cameras/{camera_id}/live.mjpg   session cookie, alerts.view on the camera's location
 
 See `aivee_api.frames.store` (in memory, single replica, never on disk).
@@ -17,13 +19,13 @@ from fastapi import APIRouter, Depends, Path, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from aivee_api.auth.deps import CurrentUser
-from aivee_api.auth.permissions import ALERTS_VIEW
+from aivee_api.auth.deps import COOKIE, CurrentUser, current_principal
+from aivee_api.auth.permissions import ALERTS_VIEW, DEVICES_MANAGE
 from aivee_api.auth.scope import authorize_camera
 from aivee_api.cameras.schemas import ID_PATTERN
 from aivee_api.db.models import Camera, Device
 from aivee_api.deps import ServicesDep
-from aivee_api.errors import NotFound, TooLarge, Unauthenticated, UnsupportedType
+from aivee_api.errors import Conflict, NotFound, TooLarge, Unauthenticated, UnsupportedType
 from aivee_api.frames.store import BOUNDARY, is_jpeg, mjpeg_stream
 from aivee_api.settings import ApiSettings
 
@@ -36,6 +38,13 @@ BAD_CREDENTIALS_RO = "Date de publicare greșite."
 TOO_LARGE_RO = "Cadrul e prea mare."
 NOT_JPEG_RO = "Cadrul trebuie să fie JPEG."
 NO_LIVE_RO = "Camera nu trimite imagini acum."
+NOT_CLOUD_RO = "Camera aceasta nu primește imagini de la telefon."
+CLOUD_SOURCE = "mqtt-frames://"
+
+
+def is_cloud_source(camera_id: str, source: str) -> bool:
+    """A cloud camera reads the frames pushed for it: `mqtt-frames://<its id>`."""
+    return source == f"{CLOUD_SOURCE}{camera_id}"
 
 
 def credentials_ok(header: str | None, settings: ApiSettings) -> bool:
@@ -84,17 +93,36 @@ def get_camera_topics(svc: ServicesDep) -> CameraTopics:
     return find
 
 
+async def authorize_session_push(
+    request: Request, response: Response, svc: ServicesDep, camera_id: str
+) -> None:
+    """A logged-in user pushing from the phone page: devices.manage at the camera's location
+    (404 elsewhere, 403 without it) and only onto a cloud camera (409 otherwise)."""
+    p = await current_principal(request, response, svc)
+    async with svc.sessions() as s:
+        await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
+        source = await s.scalar(select(Camera.source).where(Camera.id == camera_id))
+    if source is None or not is_cloud_source(camera_id, source):
+        raise Conflict(NOT_CLOUD_RO)
+
+
 @router.post("/api/ingest/frames/{camera_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def ingest_frame(
     camera_id: CameraId,
     request: Request,
+    response: Response,
     svc: ServicesDep,
     camera_topics: Annotated[CameraTopics, Depends(get_camera_topics)],
-) -> Response:
-    """One JPEG from the connector: kept as the camera's newest frame and relayed over MQTT
-    (`Topics.frames`) to its vision worker. Auth, then size and type, then the camera."""
-    if not credentials_ok(request.headers.get("authorization"), svc.settings):
-        raise Unauthenticated(BAD_CREDENTIALS_RO)
+) -> None:
+    """One JPEG from the connector or the phone page: kept as the camera's newest frame and
+    relayed over MQTT (`Topics.frames`) to its vision worker. Auth, then size and type, then
+    the camera. An Authorization header always means Basic; without one, the session cookie."""
+    header = request.headers.get("authorization")
+    if header is not None or COOKIE not in request.cookies:
+        if not credentials_ok(header, svc.settings):
+            raise Unauthenticated(BAD_CREDENTIALS_RO)
+    else:
+        await authorize_session_push(request, response, svc, camera_id)
     jpeg = await read_limited(request, svc.settings.frame_max_bytes)
     if not is_jpeg(jpeg):
         raise UnsupportedType(NOT_JPEG_RO)
@@ -103,7 +131,6 @@ async def ingest_frame(
         raise NotFound(f"Camera {camera_id} nu există.")
     svc.frames.put(camera_id, jpeg)
     await svc.frames.relay(topics.frames(camera_id), jpeg)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/api/cameras/{camera_id}/live.mjpg", response_class=StreamingResponse)
