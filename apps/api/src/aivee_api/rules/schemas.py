@@ -1,3 +1,5 @@
+from datetime import date
+
 from aivee_contracts.rules import Action, Condition, Rule
 from pydantic import BaseModel, Field
 
@@ -34,3 +36,17 @@ class FromTextOut(BaseModel):
     rule: Rule
     explanation_ro: str
     saved: bool
+
+
+class RuleAlertCount(BaseModel):
+    rule_id: str
+    total: int
+    per_day: list[int]
+    """Alerts the rule raised on each of `RuleStats.days`, oldest first."""
+
+
+class RuleStats(BaseModel):
+    """`GET /api/rules/stats`: alerts per rule per UTC day, the last `days` days up to today."""
+
+    days: list[date]
+    rules: list[RuleAlertCount]
