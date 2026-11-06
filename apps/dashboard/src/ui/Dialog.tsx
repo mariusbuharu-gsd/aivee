@@ -13,6 +13,7 @@ export function Dialog({
   onClose,
   children,
   actions,
+  className = '',
 }: {
   title: string;
   icon?: IconName;
@@ -20,6 +21,8 @@ export function Dialog({
   onClose: () => void;
   children?: ReactNode;
   actions: ReactNode;
+  /** `dialog-sheet` docks it to the bottom on phones. */
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -50,7 +53,7 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      className="dialog"
+      className={`dialog ${className}`}
       aria-labelledby={titleId}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();

@@ -4,7 +4,7 @@ import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
 import type { Rule, StaffSuggestion, Zone } from '../contracts';
 import { foldAlerts } from '../alerts/fold';
-import { LiveDataContext, type LiveData } from './context';
+import { LiveDataContext, toLoadError, type LiveData, type LoadError } from './context';
 
 const METRICS_POLL_MS = 5_000;
 
@@ -16,7 +16,8 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<AlertView[]>([]);
   const [suggestions, setSuggestions] = useState<StaffSuggestion[]>([]);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const { location, can } = useAuth();
   const locationId = location?.id ?? null;
@@ -59,7 +60,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let alive = true;
-    const fail = (e: unknown) => alive && setError(e instanceof Error ? e.message : String(e));
+    const fail = (e: unknown) => alive && setError(toLoadError(e));
     Promise.all([
       api.listCameras(),
       canRules ? api.listRules() : Promise.resolve([]),
@@ -69,9 +70,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     ])
       .then(([c, r, a, s, m]) => {
         if (!alive) return;
+        setError(null);
         setCameras(c);
         setRules(r);
-        setEvents((prev) => [...a, ...prev]);
+        setEvents((prev) => mergeEvents(a, prev));
         setSuggestions((prev) => mergeSuggestions(s, prev));
         setMetrics(m);
       })
@@ -83,7 +85,11 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       setSuggestions((prev) => mergeSuggestions(prev, [s])),
     );
     const poll = setInterval(() => {
-      api.getMetrics().then((m) => alive && setMetrics(m), fail);
+      api.getMetrics().then((m) => {
+        if (!alive) return;
+        setMetrics(m);
+        setError((prev) => (prev?.kind === 'network' ? null : prev));
+      }, fail);
     }, METRICS_POLL_MS);
     return () => {
       alive = false;
@@ -91,19 +97,28 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       offSuggestions();
       clearInterval(poll);
     };
-  }, [api, canRules, canReview]);
+  }, [api, canRules, canReview, attempt]);
+
+  const retry = useCallback(() => {
+    setLoading(true);
+    setAttempt((n) => n + 1);
+  }, []);
 
   const setZones = useCallback(
     (cameraId: string, zones: Zone[]) =>
       setCameras((prev) => prev.map((c) => (c.id === cameraId ? { ...c, zones } : c))),
     [],
   );
-  const addRule = useCallback(
-    (r: Rule) => setRules((prev) => [...prev.filter((x) => x.id !== r.id), r]),
+  const addRule = useCallback((r: Rule) => setRules((prev) => upsert(prev, r)), []);
+  const removeRule = useCallback(
+    (id: string) => setRules((prev) => prev.filter((r) => r.id !== id)),
     [],
   );
   const addCamera = useCallback(
-    (c: CameraView) => setCameras((prev) => [...prev.filter((x) => x.id !== c.id), c]),
+    (c: CameraView) =>
+      setCameras((prev) =>
+        upsert(prev, { ...prev.find((x) => x.id === c.id), ...c } as CameraView),
+      ),
     [],
   );
   const dropSuggestion = useCallback(
@@ -123,8 +138,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       metrics,
       error,
       loading,
+      retry,
       setZones,
       addRule,
+      removeRule,
       addCamera,
       dropSuggestion,
       cases,
@@ -141,8 +158,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       metrics,
       error,
       loading,
+      retry,
       setZones,
       addRule,
+      removeRule,
       addCamera,
       dropSuggestion,
     ],
@@ -154,4 +173,17 @@ function mergeSuggestions(a: StaffSuggestion[], b: StaffSuggestion[]): StaffSugg
   const out = [...a];
   for (const s of b) if (!out.some((x) => x.suggestion_id === s.suggestion_id)) out.push(s);
   return out;
+}
+
+/** Replace an item with the same id where it is, or append it. */
+function upsert<T extends { id: string }>(list: T[], item: T): T[] {
+  return list.some((x) => x.id === item.id)
+    ? list.map((x) => (x.id === item.id ? item : x))
+    : [...list, item];
+}
+
+/** A retry loads the history again: keep each event once. */
+function mergeEvents(loaded: AlertView[], live: AlertView[]): AlertView[] {
+  const seen = new Set(loaded.map((e) => e.event_id));
+  return [...loaded, ...live.filter((e) => !seen.has(e.event_id))];
 }

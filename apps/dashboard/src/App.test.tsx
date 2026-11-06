@@ -7,6 +7,7 @@ import { ApiContext } from './api/context';
 import { MockApi } from './api/mock';
 import { MOCK_PASSWORD } from './api/mockAccounts';
 import { AuthProvider } from './auth/AuthProvider';
+import { Toaster } from './ui/Toaster';
 
 function renderApp(path = '/', email: string | null = 'manager@aivee.demo') {
   const api = new MockApi({ latencyMs: 0, autoplay: false });
@@ -15,7 +16,9 @@ function renderApp(path = '/', email: string | null = 'manager@aivee.demo') {
     <ApiContext.Provider value={api}>
       <AuthProvider>
         <MemoryRouter initialEntries={[path]}>
-          <App />
+          <Toaster>
+            <App />
+          </Toaster>
         </MemoryRouter>
       </AuthProvider>
     </ApiContext.Provider>,
@@ -56,13 +59,16 @@ describe('App with the mock API', () => {
     const user = userEvent.setup();
     renderApp('/', 'owner@aivee.demo');
     const select = await screen.findByRole('combobox', { name: 'Locația' });
-    expect(
-      within(select)
-        .getAllByRole('option')
-        .map((o) => o.textContent),
-    ).toEqual(['Terasa demo', 'Bistro Centru']);
-    await user.selectOptions(select, 'centru');
+    expect(select).toHaveTextContent('Terasa demo');
+    await user.click(select);
+    const options = within(screen.getByRole('listbox')).getAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual([
+      'Terasa demoRestaurant · Proprietar',
+      'Bistro CentruRestaurant · Proprietar',
+    ]);
+    await user.click(screen.getByRole('option', { name: /Bistro Centru/ }));
     expect(localStorage.getItem('aivee.location')).toBe('centru');
+    expect(await screen.findByText('Acum vezi Bistro Centru')).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Principal' });
     expect(within(nav).getByRole('link', { name: /Locații/ })).toBeInTheDocument();
   });
@@ -85,8 +91,9 @@ describe('App with the mock API', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Merg eu la Masa 2' })).toBeNull(),
     );
-    // Taken now by Ana, plus the seeded alert she took earlier.
-    expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(2);
+    // Taken now by Ana (timeline), plus the seeded alert she took earlier (summary + timeline).
+    expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(3);
+    expect(screen.getByText(/rezolvată în .* · Ana Dumitru/)).toBeInTheDocument();
     // The seeded closed alert shows its full lifecycle with durations.
     expect(screen.getAllByText(/reacție 30 s/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/drum 1 min 18 s/).length).toBeGreaterThan(0);

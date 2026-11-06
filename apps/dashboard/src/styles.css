@@ -2281,3 +2281,192 @@ label.btn:focus-within {
   top: 50%;
   transform: translateY(-50%);
 }
+
+/* Location switcher in the sidebar */
+.loc-select .select-btn {
+  border-color: var(--night-border);
+}
+.loc-select .select-btn > svg:first-child {
+  flex: none;
+  color: var(--coral);
+}
+.loc-select .select-pop {
+  width: 100%;
+  min-width: 240px;
+}
+
+/* Phone: a slim top bar (logo + location) and a bottom tab bar at thumb reach */
+.tabbar {
+  position: fixed;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--night);
+  border-top: 1px solid var(--night-border);
+  padding: 4px max(8px, env(safe-area-inset-right, 0px)) max(4px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  --text: var(--night-text);
+  --muted: var(--night-muted);
+}
+.tabbar > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+}
+.tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 52px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--night-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.tab.active {
+  color: var(--night-text);
+}
+.tab.active svg {
+  color: var(--coral);
+}
+.tab .nav-count {
+  position: absolute;
+  top: 2px;
+  left: calc(50% + 6px);
+  margin: 0;
+  padding: 0 6px;
+  font-size: 0.66rem;
+}
+.sheet-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sheet-links .nav-link {
+  color: var(--text);
+}
+.sheet-links .nav-link.active {
+  background: var(--surface-3);
+}
+.dialog .account {
+  border-top: 1px solid var(--border-soft);
+}
+.dialog .account .account-name,
+.dialog .account .account-mail {
+  display: block;
+}
+@media (max-width: 760px) {
+  .app.is-phone .sidebar {
+    flex-wrap: nowrap;
+    padding: 8px 16px;
+  }
+  .app.is-phone .sidebar > span:first-of-type {
+    flex: none;
+  }
+  .app.is-phone .loc-select,
+  .app.is-phone .loc-switch {
+    flex: 1;
+    min-width: 0;
+  }
+  .app.is-phone .logo-word {
+    display: none;
+  }
+  .app.is-phone .main {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  .app.is-phone .toasts,
+  .toasts {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    left: 16px;
+    right: 16px;
+    width: auto;
+  }
+  .dialog-sheet {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Alert cards: the timeline wraps 2×2 in narrow columns (Live sidebar, phones) */
+.feed-body {
+  container-type: inline-size;
+}
+@container (max-width: 420px) {
+  .timeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 12px;
+  }
+  .tl-step:nth-child(2)::before {
+    display: none;
+  }
+}
+.feed-more {
+  margin-top: 4px;
+  font-size: 0.85rem;
+}
+.feed-more > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+.feed-group {
+  margin: 8px 0 4px;
+  font-size: 0.8rem;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-2);
+}
+.metrics-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.metric.is-alert dd {
+  color: var(--coral-strong);
+}
+.metric.is-off dd {
+  color: var(--danger);
+}
+@media (max-width: 760px) {
+  .metrics-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .metrics-4 .metric:nth-child(4) {
+    border-left: 1px solid var(--border-soft);
+  }
+  .metrics-4 .metric:nth-child(n + 4) {
+    border-top: none;
+  }
+}
+.tile-offline {
+  text-align: center;
+  padding: 12px;
+}
+.tile-offline .link {
+  color: var(--coral);
+  min-height: 32px;
+}

@@ -21,7 +21,9 @@ import {
   type AlertCase,
   type AuditQuery,
   type Location,
+  type CameraPatch,
   type NewCamera,
+  type RulePatch,
   type RegisterInput,
   type Role,
   type RuleDraft,
@@ -356,6 +358,30 @@ export class MockApi implements ApiClient {
     }
     const saved = structuredClone(rule);
     this.rules = [...this.rules.filter((r) => r.id !== saved.id), saved];
+    return this.delay(saved);
+  }
+
+  async updateRule(id: string, patch: RulePatch) {
+    const rule = this.rules.find((r) => r.id === id);
+    if (!rule) throw new ApiError('Regula nu mai există.', 'not_found', 404);
+    const saved: Rule = { ...rule, ...structuredClone(patch) };
+    this.rules = this.rules.map((r) => (r.id === id ? saved : r));
+    return this.delay(saved);
+  }
+
+  async deleteRule(id: string) {
+    if (!this.rules.some((r) => r.id === id)) {
+      throw new ApiError('Regula nu mai există.', 'not_found', 404);
+    }
+    this.rules = this.rules.filter((r) => r.id !== id);
+    await this.delay(undefined);
+  }
+
+  async updateCamera(id: string, patch: CameraPatch): Promise<CameraView> {
+    const cam = this.cameras.find((c) => c.id === id);
+    if (!cam) throw new ApiError(`Camera ${id} nu există.`, 'not_found', 404);
+    const saved: CameraView = { ...cam, ...patch };
+    this.cameras = this.cameras.map((c) => (c.id === id ? saved : c));
     return this.delay(saved);
   }
 

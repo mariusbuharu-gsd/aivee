@@ -20,7 +20,9 @@ import {
   type CameraView,
   type DashboardMetrics,
   type Detection,
+  type CameraPatch,
   type NewCamera,
+  type RulePatch,
   type RuleDraft,
   type Unsubscribe,
 } from './client';
@@ -128,6 +130,13 @@ export class HttpApi implements ApiClient {
     });
   }
 
+  updateCamera(id: string, patch: CameraPatch) {
+    return this.request<CameraView>(`/api/cameras/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
   listDevices() {
     return this.request<DeviceStatus[]>('/api/devices');
   }
@@ -153,6 +162,17 @@ export class HttpApi implements ApiClient {
 
   createRule(rule: Rule) {
     return this.request<Rule>('/api/rules', { method: 'POST', body: JSON.stringify(rule) });
+  }
+
+  updateRule(id: string, patch: RulePatch) {
+    return this.request<Rule>(`/api/rules/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async deleteRule(id: string) {
+    await this.request<undefined>(`/api/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   async listAlerts() {

@@ -40,6 +40,12 @@ export interface NewCamera {
   device: string;
 }
 
+/** `PATCH /api/cameras/{id}`: fields left out stay as they are. */
+export type CameraPatch = Partial<Pick<NewCamera, 'name' | 'source' | 'device'>>;
+
+/** `PATCH /api/rules/{id}`: fields left out stay as they are. */
+export type RulePatch = Partial<Omit<Rule, 'id' | 'camera_id'>>;
+
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
   device_id?: string;
@@ -79,6 +85,7 @@ export interface ApiClient extends AccountApi {
   readonly kind: 'mock' | 'http';
   listCameras(): Promise<CameraView[]>;
   createCamera(camera: NewCamera): Promise<CameraView>;
+  updateCamera(id: string, patch: CameraPatch): Promise<CameraView>;
   listDevices(): Promise<DeviceStatus[]>;
   saveZones(cameraId: string, zones: Zone[]): Promise<Zone[]>;
   listRules(): Promise<Rule[]>;
@@ -86,6 +93,9 @@ export interface ApiClient extends AccountApi {
   draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft>;
   /** Save (and publish to the edge) a rule, usually a confirmed draft. */
   createRule(rule: Rule): Promise<Rule>;
+  /** Pause/resume (`enabled`) or edit a saved rule; the edge gets the new version. */
+  updateRule(id: string, patch: RulePatch): Promise<Rule>;
+  deleteRule(id: string): Promise<void>;
   listAlerts(): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
   listSuggestions(): Promise<StaffSuggestion[]>;

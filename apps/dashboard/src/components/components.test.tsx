@@ -162,13 +162,12 @@ describe('AlertFeed', () => {
     expect(within(rows[0] as HTMLElement).getByText('Masa 2')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('Închisă')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('rezolvată în 1 min 30 s')).toBeInTheDocument();
+    // Only the alert with a snapshot gets one; no grey placeholder for the other.
     const shots = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
-    expect(shots).toHaveLength(2);
+    expect(shots).toHaveLength(1);
     expect(shots[0]).toHaveAttribute('src', 'http://api/api/snapshots/e-2');
-    expect(shots[1]?.tagName).not.toBe('IMG');
     fireEvent.error(shots[0] as HTMLElement);
-    const after = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
-    expect(after.map((el) => el.tagName)).not.toContain('IMG');
+    expect(screen.queryByRole('img', { name: 'Captură cu fețele estompate' })).toBeNull();
   });
 
   it('shows an empty state', () => {
