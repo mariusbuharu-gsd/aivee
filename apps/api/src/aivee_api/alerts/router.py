@@ -67,8 +67,11 @@ async def get_alerts(
         StateFilter | None, Query(description="Current state; `open` = not closed yet")
     ] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    before: Annotated[
+        datetime | None, Query(description="Paging: only alerts opened before this ISO time")
+    ] = None,
 ) -> list[AlertView]:
-    return await list_alerts(s, access, location_id, state, limit)
+    return await list_alerts(s, access, location_id, state, limit, before)
 
 
 @router.get("/api/metrics/service", response_model_by_alias=True)
