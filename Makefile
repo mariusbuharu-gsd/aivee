@@ -1,4 +1,4 @@
-.PHONY: dev test test-all lint fmt up down schema keys telegram-id
+.PHONY: dev test test-all lint fmt up down schema keys telegram-id api eval
 dev:
 	uv sync --all-packages
 test:
@@ -19,6 +19,10 @@ keys:
 	./tools/setup-keys.sh
 telegram-id:
 	uv run python tools/telegram_chat_id.py
+api:
+	uv run uvicorn aivee_api.main:app --reload --port 8000 --env-file .env
+eval:
+	uv run --env-file .env python evals/nl_to_rule/run.py
 
 .PHONY: edge fake-edge
 SOURCE ?= 0

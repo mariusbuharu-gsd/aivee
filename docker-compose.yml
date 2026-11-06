@@ -61,7 +61,34 @@ services:
       - ./infra/mediamtx/mediamtx.yml:/mediamtx.yml:ro
     ports: ["8554:8554", "8889:8889", "8189:8189/udp"]
 
+  # HTTP API for the dashboard; publishes retained rules/config/profiles to the edge.
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args: { UV_EXTRAS: "--extra ml" }
+    image: aivee-api:dev
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SNAPSHOT_DIR: /data/snapshots
+      YOLO_WEIGHTS: /app/models/yolo11n.pt
+      HF_HOME: /home/aivee/.cache/huggingface
+    volumes:
+      - snapshots:/data/snapshots
+      - ./models:/app/models:ro
+      - hf-cache:/home/aivee/.cache/huggingface
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mosquitto: { condition: service_started }
+    restart: unless-stopped
+
 volumes:
   mosquitto-data: {}
   pg-data: {}
   snapshots: {}
+  hf-cache: {}

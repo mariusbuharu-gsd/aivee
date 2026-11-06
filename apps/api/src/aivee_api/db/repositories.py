@@ -4,10 +4,10 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion
-from aivee_contracts.geometry import CameraConfig
+from aivee_contracts.geometry import CameraConfig, Zone
 from aivee_contracts.rules import Rule
 from pgvector.sqlalchemy import avg
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +49,16 @@ class DeviceRepository:
     async def get(self, device_id: str) -> Device | None:
         return await self.s.get(Device, device_id)
 
+    async def ensure_device(self, site_id: str, device_id: str) -> None:
+        """Create the device (offline) if the edge has not announced itself yet."""
+        await self.ensure_site(site_id)
+        await self.s.execute(
+            insert(Device).values(id=device_id, site_id=site_id).on_conflict_do_nothing()
+        )
+
+    async def list_all(self) -> Sequence[Device]:
+        return (await self.s.scalars(select(Device).order_by(Device.id))).all()
+
 
 class CameraRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -66,6 +76,25 @@ class CameraRepository:
 
     async def get(self, camera_id: str) -> Camera | None:
         return await self.s.get(Camera, camera_id)
+
+    async def list_all(self, device_id: str | None = None) -> Sequence[Camera]:
+        stmt = select(Camera).order_by(Camera.id)
+        if device_id is not None:
+            stmt = stmt.where(Camera.device_id == device_id)
+        return (await self.s.scalars(stmt)).all()
+
+    async def set_zones(self, camera_id: str, zones: Sequence[Zone]) -> None:
+        await self.s.execute(
+            update(Camera)
+            .where(Camera.id == camera_id)
+            .values(zones=[z.model_dump(mode="json") for z in zones])
+        )
+
+
+def camera_config(row: Camera) -> CameraConfig:
+    return CameraConfig.model_validate(
+        {"id": row.id, "name": row.name, "source": row.source, "zones": row.zones}
+    )
 
 
 class RuleRepository:
@@ -85,6 +114,31 @@ class RuleRepository:
     async def for_camera(self, camera_id: str) -> list[Rule]:
         rows = await self.s.scalars(select(RuleRow).where(RuleRow.camera_id == camera_id))
         return [Rule.model_validate(r.rule) for r in rows]
+
+    async def get(self, rule_id: str) -> Rule | None:
+        row = await self.s.get(RuleRow, rule_id)
+        return Rule.model_validate(row.rule) if row else None
+
+    async def list_all(self, camera_id: str | None = None) -> list[Rule]:
+        stmt = select(RuleRow).order_by(RuleRow.created_at, RuleRow.id)
+        if camera_id is not None:
+            stmt = stmt.where(RuleRow.camera_id == camera_id)
+        return [Rule.model_validate(r.rule) for r in await self.s.scalars(stmt)]
+
+    async def for_device(self, device_id: str) -> list[Rule]:
+        stmt = (
+            select(RuleRow)
+            .join(Camera, Camera.id == RuleRow.camera_id)
+            .where(Camera.device_id == device_id)
+            .order_by(RuleRow.created_at, RuleRow.id)
+        )
+        return [Rule.model_validate(r.rule) for r in await self.s.scalars(stmt)]
+
+    async def delete(self, rule_id: str) -> bool:
+        result = await self.s.execute(
+            delete(RuleRow).where(RuleRow.id == rule_id).returning(RuleRow.id)
+        )
+        return result.first() is not None
 
 
 class EventRepository:
@@ -120,6 +174,20 @@ class EventRepository:
         rows = await self.s.scalars(select(EventRow).order_by(EventRow.at.desc()).limit(limit))
         return rows.all()
 
+    async def max_id(self) -> int:
+        return int(await self.s.scalar(select(func.coalesce(func.max(EventRow.id), 0))) or 0)
+
+    async def since(self, start: datetime) -> Sequence[EventRow]:
+        rows = await self.s.scalars(select(EventRow).where(EventRow.at >= start))
+        return rows.all()
+
+    async def after(self, last_id: int, limit: int = 100) -> Sequence[EventRow]:
+        """Events stored after row id `last_id`, oldest first (for live streaming)."""
+        rows = await self.s.scalars(
+            select(EventRow).where(EventRow.id > last_id).order_by(EventRow.id).limit(limit)
+        )
+        return rows.all()
+
 
 class SuggestionRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -141,6 +209,23 @@ class SuggestionRepository:
             .values(status=status)
         )
 
+    async def get(self, suggestion_id: str) -> SuggestionRow | None:
+        return await self.s.scalar(
+            select(SuggestionRow).where(SuggestionRow.suggestion_id == suggestion_id)
+        )
+
+    async def max_id(self) -> int:
+        return int(await self.s.scalar(select(func.coalesce(func.max(SuggestionRow.id), 0))) or 0)
+
+    async def after(self, last_id: int, limit: int = 100) -> Sequence[SuggestionRow]:
+        rows = await self.s.scalars(
+            select(SuggestionRow)
+            .where(SuggestionRow.id > last_id)
+            .order_by(SuggestionRow.id)
+            .limit(limit)
+        )
+        return rows.all()
+
     async def pending(self) -> Sequence[SuggestionRow]:
         rows = await self.s.scalars(select(SuggestionRow).where(SuggestionRow.status == "pending"))
         return rows.all()
@@ -157,6 +242,20 @@ class StaffRepository:
         self.s.add(row)
         await self.s.flush()
         return row
+
+    async def get_profile(self, profile_id: str) -> StaffProfileRow | None:
+        return await self.s.get(StaffProfileRow, profile_id)
+
+    async def profiles(self) -> Sequence[StaffProfileRow]:
+        return (await self.s.scalars(select(StaffProfileRow).order_by(StaffProfileRow.id))).all()
+
+    async def example_count(self, profile_id: str) -> int:
+        count = await self.s.scalar(
+            select(func.count())
+            .select_from(StaffExample)
+            .where(StaffExample.profile_id == profile_id)
+        )
+        return int(count or 0)
 
     async def add_example(
         self, profile_id: str, embedding: Sequence[float], source: str = "upload"
