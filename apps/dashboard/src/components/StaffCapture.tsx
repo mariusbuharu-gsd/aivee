@@ -1,5 +1,5 @@
-import { useEffect, useId, useState } from 'react';
-import type { CameraView, StaffCapture, StaffEnrolResult, StaffProfile } from '../api/client';
+import { useState } from 'react';
+import type { CameraView, StaffCapture, StaffEnrolResult } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
 import { LivePlayer } from '../live/LivePlayer';
@@ -7,13 +7,16 @@ import { isCloudFrames } from '../live/source';
 import { Banner } from '../ui/Banner';
 import { Dialog } from '../ui/Dialog';
 import { BusyLabel } from '../ui/Eyes';
-import { Select } from '../ui/Select';
-import { Icon } from './Icon';
+import { QrCode } from './QrCode';
+import { CandidateGrid, ProfileFields } from './StaffCaptureParts';
+import {
+  CAPTURE_SECONDS,
+  NEW_PROFILE,
+  useCountdown,
+  useKept,
+  useStaffProfiles,
+} from '../staff/capture';
 import './StaffCapture.css';
-
-/** How long the camera watches the employee turn around (the API accepts 5–30 s). */
-export const CAPTURE_SECONDS = 20;
-const NEW_PROFILE = '';
 
 type Step = 'name' | 'pose' | 'capturing' | 'review' | 'done';
 
@@ -44,37 +47,18 @@ export function StaffCaptureDialog({
   onClose: () => void;
 }) {
   const api = useApi();
-  const nameId = useId();
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
   const [profileId, setProfileId] = useState(NEW_PROFILE);
-  const [profiles, setProfiles] = useState<StaffProfile[]>([]);
+  const profiles = useStaffProfiles();
   const [capture, setCapture] = useState<StaffCapture | null>(null);
-  const [kept, setKept] = useState<Set<number>>(new Set());
-  const [left, setLeft] = useState(CAPTURE_SECONDS);
+  const { kept, toggle, keepAll } = useKept();
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const left = useCountdown(step === 'capturing' ? startedAt : null);
+  const phoneUrl = `${window.location.origin}/angajat-nou`;
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<StaffEnrolResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api.listStaffProfiles().then(
-      (p) => alive && setProfiles(p),
-      () => undefined, // adding to an existing profile is optional
-    );
-    return () => {
-      alive = false;
-    };
-  }, [api]);
-
-  useEffect(() => {
-    if (step !== 'capturing') return;
-    const started = Date.now();
-    const timer = setInterval(() => {
-      setLeft(Math.max(0, CAPTURE_SECONDS - Math.floor((Date.now() - started) / 1000)));
-    }, 250);
-    return () => clearInterval(timer);
-  }, [step]);
 
   const existing = profiles.find((p) => p.id === profileId) ?? null;
   const who = existing?.name ?? name.trim();
@@ -87,26 +71,17 @@ export function StaffCaptureDialog({
 
   async function start() {
     setError(null);
-    setLeft(CAPTURE_SECONDS);
+    setStartedAt(Date.now());
     setStep('capturing');
     try {
       const c = await api.captureStaff(camera.id, CAPTURE_SECONDS);
       setCapture(c);
-      setKept(new Set(c.candidates.map((x) => x.index)));
+      keepAll(c);
       setStep('review');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Captura nu a mers. Încearcă din nou.');
       setStep('pose');
     }
-  }
-
-  function toggle(index: number) {
-    setKept((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
   }
 
   async function save() {
@@ -144,42 +119,23 @@ export function StaffCaptureDialog({
       </p>
 
       {step === 'name' && (
-        <div className="stack-form">
-          {profiles.length > 0 && (
-            <Select
-              label="Profil"
-              value={profileId}
-              onChange={setProfileId}
-              options={[
-                { value: NEW_PROFILE, label: 'Angajat nou' },
-                ...profiles.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                  hint: `${p.examples} ${p.examples === 1 ? 'exemplu' : 'exemple'}`,
-                })),
-              ]}
-            />
-          )}
-          {!existing && (
-            <label className="field" htmlFor={nameId}>
-              <span>Nume</span>
-              <input
-                id={nameId}
-                className="input"
-                value={name}
-                maxLength={80}
-                autoComplete="off"
-                placeholder="ex. Ana, ospătar"
-                data-autofocus
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') toPose();
-                }}
-              />
-            </label>
-          )}
-          {existing && <p className="small">Adăugăm imagini noi la profilul „{existing.name}”.</p>}
-        </div>
+        <>
+          <ProfileFields
+            profiles={profiles}
+            profileId={profileId}
+            onProfile={setProfileId}
+            name={name}
+            onName={setName}
+            onEnter={toPose}
+          />
+          <details className="tech staff-capture-phone">
+            <summary>Fă-o de pe telefon</summary>
+            <QrCode value={phoneUrl} label="Cod QR pentru Adaugă angajat pe telefon" size={168} />
+            <p className="muted small">
+              Scanează cu telefonul și intră în cont: telefonul filmează singur, fără cameră.
+            </p>
+          </details>
+        </>
       )}
 
       {(step === 'pose' || step === 'capturing') && (
@@ -222,38 +178,7 @@ export function StaffCaptureDialog({
       )}
 
       {step === 'review' && capture && (
-        <>
-          <p className="small">
-            Am găsit {capture.candidates.length}{' '}
-            {capture.candidates.length === 1 ? 'imagine' : 'imagini'} cu {who}. Atinge una ca să o
-            scoți (alte persoane, imagini neclare).
-          </p>
-          <ul className="staff-capture-grid">
-            {capture.candidates.map((c) => {
-              const on = kept.has(c.index);
-              return (
-                <li key={c.index}>
-                  <button
-                    type="button"
-                    className={`staff-capture-thumb ${on ? 'is-on' : 'is-off'}`}
-                    aria-pressed={on}
-                    aria-label={`Imaginea ${c.index + 1}${on ? ', păstrată' : ', scoasă'}`}
-                    onClick={() => toggle(c.index)}
-                  >
-                    <img src={c.thumbnail} alt="" />
-                    <span className="staff-capture-tick" aria-hidden="true">
-                      <Icon name={on ? 'check' : 'x'} size={16} />
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="muted small">
-            Păstrezi {kept.size} din {capture.candidates.length}. Fețele nu sunt folosite, doar
-            ținuta.
-          </p>
-        </>
+        <CandidateGrid capture={capture} kept={kept} onToggle={toggle} who={who} />
       )}
 
       {step === 'done' && result && (

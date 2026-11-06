@@ -59,6 +59,10 @@ describe('Adaugă angajat (guided capture)', () => {
     renderApp('manager@aivee.demo', api);
     const { user, dialog } = await openOnFirstCamera();
 
+    expect(within(dialog).getByText('Fă-o de pe telefon')).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('img', { name: /Cod QR pentru Adaugă angajat/ }),
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Mai departe' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Scrie numele angajatului.');
     await user.type(within(dialog).getByLabelText('Nume'), 'Ana');

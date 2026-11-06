@@ -10,6 +10,7 @@ import { LivePage } from './pages/LivePage';
 import { LocationsPage } from './pages/LocationsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetricsPage } from './pages/MetricsPage';
+import { NewStaffPage } from './pages/NewStaffPage';
 import { PhoneCameraPage } from './pages/PhoneCameraPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { RulesPage } from './pages/RulesPage';
@@ -44,6 +45,9 @@ export function App() {
             </Route>
             <Route element={<RequirePermission any={['rules.manage']} />}>
               <Route path="reguli" element={<RulesPage />} />
+            </Route>
+            <Route element={<RequirePermission any={['staff.enrol']} />}>
+              <Route path="angajat-nou" element={<NewStaffPage />} />
             </Route>
             <Route element={<RequirePermission any={['devices.manage']} />}>
               <Route path="dispozitive" element={<DevicesPage />} />

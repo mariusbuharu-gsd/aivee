@@ -61,6 +61,13 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
       candidates: [],
       expires_in_s: 600,
     })),
+    uploadStaffFrames: vi.fn(async () => ({
+      token: 't',
+      camera_id: '',
+      frames: 0,
+      candidates: [],
+      expires_in_s: 600,
+    })),
     confirmStaffCapture: vi.fn(async () => {
       throw new Error('not stubbed');
     }),

@@ -281,6 +281,11 @@ export interface ApiClient extends AccountApi {
    * 422 when nobody was in front of it, 503 without enrolment models.
    */
   captureStaff(cameraId: string, seconds?: number): Promise<StaffCapture>;
+  /**
+   * `POST /api/staff/capture/frames` (`staff.enrol`, multipart `frames`, ≤ 30 JPEGs of ≤ 2 MB):
+   * the same capture from photos this phone took itself; confirm it like a camera capture.
+   */
+  uploadStaffFrames(frames: Blob[]): Promise<StaffCapture>;
   /** `POST /api/staff/capture/{token}/confirm`: enrol the kept crops and publish the profile. */
   confirmStaffCapture(token: string, input: StaffCaptureConfirm): Promise<StaffEnrolResult>;
   /** `GET /api/staff/profiles` (`staff.enrol`): enrolled uniform profiles, shared by every location. */

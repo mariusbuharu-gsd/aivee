@@ -292,6 +292,12 @@ export class HttpApi implements ApiClient {
     });
   }
 
+  uploadStaffFrames(frames: Blob[]) {
+    const body = new FormData();
+    frames.forEach((f, i) => body.append('frames', f, `frame-${i}.jpg`));
+    return this.request<StaffCapture>('/api/staff/capture/frames', { method: 'POST', body });
+  }
+
   confirmStaffCapture(token: string, input: StaffCaptureConfirm) {
     return this.request<StaffEnrolResult>(
       `/api/staff/capture/${encodeURIComponent(token)}/confirm`,

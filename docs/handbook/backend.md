@@ -92,6 +92,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | POST | `/api/staff/suggestions/{id}/confirm` · `/reject` | `staff.review`; sends an EdgeCommand |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | `staff.enrol`; multipart `photo` or `files` (≤ 50 MB each) |
 | POST | `/api/staff/capture` | `staff.enrol` on the camera's location; `{camera_id, seconds: 5–30 (20)}`. Samples the camera's in-memory live frames every 1.5 s, keeps only the largest person per frame → `{token, frames, candidates: [{index, thumbnail (data URL)}], expires_in_s}`. Lasts ≈ `seconds`. 404 no live frames, 422 nobody found, 503 no models |
+| POST | `/api/staff/capture/frames` | `staff.enrol` (`?location_id`); multipart `frames` (≤ 30 JPEGs, ≤ 2 MB each) a phone took itself → the same CaptureOut as `/api/staff/capture` (`camera_id: ""`), confirm the same way. 413 too large, 422 not JPEG / too many / nobody found, 503 no models |
 | POST | `/api/staff/capture/{token}/confirm` | same user only; `{keep: [index], name, description_ro?, profile_id?}` → EnrolOut; new profile `staff-<hex>` unless `profile_id`; publishes profiles; token used once, kept 10 min in memory (single replica) |
 | GET | `/api/push/public-key` | public; 503 without VAPID keys |
 | POST / DELETE | `/api/push/subscribe` | session; the subscription belongs to the user |
