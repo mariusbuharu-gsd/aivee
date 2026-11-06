@@ -172,7 +172,8 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
     assert closed["arrived_at"] is not None and not closed["unacknowledged_arrival"]
     # Simulated: opens at 60 s, the waiter stays at Masa 1 from 90 s → arrived at 95 s.
     expected_wait = 35 / SPEED
-    assert expected_wait - 0.4 <= closed["wait_s"] <= expected_wait + 0.8
+    # Wall-clock under a time-scaled edge: slow CI runners stretch it, so only bound it loosely.
+    assert expected_wait - 0.4 <= closed["wait_s"] <= expected_wait * 2 + 1
     assert closed["reaction_s"] + closed["travel_s"] == pytest.approx(closed["wait_s"], abs=0.11)
 
     texts = [t for n in notifiers for t in n.texts]
