@@ -40,10 +40,26 @@ export interface NewCamera {
   device: string;
 }
 
+/** `PATCH /api/cameras/{id}`: fields left out stay as they are. */
+export type CameraPatch = Partial<Pick<NewCamera, 'name' | 'source' | 'device'>>;
+
+/** `PATCH /api/rules/{id}`: fields left out stay as they are. */
+export type RulePatch = Partial<Omit<Rule, 'id' | 'camera_id'>>;
+
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
   device_id?: string;
   snapshot_url?: string | null;
+  /** Who closed it: the edge (someone came) or the system (the camera stopped watching). */
+  closed_by?: 'edge' | 'system' | null;
+  closed_reason?: 'device_offline' | 'device_restarted' | 'camera_deleted' | null;
+}
+
+/** `PUT /api/cameras/{id}/zones?warnings=true`. */
+export interface SavedZones {
+  zones: Zone[];
+  /** E.g. overlapping zones; saved anyway, shown to the user. */
+  warnings_ro: string[];
 }
 
 /** A rule drafted from Romanian text; not saved until the user confirms it. */
@@ -79,13 +95,19 @@ export interface ApiClient extends AccountApi {
   readonly kind: 'mock' | 'http';
   listCameras(): Promise<CameraView[]>;
   createCamera(camera: NewCamera): Promise<CameraView>;
+  updateCamera(id: string, patch: CameraPatch): Promise<CameraView>;
+  /** Removes the camera with its zones and rules; past alerts stay, open ones close. */
+  deleteCamera(id: string): Promise<void>;
   listDevices(): Promise<DeviceStatus[]>;
-  saveZones(cameraId: string, zones: Zone[]): Promise<Zone[]>;
+  saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones>;
   listRules(): Promise<Rule[]>;
   /** Translate a Romanian request into a draft rule; nothing is saved. */
   draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft>;
   /** Save (and publish to the edge) a rule, usually a confirmed draft. */
   createRule(rule: Rule): Promise<Rule>;
+  /** Pause/resume (`enabled`) or edit a saved rule; the edge gets the new version. */
+  updateRule(id: string, patch: RulePatch): Promise<Rule>;
+  deleteRule(id: string): Promise<void>;
   listAlerts(): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
   listSuggestions(): Promise<StaffSuggestion[]>;
@@ -165,6 +187,17 @@ export interface Invite {
   expires_at: string;
 }
 
+/** An invite nobody accepted yet (`GET /api/invites`). */
+export interface PendingInvite {
+  id: string;
+  email: string;
+  role: Role;
+  location_id: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+}
+
 export interface InviteInfo {
   org_name: string;
   location_name: string;
@@ -221,6 +254,8 @@ export interface AlertCase {
   /** Staff arrived without anyone acknowledging first ("fără preluare"). */
   unacknowledged_arrival: boolean;
   closed_at: string | null;
+  /** The shift was reminded: "Merg eu" was pressed 2 min earlier and nobody had arrived. */
+  realerted_at?: string | null;
   wait_s: number | null;
   reaction_s: number | null;
   travel_s: number | null;
@@ -261,6 +296,10 @@ export interface AccountApi {
   updateMember(locationId: string, userId: string, role: Role): Promise<Member>;
   removeMember(locationId: string, userId: string): Promise<void>;
   createInvite(input: { location_id: string; role: Role; email: string }): Promise<Invite>;
+  /** Pending invites; a manager sees only staff invites. */
+  listInvites(locationId: string): Promise<PendingInvite[]>;
+  /** Idempotent; the link then answers 410. */
+  revokeInvite(id: string): Promise<void>;
   listAudit(query: AuditQuery): Promise<AuditPage>;
   listAlertCases(query: {
     location_id: string;

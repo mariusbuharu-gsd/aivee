@@ -6,6 +6,7 @@ import type { ApiClient, Me } from '../api/client';
 import { ROLE_PERMISSIONS } from '../api/mockAccounts';
 import { ApiContext } from '../api/context';
 import { AuthContext, type AuthState } from '../auth/context';
+import { Toaster } from '../ui/Toaster';
 
 const noop = () => () => undefined;
 
@@ -30,10 +31,14 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     listCameras: vi.fn(async () => []),
     createCamera: vi.fn(async (c) => ({ ...c, zones: [], online: false })),
     listDevices: vi.fn(async () => []),
-    saveZones: vi.fn(async (_id, zones) => zones),
+    saveZones: vi.fn(async (_id, zones) => ({ zones, warnings_ro: [] })),
+    deleteCamera: vi.fn(async () => undefined),
     listRules: vi.fn(async () => []),
     draftRuleFromText: vi.fn(),
     createRule: vi.fn(async (r) => r),
+    updateRule: vi.fn(async (id, patch) => ({ ...patch, id }) as never),
+    deleteRule: vi.fn(async () => undefined),
+    updateCamera: vi.fn(async (id, patch) => ({ ...patch, id }) as never),
     listAlerts: vi.fn(async () => []),
     subscribeAlerts: vi.fn(noop),
     listSuggestions: vi.fn(async () => []),
@@ -57,6 +62,8 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     updateMember: vi.fn(),
     removeMember: vi.fn(async () => undefined),
     createInvite: vi.fn(),
+    listInvites: vi.fn(async () => []),
+    revokeInvite: vi.fn(async () => undefined),
     listAudit: vi.fn(async () => ({ items: [], next_before: null })),
     listAlertCases: vi.fn(async () => []),
     ackAlert: vi.fn(),
@@ -96,7 +103,9 @@ export function renderWithApi(ui: ReactElement, api: ApiClient = fakeApi()) {
     ...render(
       <ApiContext.Provider value={api}>
         <AuthContext.Provider value={fakeAuth()}>
-          <MemoryRouter>{ui}</MemoryRouter>
+          <MemoryRouter>
+            <Toaster>{ui}</Toaster>
+          </MemoryRouter>
         </AuthContext.Provider>
       </ApiContext.Provider>,
     ),

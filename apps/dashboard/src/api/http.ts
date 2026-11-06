@@ -20,7 +20,11 @@ import {
   type CameraView,
   type DashboardMetrics,
   type Detection,
+  type CameraPatch,
   type NewCamera,
+  type PendingInvite,
+  type SavedZones,
+  type RulePatch,
   type RuleDraft,
   type Unsubscribe,
 } from './client';
@@ -128,15 +132,29 @@ export class HttpApi implements ApiClient {
     });
   }
 
+  updateCamera(id: string, patch: CameraPatch) {
+    return this.request<CameraView>(`/api/cameras/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async deleteCamera(id: string) {
+    await this.request<undefined>(`/api/cameras/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   listDevices() {
     return this.request<DeviceStatus[]>('/api/devices');
   }
 
   saveZones(cameraId: string, zones: Zone[]) {
-    return this.request<Zone[]>(`/api/cameras/${encodeURIComponent(cameraId)}/zones`, {
-      method: 'PUT',
-      body: JSON.stringify(zones),
-    });
+    return this.request<SavedZones>(
+      `/api/cameras/${encodeURIComponent(cameraId)}/zones?warnings=true`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(zones),
+      },
+    );
   }
 
   listRules() {
@@ -153,6 +171,17 @@ export class HttpApi implements ApiClient {
 
   createRule(rule: Rule) {
     return this.request<Rule>('/api/rules', { method: 'POST', body: JSON.stringify(rule) });
+  }
+
+  updateRule(id: string, patch: RulePatch) {
+    return this.request<Rule>(`/api/rules/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  async deleteRule(id: string) {
+    await this.request<undefined>(`/api/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   async listAlerts() {
@@ -321,6 +350,16 @@ export class HttpApi implements ApiClient {
 
   createInvite(input: { location_id: string; role: Role; email: string }) {
     return this.post<Invite>('/api/invites', input);
+  }
+
+  listInvites(locationId: string) {
+    return this.request<PendingInvite[]>(
+      `/api/invites?location_id=${encodeURIComponent(locationId)}`,
+    );
+  }
+
+  async revokeInvite(id: string) {
+    await this.request<undefined>(`/api/invites/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   listAudit(q: AuditQuery) {

@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class IngestSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_INGEST_USER, MQTT_INGEST_PASSWORD, SNAPSHOT_DIR,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PREFIX (+ POSTGRES_* via aivee_api.db.settings,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PREFIX, REALERT_AFTER_S
+    (+ POSTGRES_* via aivee_api.db.settings,
     VAPID_* via aivee_api.push.settings for Web Push)."""
 
     model_config = SettingsConfigDict(extra="ignore", env_ignore_empty=True)
@@ -21,3 +22,7 @@ class IngestSettings(BaseSettings):
     telegram_chat_id: str | None = None
     telegram_prefix: str = ""
     """Prepended to every message, e.g. "[test]" when a dev run shares the real group."""
+    realert_after_s: float = 120
+    """Re-alert the whole location when nobody arrived this long after "Merg eu"."""
+    realert_interval_s: float = 5
+    """How often each replica looks for alerts to re-alert."""

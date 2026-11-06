@@ -21,7 +21,10 @@ import {
   type AlertCase,
   type AuditQuery,
   type Location,
+  type CameraPatch,
   type NewCamera,
+  type SavedZones,
+  type RulePatch,
   type RegisterInput,
   type Role,
   type RuleDraft,
@@ -323,11 +326,20 @@ export class MockApi implements ApiClient {
     );
   }
 
-  async saveZones(cameraId: string, zones: Zone[]) {
+  async saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones> {
     const cam = this.cameras.find((c) => c.id === cameraId);
     if (!cam) throw new Error(`Camera necunoscută: ${cameraId}`);
     cam.zones = structuredClone(zones);
-    return this.delay(zones);
+    return this.delay({ zones, warnings_ro: overlapWarnings(zones) });
+  }
+
+  async deleteCamera(id: string) {
+    if (!this.cameras.some((c) => c.id === id)) {
+      throw new ApiError(`Camera ${id} nu există.`, 'not_found', 404);
+    }
+    this.cameras = this.cameras.filter((c) => c.id !== id);
+    this.rules = this.rules.filter((r) => r.camera_id !== id);
+    await this.delay(undefined);
   }
 
   listRules() {
@@ -356,6 +368,30 @@ export class MockApi implements ApiClient {
     }
     const saved = structuredClone(rule);
     this.rules = [...this.rules.filter((r) => r.id !== saved.id), saved];
+    return this.delay(saved);
+  }
+
+  async updateRule(id: string, patch: RulePatch) {
+    const rule = this.rules.find((r) => r.id === id);
+    if (!rule) throw new ApiError('Regula nu mai există.', 'not_found', 404);
+    const saved: Rule = { ...rule, ...structuredClone(patch) };
+    this.rules = this.rules.map((r) => (r.id === id ? saved : r));
+    return this.delay(saved);
+  }
+
+  async deleteRule(id: string) {
+    if (!this.rules.some((r) => r.id === id)) {
+      throw new ApiError('Regula nu mai există.', 'not_found', 404);
+    }
+    this.rules = this.rules.filter((r) => r.id !== id);
+    await this.delay(undefined);
+  }
+
+  async updateCamera(id: string, patch: CameraPatch): Promise<CameraView> {
+    const cam = this.cameras.find((c) => c.id === id);
+    if (!cam) throw new ApiError(`Camera ${id} nu există.`, 'not_found', 404);
+    const saved: CameraView = { ...cam, ...patch };
+    this.cameras = this.cameras.map((c) => (c.id === id ? saved : c));
     return this.delay(saved);
   }
 
@@ -536,6 +572,14 @@ export class MockApi implements ApiClient {
     return this.call(() => this.accounts.createInvite(input));
   }
 
+  listInvites(locationId: string) {
+    return this.call(() => this.accounts.listInvites(locationId));
+  }
+
+  revokeInvite(id: string) {
+    return this.call(() => this.accounts.revokeInvite(id));
+  }
+
   listAudit(query: AuditQuery) {
     return this.call(() => this.accounts.listAudit(query));
   }
@@ -551,4 +595,24 @@ export class MockApi implements ApiClient {
   getServiceMetrics(query: { location_id: string; from?: string; to?: string }) {
     return this.call(() => this.accounts.serviceMetrics(query));
   }
+}
+
+/** Like the API's `warnings=true`: zones whose bounding boxes overlap (a rough, demo-only check). */
+function overlapWarnings(zones: Zone[]): string[] {
+  const box = (z: Zone) => {
+    const xs = z.polygon.map((p) => p[0]);
+    const ys = z.polygon.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as const;
+  };
+  const out: string[] = [];
+  zones.forEach((a, i) =>
+    zones.slice(i + 1).forEach((b) => {
+      const [ax1, ay1, ax2, ay2] = box(a);
+      const [bx1, by1, bx2, by2] = box(b);
+      if (ax1 < bx2 && bx1 < ax2 && ay1 < by2 && by1 < ay2) {
+        out.push(`„${a.name}” și „${b.name}” se suprapun; o persoană poate fi numărată la ambele.`);
+      }
+    }),
+  );
+  return out;
 }

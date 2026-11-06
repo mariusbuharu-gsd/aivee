@@ -12,6 +12,8 @@ export interface AlertItem {
   snapshot: boolean;
   /** Face-blurred JPEG of the moment the alert opened, when the edge sent one. */
   snapshot_url: string | null;
+  /** Set when the system, not a person arriving, closed it (camera offline, deleted…). */
+  closed_reason?: AlertView['closed_reason'];
 }
 
 const situation = (e: AlertView) => `${e.camera_id}|${e.rule_id}|${e.zone_id}`;
@@ -48,6 +50,7 @@ export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
       const item = open.get(key);
       if (item) {
         item.closed_at = e.at;
+        if (e.closed_by === 'system') item.closed_reason = e.closed_reason ?? null;
         open.delete(key);
       }
     }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { MOCK_PASSWORD, signIn } from '../helpers';
+import { MOCK_PASSWORD, choose, signIn } from '../helpers';
 
 // The mock opens "Masa 2" about 4 s after the page loads and closes it after 32 s.
 
@@ -13,6 +13,7 @@ test('staff take an open alert with "Merg eu" and the timeline shows who and how
   await go.evaluate((el) => el.closest('li')?.setAttribute('data-e2e', 'taken'));
   const card = page.locator('li[data-e2e="taken"]');
   await go.click();
+  await expect(page.getByText('Ai preluat Masa 2')).toBeVisible();
   await expect(card.getByRole('button', { name: /Merg eu/ })).toHaveCount(0);
   const timeline = card.getByRole('list', { name: 'Desfășurarea alertei' });
   await expect(timeline).toContainText('Preluată');
@@ -25,7 +26,7 @@ test('staff take an open alert with "Merg eu" and the timeline shows who and how
 test('the history filters by kind and keeps the period', async ({ page }) => {
   await signIn(page, 'owner', MOCK_PASSWORD, '/istoric');
   await expect(page.getByText(/a confirmat că #7 e din personal/)).toBeVisible();
-  await page.getByLabel('Tip').selectOption('rule');
+  await choose(page, 'Tip', 'Reguli');
   await expect(page.getByText(/a schimbat regula/)).toBeVisible();
   await expect(page.getByText(/a confirmat că #7/)).toHaveCount(0);
 });

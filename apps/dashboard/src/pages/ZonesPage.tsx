@@ -6,6 +6,11 @@ import type { Zone } from '../contracts';
 import { LivePlayer, type PlayerStatus } from '../live/LivePlayer';
 import { ZONE_TAGS, tagLabel } from '../rules/describe';
 import { useLiveData } from '../state/context';
+import { useLeaveGuard } from '../state/leaveGuard';
+import { Banner } from '../ui/Banner';
+import { Dialog } from '../ui/Dialog';
+import { Segmented, Skeleton } from '../ui/controls';
+import { useToast } from '../ui/toast';
 import {
   addPoint,
   closeDraft,
@@ -29,7 +34,11 @@ export function ZonesPage() {
   if (!camera) {
     return (
       <div className="page">
-        <p className="muted">{loading ? 'Se încarcă…' : 'Camera nu a fost găsită.'}</p>
+        {loading ? (
+          <Skeleton rows={2} label="Se încarcă camera" />
+        ) : (
+          <p className="muted">Camera nu a fost găsită.</p>
+        )}
         <Link to="/" className="link">
           Înapoi la Live
         </Link>
@@ -51,8 +60,19 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   const [name, setName] = useState('');
   const [tag, setTag] = useState('table');
   const [dirty, setDirty] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const toast = useToast();
+  useLeaveGuard(
+    dirty
+      ? (proceed) => {
+          setLeaving(() => proceed);
+          return true;
+        }
+      : null,
+  );
   const [live, setLive] = useState<PlayerStatus>('connecting');
   // A still the user picked; kept only in this browser as the drawing background.
   const [still, setStill] = useState<string | null>(null);
@@ -66,7 +86,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   const change = (next: Zone[]) => {
     setLocal(next);
     setDirty(true);
-    setStatus(null);
+    setSaveError(null);
   };
 
   function onSurfaceClick(e: MouseEvent<SVGSVGElement>) {
@@ -107,19 +127,47 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
     setRedrawId(null);
   }
 
-  async function save() {
-    if (!camera) return;
+  async function save(): Promise<boolean> {
+    if (!camera) return false;
     setSaving(true);
+    setSaveError(null);
     try {
       const saved = await api.saveZones(camera.id, zones);
-      setZones(camera.id, saved);
+      setZones(camera.id, saved.zones);
+      setLocal(saved.zones);
       setDirty(false);
-      setStatus('Zonele au fost salvate și trimise dispozitivului.');
+      setWarnings(saved.warnings_ro);
+      const n = saved.zones.length;
+      toast({
+        title: n === 1 ? 'O zonă salvată' : `${n} zone salvate`,
+        text: `${camera.name} folosește zonele noi de acum.`,
+      });
+      return true;
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : 'Salvarea a eșuat');
+      setSaveError(e instanceof Error ? e.message : 'Salvarea a eșuat.');
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  function removeZone(id: string) {
+    const before = zones;
+    const gone = zones.find((z) => z.id === id);
+    change(deleteZone(zones, id));
+    setSelected(null);
+    toast({
+      kind: 'undo',
+      title: `Zona „${gone?.name ?? ''}” a fost ștearsă`,
+      text: 'Se salvează abia când apeși „Salvează zonele”.',
+      action: {
+        label: 'Anulează',
+        run: () => {
+          setLocal(before);
+          setSelected(id);
+        },
+      },
+    });
   }
 
   const canFinish = draft?.closed && (redrawId !== null || name.trim() !== '');
@@ -155,14 +203,38 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
         <h1>
           Zone · <span className="muted">{camera.name}</span>
         </h1>
-        <button className="btn btn-primary" onClick={save} disabled={!dirty || saving}>
-          {saving ? 'Se salvează…' : 'Salvează zonele'}
-        </button>
+        <div className="actions">
+          {dirty ? (
+            <span className="pill pill-alert">modificări nesalvate</span>
+          ) : (
+            <span className="muted small">Totul e salvat</span>
+          )}
+          <button
+            className="btn btn-primary"
+            onClick={() => void save()}
+            disabled={!dirty || saving}
+          >
+            {saving ? 'Se salvează…' : 'Salvează zonele'}
+          </button>
+        </div>
       </header>
-      {status && (
-        <p className="small" role="status">
-          {status}
-        </p>
+      {saveError && (
+        <Banner
+          tone="error"
+          title="Zonele nu s-au salvat."
+          action={
+            <button type="button" className="btn btn-sm" onClick={() => void save()}>
+              Reîncearcă
+            </button>
+          }
+        >
+          {saveError} Modificările rămân aici.
+        </Banner>
+      )}
+      {warnings.length > 0 && (
+        <Banner tone="warn" title="Zonele s-au salvat, dar verifică:">
+          {warnings.join(' ')}
+        </Banner>
       )}
       <div className="two-col">
         <section aria-label="Imagine cameră">
@@ -277,15 +349,19 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
         <aside className="side-col">
           <div className="card">
             <h2 className="h3">Fundal</h2>
-            <p className="muted small" role="status">
-              {still
-                ? 'Desenezi pe imaginea încărcată (rămâne doar în acest browser).'
-                : live === 'playing'
-                  ? 'Desenezi pe imaginea live a camerei.'
-                  : live === 'connecting'
-                    ? 'Se conectează la camera live…'
-                    : 'Fluxul live nu e disponibil. Încarcă o captură din cameră ca să desenezi mesele exact.'}
-            </p>
+            {!still && live !== 'playing' && live !== 'connecting' ? (
+              <Banner tone="info" title="Fluxul live nu e disponibil.">
+                Încarcă o captură din cameră ca să desenezi mesele exact.
+              </Banner>
+            ) : (
+              <p className="muted small" role="status">
+                {still
+                  ? 'Desenezi pe imaginea încărcată (rămâne doar în acest browser).'
+                  : live === 'playing'
+                    ? 'Desenezi pe imaginea live a camerei.'
+                    : 'Se conectează la camera live…'}
+              </p>
+            )}
             <div className="actions">
               {stillPicker}
               {still && (
@@ -337,13 +413,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                 <button className="btn" onClick={() => startDrawing(current.id)}>
                   <Icon name="edit" /> Redesenează
                 </button>
-                <button
-                  className="btn btn-danger"
-                  onClick={() => {
-                    change(deleteZone(zones, current.id));
-                    setSelected(null);
-                  }}
-                >
+                <button className="btn btn-danger" onClick={() => removeZone(current.id)}>
                   <Icon name="trash" /> Șterge
                 </button>
               </div>
@@ -376,6 +446,50 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
           </section>
         </aside>
       </div>
+      {leaving && (
+        <Dialog
+          title={`Ai modificări nesalvate pe ${camera.name}`}
+          icon="warn"
+          onClose={() => setLeaving(null)}
+          actions={
+            <>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  const go = leaving;
+                  setLeaving(null);
+                  setDirty(false);
+                  go();
+                }}
+              >
+                Renunță la modificări
+              </button>
+              <button type="button" className="btn" onClick={() => setLeaving(null)} data-autofocus>
+                Rămâi
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={saving}
+                onClick={async () => {
+                  const go = leaving;
+                  if (await save()) {
+                    setLeaving(null);
+                    go();
+                  }
+                }}
+              >
+                Salvează și pleacă
+              </button>
+            </>
+          }
+        >
+          <p className="muted">
+            Dacă pleci acum, zonele desenate sau schimbate de la ultima salvare se pierd.
+          </p>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -397,16 +511,16 @@ function ZoneFields({
         <span>Nume</span>
         <input className="input" value={name} onChange={(e) => onName(e.target.value)} required />
       </label>
-      <label className="field">
-        <span>Tip</span>
-        <select className="input" value={tag} onChange={(e) => onTag(e.target.value)}>
-          {ZONE_TAGS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Segmented
+        label="Tip"
+        value={tag}
+        onChange={onTag}
+        options={ZONE_TAGS.map((t) => ({
+          value: t.value,
+          label: t.label,
+          swatch: `zone-${t.value}`,
+        }))}
+      />
     </>
   );
 }

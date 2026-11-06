@@ -114,6 +114,8 @@ class EventRow(Base):
         ForeignKey("users.id", ondelete="SET NULL", name="fk_events_acknowledged_by_id")
     )
     acknowledged_by_name: Mapped[str | None] = mapped_column(Text)
+    # Set once when the shift is told again that nobody arrived after the ack (ingest).
+    realerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Set when the system (not the edge) closed it: device_offline | device_restarted |

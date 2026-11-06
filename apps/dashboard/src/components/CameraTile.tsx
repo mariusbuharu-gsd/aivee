@@ -35,6 +35,12 @@ export function CameraTile({ camera }: { camera: CameraView }) {
             <Icon name="offline" size={28} />
             <span>Dispozitiv offline</span>
             <span className="muted mono">{camera.device}</span>
+            <span className="muted small">Alertele de la această cameră nu vin până revine.</span>
+            {can('devices.manage') && (
+              <Link to="/dispozitive" className="link">
+                Ce să verific
+              </Link>
+            )}
           </div>
         )}
         {shown.map((d) => (

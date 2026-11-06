@@ -1,55 +1,219 @@
 import { useState } from 'react';
-import { RuleComposer } from '../components/RuleComposer';
+import { useApi } from '../api/context';
+import { RuleComposer, RuleDraftEditor } from '../components/RuleComposer';
+import type { Rule } from '../contracts';
 import { describeRule } from '../rules/describe';
 import { useLiveData } from '../state/context';
+import { Banner } from '../ui/Banner';
+import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { Menu } from '../ui/Menu';
+import { Select } from '../ui/Select';
+import { EmptyState, Switch } from '../ui/controls';
+import { useToast } from '../ui/toast';
 
 export function RulesPage() {
   const { rules, cameras, addRule } = useLiveData();
   const [cameraId, setCameraId] = useState<string>('');
   const selected = cameraId || cameras[0]?.id || '';
+  const picker =
+    cameras.length > 1 ? (
+      <Select
+        size="sm"
+        className="composer-camera"
+        label="pentru camera"
+        value={selected}
+        options={cameras.map((c) => ({ value: c.id, label: c.name }))}
+        onChange={setCameraId}
+      />
+    ) : undefined;
+  const groups = cameras
+    .map((c) => ({ camera: c, rules: rules.filter((r) => r.camera_id === c.id) }))
+    .filter((g) => g.rules.length > 0);
+  const orphans = rules.filter((r) => !cameras.some((c) => c.id === r.camera_id));
   return (
     <div className="page">
       <header className="page-head">
         <h1>Reguli</h1>
-        {cameras.length > 1 && (
-          <label className="field-inline">
-            <span>Camera</span>
-            <select
-              className="input"
-              value={selected}
-              onChange={(e) => setCameraId(e.target.value)}
-            >
-              {cameras.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
       </header>
-      {selected && <RuleComposer cameraId={selected} onCreated={addRule} />}
-      <section aria-labelledby="rules-h">
-        <h2 id="rules-h">Reguli active</h2>
-        <ul className="cards">
-          {rules.map((r) => (
-            <li key={r.id} className="card">
-              <div className="side-head">
-                <h3>{r.name}</h3>
-                <span className={`pill ${r.enabled === false ? 'pill-muted' : 'pill-live'}`}>
-                  {r.enabled === false ? 'inactivă' : 'activă'}
-                </span>
-              </div>
-              <p className="muted">„{r.prompt_ro}”</p>
-              <p>{describeRule(r)}</p>
-              <details>
-                <summary>JSON</summary>
-                <pre className="mono json">{JSON.stringify(r, null, 2)}</pre>
-              </details>
-            </li>
-          ))}
-        </ul>
+      {selected && <RuleComposer cameraId={selected} onCreated={addRule} camera={picker} />}
+      <section aria-labelledby="rules-h" className="rule-groups">
+        <h2 id="rules-h">Regulile tale</h2>
+        {rules.length === 0 && (
+          <EmptyState icon="rules" title="Nicio regulă încă">
+            Scrie mai sus, în română, ce să urmărească: de exemplu „anunță-mă dacă la o masă nu vine
+            nimeni de 2 minute”.
+          </EmptyState>
+        )}
+        {groups.map((g) => (
+          <div key={g.camera.id}>
+            {cameras.length > 1 && <h3 className="feed-group">{g.camera.name}</h3>}
+            <RuleList rules={g.rules} />
+          </div>
+        ))}
+        {orphans.length > 0 && <RuleList rules={orphans} />}
       </section>
     </div>
+  );
+}
+
+function RuleList({ rules }: { rules: Rule[] }) {
+  return (
+    <ul className="cards">
+      {rules.map((r) => (
+        <RuleCard key={r.id} rule={r} />
+      ))}
+    </ul>
+  );
+}
+
+function RuleCard({ rule }: { rule: Rule }) {
+  const api = useApi();
+  const toast = useToast();
+  const { addRule, removeRule } = useLiveData();
+  const [busy, setBusy] = useState(false);
+  const [dialog, setDialog] = useState<'edit' | 'delete' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const on = rule.enabled !== false;
+
+  async function setEnabled(enabled: boolean, undo = true) {
+    setBusy(true);
+    setError(null);
+    try {
+      addRule(await api.updateRule(rule.id, { enabled }));
+      toast({
+        kind: enabled ? 'ok' : 'info',
+        title: enabled ? `„${rule.name}” a pornit` : `„${rule.name}” e oprită`,
+        text: enabled ? 'Alertele vin din nou.' : 'Nu mai trimite alerte până o pornești.',
+        action: undo ? { label: 'Anulează', run: () => setEnabled(!enabled, false) } : undefined,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nu am putut schimba regula.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function duplicate() {
+    try {
+      const copy = await api.createRule({
+        ...rule,
+        id: `${rule.id}-copie-${Date.now().toString(36)}`,
+        name: `${rule.name} (copie)`,
+        enabled: false,
+      });
+      addRule(copy);
+      toast({ title: `Am făcut „${copy.name}”`, text: 'E oprită; pornește-o când e gata.' });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nu am putut copia regula.');
+    }
+  }
+
+  return (
+    <li className={`card rule-card ${on ? '' : 'is-off'}`}>
+      <div className="side-head">
+        <h3>{rule.name}</h3>
+        <div className="rule-tools">
+          <Switch
+            checked={on}
+            disabled={busy}
+            label={<span className="small">{on ? 'activă' : 'oprită'}</span>}
+            onChange={(v) => void setEnabled(v)}
+          />
+          <Menu
+            label={`Acțiuni pentru regula ${rule.name}`}
+            items={[
+              { label: 'Modifică', onSelect: () => setDialog('edit') },
+              { label: 'Duplică', onSelect: () => void duplicate() },
+              { label: 'Șterge regula…', danger: true, onSelect: () => setDialog('delete') },
+            ]}
+          />
+        </div>
+      </div>
+      <p className="muted">„{rule.prompt_ro}”</p>
+      <p>{describeRule(rule)}</p>
+      {error && <Banner tone="error" title={error} />}
+      <details className="tech">
+        <summary>Detalii tehnice</summary>
+        <pre className="mono json">{JSON.stringify(rule, null, 2)}</pre>
+      </details>
+      {dialog === 'delete' && (
+        <ConfirmDialog
+          title={`Ștergi regula „${rule.name}”?`}
+          confirmLabel="Șterge regula"
+          onClose={() => setDialog(null)}
+          onConfirm={async () => {
+            await api.deleteRule(rule.id);
+            removeRule(rule.id);
+            toast({ title: `Regula „${rule.name}” a fost ștearsă` });
+          }}
+        >
+          <ul>
+            <li>Dispozitivul nu mai trimite alerte pentru ea, de acum.</li>
+            <li>Alertele vechi rămân în Istoric.</li>
+            <li>Dacă vrei doar o pauză, oprește-o din comutator.</li>
+          </ul>
+        </ConfirmDialog>
+      )}
+      {dialog === 'edit' && <EditRule rule={rule} onClose={() => setDialog(null)} />}
+    </li>
+  );
+}
+
+function EditRule({ rule, onClose }: { rule: Rule; onClose: () => void }) {
+  const api = useApi();
+  const toast = useToast();
+  const { addRule } = useLiveData();
+  const [draft, setDraft] = useState(rule);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!draft.name.trim()) return setError('Regula are nevoie de un nume.');
+    setBusy(true);
+    setError(null);
+    try {
+      addRule(
+        await api.updateRule(rule.id, {
+          name: draft.name.trim(),
+          all_of: draft.all_of,
+          cooldown_s: draft.cooldown_s,
+        }),
+      );
+      toast({
+        title: `„${draft.name.trim()}” a fost salvată`,
+        text: 'Dispozitivul are noua versiune.',
+      });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nu am putut salva regula.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      title={`Modifici „${rule.name}”`}
+      icon="edit"
+      onClose={() => !busy && onClose()}
+      actions={
+        <>
+          <button type="button" className="btn" onClick={onClose} disabled={busy} data-autofocus>
+            Renunță
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void save()}
+            disabled={busy}
+          >
+            {busy ? 'Se salvează…' : 'Salvează'}
+          </button>
+        </>
+      }
+    >
+      <p className="muted small">{describeRule(draft)}</p>
+      <RuleDraftEditor rule={draft} onChange={setDraft} />
+      {error && <Banner tone="error" title={error} />}
+    </Dialog>
   );
 }

@@ -4,13 +4,14 @@ Callers own the transaction (commit)."""
 
 import uuid
 from collections.abc import Collection, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import cast
 
 from aivee_contracts.events import AlertEvent
 from sqlalchemy import ColumnElement, Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from aivee_api.alerts.auth import CurrentUser
 from aivee_api.alerts.domain import (
@@ -45,6 +46,7 @@ def to_view(row: EventRow, location_id: str | None, zone_names: dict[str, str]) 
         acknowledged_at=row.acknowledged_at,
         acknowledged_by=row.acknowledged_by_name if row.acknowledged_at else None,
         acknowledged_by_id=row.acknowledged_by_id if row.acknowledged_at else None,
+        realerted_at=row.realerted_at,
         arrived_at=row.arrived_at,
         closed_at=row.closed_at,
         closed_by=closed_by(row.closed_at, row.closed_reason),
@@ -132,6 +134,30 @@ class AlertRepository:
             .returning(EventRow.id)
         )
         return alert_id, folded.first() is not None
+
+    async def claim_realerts(self, now: datetime, after_s: float) -> list[AlertView]:
+        """Mark (and return) the alerts acknowledged more than `after_s` ago that nobody
+        reached and that are still open: `domain.realert_due` in SQL.
+
+        One atomic UPDATE ... WHERE realerted_at IS NULL RETURNING: a second replica
+        running the same claim waits on the row lock, re-checks the WHERE after the first
+        commits and gets nothing, so each alert is claimed once."""
+        claimed = await self.s.execute(
+            update(EventRow)
+            .where(
+                EventRow.state == "opened",
+                EventRow.acknowledged_at < now - timedelta(seconds=after_s),
+                EventRow.arrived_at.is_(None),
+                EventRow.closed_at.is_(None),
+                EventRow.realerted_at.is_(None),
+            )
+            .values(realerted_at=now)
+            .returning(EventRow.event_id)
+        )
+        alert_ids = [alert_id for (alert_id,) in claimed.all()]
+        if not alert_ids:
+            return []
+        return await self.views(alert_ids=alert_ids, limit=len(alert_ids))
 
     async def close_open_for_device(
         self, device_id: str, at: datetime, reason: CloseReason
@@ -261,12 +287,24 @@ class AlertRepository:
         return latest
 
     async def acknowledged_after(self, since: datetime | None) -> Sequence[tuple[str, datetime]]:
-        stmt = select(EventRow.event_id, EventRow.acknowledged_at).where(
-            EventRow.acknowledged_at.is_not(None)
-        )
+        return await self._stamped_after(EventRow.acknowledged_at, since)
+
+    async def latest_realert(self) -> datetime | None:
+        latest: datetime | None = await self.s.scalar(select(func.max(EventRow.realerted_at)))
+        return latest
+
+    async def realerted_after(self, since: datetime | None) -> Sequence[tuple[str, datetime]]:
+        return await self._stamped_after(EventRow.realerted_at, since)
+
+    async def _stamped_after(
+        self, column: InstrumentedAttribute[datetime | None], since: datetime | None
+    ) -> Sequence[tuple[str, datetime]]:
+        """(alert id, stamp) of the alerts whose `column` was set after `since`, oldest first:
+        the changes that store no event row (ack by the API, re-alert by ingest)."""
+        stmt = select(EventRow.event_id, column).where(column.is_not(None))
         if since is not None:
-            stmt = stmt.where(EventRow.acknowledged_at > since)
-        rows = (await self.s.execute(stmt.order_by(EventRow.acknowledged_at))).all()
+            stmt = stmt.where(column > since)
+        rows = (await self.s.execute(stmt.order_by(column))).all()
         return [(event_id, at) for event_id, at in rows if at is not None]
 
     async def alert_ids_after(self, last_row_id: int, limit: int = 100) -> tuple[int, list[str]]:

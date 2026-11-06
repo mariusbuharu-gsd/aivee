@@ -1,8 +1,10 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { RuleDraft } from '../api/client';
 import { useApi } from '../api/context';
 import type { Condition, Rule } from '../contracts';
 import { describeRule } from '../rules/describe';
+import { Banner } from '../ui/Banner';
+import { useToast } from '../ui/toast';
 import { Icon } from './Icon';
 
 // Web Speech API is not in lib.dom yet; describe the small part we use.
@@ -29,19 +31,22 @@ export function RuleComposer({
   cameraId,
   onCreated,
   compact = false,
+  camera,
 }: {
   cameraId: string;
   onCreated?: (rule: Rule) => void;
   compact?: boolean;
+  /** The camera picker, shown inside the composer so it is clear what it applies to. */
+  camera?: ReactNode;
 }) {
   const api = useApi();
+  const toast = useToast();
   const inputId = useId();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<RuleDraft | null>(null);
   const [editing, setEditing] = useState(false);
-  const [saved, setSaved] = useState<Rule | null>(null);
   const [listening, setListening] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const Speech = typeof window === 'undefined' ? null : speechCtor();
@@ -57,7 +62,6 @@ export function RuleComposer({
     if (!value || busy) return;
     setBusy(true);
     setError(null);
-    setSaved(null);
     setEditing(false);
     try {
       setDraft(await api.draftRuleFromText(value, cameraId));
@@ -75,7 +79,10 @@ export function RuleComposer({
     setError(null);
     try {
       const created = await api.createRule(draft.rule);
-      setSaved(created);
+      toast({
+        title: `Regula „${created.name}” a fost salvată și pornită`,
+        text: 'Dispozitivul o folosește de acum.',
+      });
       setDraft(null);
       setEditing(false);
       setText('');
@@ -118,9 +125,12 @@ export function RuleComposer({
   return (
     <section className={`composer ${compact ? 'composer-compact' : ''}`} aria-label="Regulă nouă">
       <form className="composer-bar" onSubmit={submit}>
-        <label htmlFor={inputId} className="composer-label">
-          Spune-i camerei ce să vadă
-        </label>
+        <div className="composer-top">
+          <label htmlFor={inputId} className="composer-label">
+            Spune-i camerei ce să vadă
+          </label>
+          {camera}
+        </div>
         <div className="composer-row">
           <input
             id={inputId}
@@ -146,11 +156,7 @@ export function RuleComposer({
           </button>
         </div>
       </form>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Banner tone="error" title={error} />}
       {draft && (
         <div className="understood" role="region" aria-label="Ce am înțeles">
           <h3 className="understood-title">Ce am înțeles</h3>
@@ -180,23 +186,24 @@ export function RuleComposer({
               Renunță
             </button>
           </div>
-          <details>
-            <summary>Vezi regula JSON</summary>
+          <details className="tech">
+            <summary>Detalii tehnice</summary>
             <pre className="mono json">{JSON.stringify(draft.rule, null, 2)}</pre>
           </details>
         </div>
-      )}
-      {saved && !draft && (
-        <p className="small" role="status" aria-live="polite">
-          <Icon name="check" /> Regula „{saved.name}” a fost salvată și trimisă dispozitivului.
-        </p>
       )}
     </section>
   );
 }
 
 /** Small editor for the parts of a draft a manager is likely to correct. */
-function RuleDraftEditor({ rule, onChange }: { rule: Rule; onChange: (rule: Rule) => void }) {
+export function RuleDraftEditor({
+  rule,
+  onChange,
+}: {
+  rule: Rule;
+  onChange: (rule: Rule) => void;
+}) {
   const setCondition = (i: number, patch: Partial<Condition>) => {
     const all_of = rule.all_of.map((c, j) => (j === i ? { ...c, ...patch } : c)) as Rule['all_of'];
     onChange({ ...rule, all_of });

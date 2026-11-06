@@ -24,6 +24,16 @@ export const ROLE_LABEL: Record<Role, string> = {
   staff: 'Personal',
 };
 
+export const LOCATION_TYPES: { value: string; label: string }[] = [
+  { value: 'restaurant', label: 'Restaurant' },
+  { value: 'terrace', label: 'Terasă / bar' },
+  { value: 'event', label: 'Eveniment' },
+  { value: 'shop', label: 'Magazin' },
+  { value: 'other', label: 'Altceva' },
+];
+export const locationTypeLabel = (t: string) =>
+  LOCATION_TYPES.find((x) => x.value === t)?.label ?? t;
+
 /** Only same-app paths are followed after sign-in. */
 export function safeNext(next: string | null | undefined): string {
   return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
