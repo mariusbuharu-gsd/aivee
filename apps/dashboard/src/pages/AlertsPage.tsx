@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AlertFeed } from '../components/AlertFeed';
+import { PushToggle } from '../push/PushToggle';
 import { StaffPhotoUpload } from '../components/StaffPhotoUpload';
 import { SuggestionCard } from '../components/SuggestionCard';
 import { useLiveData, zoneName } from '../state/context';
@@ -47,6 +48,7 @@ export function AlertsPage() {
           />
         </section>
         <aside className="side-col" aria-labelledby="staff-h">
+          <PushToggle />
           <h2 id="staff-h">Personal</h2>
           {suggestions.length === 0 && (
             <p className="muted">
