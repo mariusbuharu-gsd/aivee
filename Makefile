@@ -32,3 +32,8 @@ edge:
 	uv run python -m aivee_edge --source $(SOURCE)
 fake-edge:
 	uv run python tools/fake_edge.py --scenario $(SCENARIO) --speed $(SPEED)
+
+.PHONY: data-dirs
+# Create bind-mounted dirs as the current user before `make up` (Docker would create them as root).
+data-dirs:
+	mkdir -p data/snapshots recordings
