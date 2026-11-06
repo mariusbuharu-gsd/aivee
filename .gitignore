@@ -17,3 +17,4 @@ dist/
 data/
 recordings/
 snapshots/
+.claude/worktrees/
