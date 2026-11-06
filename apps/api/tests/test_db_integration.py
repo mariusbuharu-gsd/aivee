@@ -142,6 +142,29 @@ async def test_camera_rule_and_suggestion_roundtrip(
     assert pending == []
 
 
+async def test_a_suggestion_remembers_whether_the_edge_sent_its_crop(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    with_crop = StaffSuggestion(
+        suggestion_id="sg-crop",
+        camera_id="cam1",
+        track_id=7,
+        staff_score=0.8,
+        reason_ro="x",
+        snapshot=True,
+    )
+    without = with_crop.model_copy(update={"suggestion_id": "sg-none", "snapshot": False})
+    async with sessions() as s:
+        await SuggestionRepository(s).insert_if_new(with_crop, "edge-01")
+        await SuggestionRepository(s).insert_if_new(without, "edge-01")
+        await s.commit()
+    async with sessions() as s:
+        a = await SuggestionRepository(s).get("sg-crop")
+        b = await SuggestionRepository(s).get("sg-none")
+    assert a is not None and a.snapshot_path == "sg-crop.jpg"
+    assert b is not None and b.snapshot_path is None
+
+
 async def test_pgvector_nearest_profile(sessions: async_sessionmaker[AsyncSession]) -> None:
     async with sessions() as s:
         repo = StaffRepository(s)

@@ -130,6 +130,22 @@ describe('HttpApi', () => {
     expect(b?.snapshot_url).toBeNull();
     expect(b?.before_snapshot_url).toBeNull();
   });
+
+  it("resolves a suggestion's photo url against the API base, and keeps none as none", async () => {
+    const sug = {
+      suggestion_id: 's-1',
+      camera_id: 'cam-01',
+      track_id: 7,
+      staff_score: 0.8,
+      reason_ro: 'Se mișcă între mese',
+      snapshot: true,
+      snapshot_url: '/api/snapshots/s-1',
+    };
+    mockFetch(json([sug, { ...sug, suggestion_id: 's-2', snapshot: false, snapshot_url: null }]));
+    const [a, b] = await api.listSuggestions();
+    expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/s-1');
+    expect(b?.snapshot_url).toBeNull();
+  });
 });
 
 describe('HttpApi videos', () => {

@@ -42,6 +42,8 @@ describe('MockApi timeline', () => {
       'z-masa-2:closed',
     ]);
     expect(suggestions).toHaveBeenCalledTimes(1);
+    // A stand-in photo, as the real API links the edge's face-blurred crop.
+    expect(suggestions.mock.calls[0]?.[0].snapshot_url).toMatch(/^data:image\/svg\+xml,/);
     await api.confirmSuggestion('sug-track-7');
     await vi.advanceTimersByTimeAsync(45_000);
     expect(suggestions).toHaveBeenCalledTimes(1);

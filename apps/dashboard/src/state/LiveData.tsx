@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { AlertCase, AlertView, CameraView, DashboardMetrics } from '../api/client';
+import type {
+  AlertCase,
+  AlertView,
+  CameraView,
+  DashboardMetrics,
+  SuggestionView,
+} from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
-import type { Rule, StaffSuggestion, Zone } from '../contracts';
+import type { Rule, Zone } from '../contracts';
 import { foldAlerts } from '../alerts/fold';
 import { LiveDataContext, toLoadError, type LiveData, type LoadError } from './context';
 
@@ -14,7 +20,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [cameras, setCameras] = useState<CameraView[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [events, setEvents] = useState<AlertView[]>([]);
-  const [suggestions, setSuggestions] = useState<StaffSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionView[]>([]);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [error, setError] = useState<LoadError | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -175,7 +181,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;
 }
 
-function mergeSuggestions(a: StaffSuggestion[], b: StaffSuggestion[]): StaffSuggestion[] {
+function mergeSuggestions(a: SuggestionView[], b: SuggestionView[]): SuggestionView[] {
   const out = [...a];
   for (const s of b) if (!out.some((x) => x.suggestion_id === s.suggestion_id)) out.push(s);
   return out;

@@ -1,15 +1,7 @@
 // In-browser stand-in for the backend: realistic demo data plus a scripted timeline in which
 // alerts open and close, and a "looks like staff" suggestion appears. Used when VITE_API_URL
 // is unset, so the dashboard can be built and demoed before the API exists.
-import type {
-  AlertEvent,
-  Condition,
-  Detections,
-  DeviceStatus,
-  Rule,
-  StaffSuggestion,
-  Zone,
-} from '../contracts';
+import type { AlertEvent, Condition, Detections, DeviceStatus, Rule, Zone } from '../contracts';
 import { MockAccounts } from './mockAccounts';
 import {
   ApiError,
@@ -18,6 +10,7 @@ import {
   type AlertView,
   type ApiClient,
   type CameraView,
+  type SuggestionView,
   type DashboardMetrics,
   type Detection,
   type AlertCase,
@@ -166,6 +159,21 @@ function tableSketch(withGlass: boolean): string {
     '<ellipse cx="80" cy="47" rx="56" ry="28" fill="#23262d" stroke="#e6e8ec" stroke-width="2"/>' +
     '<circle cx="58" cy="48" r="11" fill="none" stroke="#a3a9b4" stroke-width="2"/>' +
     glass +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Stand-in for the edge's face-blurred person crop: a silhouette in the waiter's dark-red
+ * shirt, the head a plain blurred disc. Nothing in it could be a real face.
+ */
+function personSketch(): string {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 80">' +
+    '<defs><filter id="b"><feGaussianBlur stdDeviation="3"/></filter></defs>' +
+    '<rect width="60" height="80" fill="#1b1d22"/>' +
+    '<path d="M8 80 C10 52 18 44 30 44 C42 44 50 52 52 80 Z" fill="#7a1f2b"/>' +
+    '<circle cx="30" cy="27" r="12" fill="#a3a9b4" filter="url(#b)"/>' +
     '</svg>';
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
@@ -364,12 +372,12 @@ export class MockApi implements ApiClient {
   private cameras = seedCameras();
   private rules = seedRules();
   private alerts: AlertView[] = seedAlerts();
-  private suggestions: StaffSuggestion[] = [];
+  private suggestions: SuggestionView[] = [];
   private videos = seedVideos();
   private staffProfiles: StaffProfile[] = [];
   private resolved = new Set<string>();
   private alertSubs = new Set<(e: AlertView) => void>();
-  private suggestionSubs = new Set<(s: StaffSuggestion) => void>();
+  private suggestionSubs = new Set<(s: SuggestionView) => void>();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private readonly latency: number;
 
@@ -414,12 +422,14 @@ export class MockApi implements ApiClient {
   emitSuggestion() {
     const id = 'sug-track-7';
     if (this.resolved.has(id) || this.suggestions.some((s) => s.suggestion_id === id)) return;
-    const s: StaffSuggestion = {
+    const s: SuggestionView = {
       suggestion_id: id,
       camera_id: 'cam-sala',
       track_id: 7,
       staff_score: 0.82,
       reason_ro: 'Se mișcă între mese, a vizitat 4 mese în 3 minute și stă rar pe loc.',
+      snapshot: true,
+      snapshot_url: personSketch(),
     };
     this.suggestions.push(s);
     this.suggestionSubs.forEach((cb) => cb(s));
@@ -528,7 +538,7 @@ export class MockApi implements ApiClient {
     return this.delay(this.suggestions);
   }
 
-  subscribeSuggestions(cb: (s: StaffSuggestion) => void): Unsubscribe {
+  subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe {
     this.suggestionSubs.add(cb);
     return () => this.suggestionSubs.delete(cb);
   }

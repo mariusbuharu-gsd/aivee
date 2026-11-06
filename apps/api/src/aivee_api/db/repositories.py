@@ -249,10 +249,15 @@ class SuggestionRepository:
         self.s = session
 
     async def insert_if_new(self, suggestion: StaffSuggestion, device_id: str = "") -> bool:
+        # The snapshot itself is a file in SNAPSHOT_DIR named after the suggestion id.
+        path = f"{suggestion.suggestion_id}.jpg" if suggestion.snapshot else None
         stmt = (
             insert(SuggestionRow)
-            # The snapshot itself is a file in SNAPSHOT_DIR named after the suggestion id.
-            .values(device_id=device_id, **suggestion.model_dump(exclude={"snapshot"}))
+            .values(
+                device_id=device_id,
+                snapshot_path=path,
+                **suggestion.model_dump(exclude={"snapshot"}),
+            )
             .on_conflict_do_nothing(index_elements=[SuggestionRow.suggestion_id])
             .returning(SuggestionRow.id)
         )

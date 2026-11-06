@@ -1,6 +1,6 @@
 // Thin client for the FastAPI service (apps/api). Shapes follow its routers and schemas;
 // adjust here only, the rest of the dashboard depends on ApiClient.
-import type { DeviceStatus, Rule, StaffSuggestion, Zone } from '../contracts';
+import type { DeviceStatus, Rule, Zone } from '../contracts';
 import {
   ApiError,
   UNAUTHORIZED_EVENT,
@@ -27,6 +27,7 @@ import {
   type PendingInvite,
   type SavedZones,
   type StaffProfile,
+  type SuggestionView,
   type RulePatch,
   type RuleDraft,
   type Unsubscribe,
@@ -38,7 +39,7 @@ import { parseDetections } from '../live/detections';
 
 type WsMessage =
   | { type: 'alert'; data: AlertView }
-  | { type: 'suggestion'; data: StaffSuggestion }
+  | { type: 'suggestion'; data: SuggestionView }
   | { type: 'detections'; camera_id: string; data: unknown };
 
 /** `POST /api/rules/from-text` response. */
@@ -130,6 +131,11 @@ export class HttpApi implements ApiClient {
     before_snapshot_url: this.absolute(e.before_snapshot_url),
   });
 
+  private withPhoto = (s: SuggestionView): SuggestionView => ({
+    ...s,
+    snapshot_url: this.absolute(s.snapshot_url),
+  });
+
   listCameras() {
     return this.request<CameraView[]>('/api/cameras');
   }
@@ -198,8 +204,8 @@ export class HttpApi implements ApiClient {
     return (await this.request<AlertView[]>('/api/events')).map(this.withSnapshot);
   }
 
-  listSuggestions() {
-    return this.request<StaffSuggestion[]>('/api/staff/suggestions');
+  async listSuggestions() {
+    return (await this.request<SuggestionView[]>('/api/staff/suggestions')).map(this.withPhoto);
   }
 
   async confirmSuggestion(id: string) {
@@ -254,8 +260,8 @@ export class HttpApi implements ApiClient {
     return this.listen((m) => m.type === 'alert' && cb(this.withSnapshot(m.data)));
   }
 
-  subscribeSuggestions(cb: (s: StaffSuggestion) => void): Unsubscribe {
-    return this.listen((m) => m.type === 'suggestion' && cb(m.data));
+  subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe {
+    return this.listen((m) => m.type === 'suggestion' && cb(this.withPhoto(m.data)));
   }
 
   /** Live boxes for one camera; malformed frames are ignored (see `parseDetections`). */

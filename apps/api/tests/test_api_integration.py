@@ -353,12 +353,19 @@ async def test_metrics_combines_devices_and_cache(
     assert m["alert_latency_ms"] is None
 
 
-async def _suggestion(sessions: Any, suggestion_id: str | None = None) -> str:
+async def _suggestion(
+    sessions: Any, suggestion_id: str | None = None, snapshot: bool = False
+) -> str:
     sid = suggestion_id or f"s-{uuid.uuid4().hex[:6]}"
     async with sessions() as s:
         await SuggestionRepository(s).insert_if_new(
             StaffSuggestion(
-                suggestion_id=sid, camera_id="cam1", track_id=3, staff_score=0.7, reason_ro="x"
+                suggestion_id=sid,
+                camera_id="cam1",
+                track_id=3,
+                staff_score=0.7,
+                reason_ro="x",
+                snapshot=snapshot,
             ),
             "edge-01",
         )
@@ -388,6 +395,21 @@ async def test_confirm_and_reject_suggestions(
         (drop, False, "edge-01"),
     ]
     assert publisher.last(TOPICS.profiles) is None  # no snapshot → nothing learned
+
+
+async def test_pending_suggestions_link_the_blurred_crop_when_the_edge_sent_one(
+    api: httpx.AsyncClient, sessions: Any, settings: ApiSettings
+) -> None:
+    photo = await _suggestion(sessions, snapshot=True)
+    plain = await _suggestion(sessions)
+    (settings.snapshot_dir / f"{photo}.jpg").write_bytes(b"\xff\xd8crop")
+    urls = {
+        s["suggestion_id"]: s["snapshot_url"]
+        for s in (await api.get("/api/staff/suggestions")).json()
+    }
+    assert urls == {photo: f"/api/snapshots/{photo}", plain: None}
+    r = await api.get(urls[photo])
+    assert r.status_code == 200 and r.content == b"\xff\xd8crop"
 
 
 async def test_confirm_with_snapshot_learns_the_crop(
