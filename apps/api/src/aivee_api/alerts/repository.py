@@ -23,6 +23,7 @@ from aivee_api.alerts.domain import (
 )
 from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.models import Camera, Device, EventRow
+from aivee_api.videos.kind import not_upload
 
 STATE_FILTERS = ("opened", "acknowledged", "arrived", "closed", "open")
 
@@ -166,6 +167,7 @@ class AlertRepository:
                 EventRow.arrived_at.is_(None),
                 EventRow.closed_at.is_(None),
                 EventRow.realerted_at.is_(None),
+                not_upload(EventRow.device_id, EventRow.camera_id),  # a clip never re-alerts
             )
             .values(realerted_at=now)
             .returning(EventRow.event_id)
