@@ -31,10 +31,12 @@ function setup(
   let current: PushSubscription | null = opts.existing ?? null;
   const pushManager = {
     getSubscription: vi.fn(async () => current),
-    subscribe: vi.fn(async (_options: PushSubscriptionOptionsInit) => {
-      current = created;
-      return created;
-    }),
+    subscribe: vi.fn<(options: PushSubscriptionOptionsInit) => Promise<PushSubscription>>(
+      async () => {
+        current = created;
+        return created;
+      },
+    ),
   };
   const notification = {
     permission: opts.permission ?? 'default',
