@@ -12,6 +12,7 @@ from aivee_contracts.rules import Action, Condition, Rule
 from aivee_edge.domain.observation import BBox, Frame, ObjectObs, TrackObs
 from aivee_edge.domain.ports import Image
 from aivee_edge.domain.pose import Keypoint
+from aivee_edge.domain.role import StaffWeights
 from aivee_edge.pipeline import EdgePipeline, StepResult
 
 CAM = "cam-01"
@@ -263,6 +264,41 @@ def test_pose_runs_for_everyone_while_appearance_is_scored() -> None:
     assert result.frame.tracks[0].standing is True
 
 
+def test_enrolled_staff_standing_still_at_a_table_is_suggested() -> None:
+    """Appearance 1 and standing 1, no walking: 0.60 + 0.25 = 0.85 >= 0.7."""
+    waiter = TrackObs(track_id=7, bbox=at(T1))
+    frames = [Frame(ts=t / 10, tracks=(waiter,)) for t in range(31)]  # 3 s at 10 fps
+    rec = Recorder()
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        rec,
+        pose=StandingPose(),
+        embedder=CountingEmbedder(),
+        profiles=one_profile,
+    )
+    p.run()
+    assert [s.track_id for s in rec.suggestions] == [7]
+    assert rec.suggestions[0].staff_score >= 0.7
+    assert "stă în picioare" in rec.suggestions[0].reason_ro
+    assert rec.detections[-1].tracks[0].staff_score == pytest.approx(0.85, abs=0.01)
+
+
+def test_staff_weights_are_passed_to_the_classifier() -> None:
+    frames = [Frame(ts=0.0, tracks=(TrackObs(1, at(T1)),))]
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        embedder=CountingEmbedder(),
+        profiles=one_profile,
+        staff_weights=StaffWeights(appearance=0.3, standing=0.0, behaviour=0.3),
+    )
+    result = p.step()
+    assert result is not None
+    assert result.frame.tracks[0].staff_score == pytest.approx(0.5)  # (0.3 · 1 + 0.3 · 0) / 0.6
+
+
 def test_stance_falls_back_to_the_box_shape_without_pose() -> None:
     tall = TrackObs(track_id=1, bbox=(0.4, 0.2, 0.45, 0.6))  # 0.05 x 0.4 on 16:9 → 4.5
     squat = TrackObs(track_id=2, bbox=(0.6, 0.4, 0.75, 0.6))  # 0.15 x 0.2 on 16:9 → 0.75
@@ -339,7 +375,8 @@ def test_appearance_runs_only_with_profiles_and_at_most_every_interval() -> None
     )
     result = p.step()  # ts 0.5: first embed
     assert result is not None and result.verified
-    assert result.frame.tracks[0].staff_score == 0.5  # appearance 1.0, behaviour 0.0
+    # Appearance 1.0, behaviour 0.0, stance unknown: (0.60 · 1 + 0.15 · 0) / 0.75.
+    assert result.frame.tracks[0].staff_score == pytest.approx(0.8)
     p.run()  # ts 1.0 .. 4.5: embeds again at 2.5 and 4.5
     assert embedder.calls == 3
 

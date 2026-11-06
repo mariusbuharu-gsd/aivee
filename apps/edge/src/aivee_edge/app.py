@@ -19,6 +19,7 @@ from aivee_contracts.geometry import CameraConfig
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_edge.domain.observation import BBox
 from aivee_edge.domain.ports import FrameSource, Image, PersonDetector
+from aivee_edge.domain.role import StaffWeights
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.settings import EdgeSettings
 
@@ -156,6 +157,11 @@ def pipeline_tuning(settings: EdgeSettings) -> dict[str, Any]:
     return {
         "appearance_low": settings.appearance_low,
         "appearance_high": settings.appearance_high,
+        "staff_weights": StaffWeights(
+            appearance=settings.staff_w_appearance,
+            standing=settings.staff_w_standing,
+            behaviour=settings.staff_w_behaviour,
+        ),
     }
 
 

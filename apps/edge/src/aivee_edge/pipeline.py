@@ -39,7 +39,7 @@ from aivee_edge.domain.ports import (
     PersonDetector,
 )
 from aivee_edge.domain.pose import Keypoint, is_raised_hand
-from aivee_edge.domain.role import RoleClassifier
+from aivee_edge.domain.role import RoleClassifier, StaffWeights
 from aivee_edge.domain.stance import is_standing
 from aivee_edge.metrics import MetricsMeter, cpu_percent
 
@@ -120,6 +120,7 @@ class EdgePipeline:
         embed_interval_s: float = 2.0,
         appearance_low: float = LOW_SIMILARITY,
         appearance_high: float = HIGH_SIMILARITY,
+        staff_weights: StaffWeights | None = None,
         forget_after_s: float = 5.0,
         metrics_interval_s: float = 5.0,
         detections_interval_s: float = 0.2,
@@ -160,7 +161,14 @@ class EdgePipeline:
             arrive_s=arrive_s,
         )
         self.buffer = TrajectoryBuffer()
-        self.classifier = RoleClassifier(camera_id, id_factory)
+        weights = staff_weights or StaffWeights()
+        self.classifier = RoleClassifier(
+            camera_id,
+            id_factory,
+            w_appearance=weights.appearance,
+            w_standing=weights.standing,
+            w_behaviour=weights.behaviour,
+        )
         self.meter = MetricsMeter(device, metrics_interval_s, cpu)
         self._last_seen: dict[int, float] = {}
         self._appearance: dict[int, float | None] = {}
