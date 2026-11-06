@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 
+from aivee_api.alerts.audit import AuditWriter, get_audit_writer
 from aivee_api.audit.record import record
 from aivee_api.audit.repository import Target
 from aivee_api.auth.deps import Access, CurrentUser, require
@@ -73,6 +74,20 @@ async def update_camera(
     camera = await service.update(camera_id, data)
     await _record(s, p, "camera.updated", loc, camera, before=before, after=camera)
     return camera
+
+
+@router.delete("/{camera_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_camera(
+    camera_id: str,
+    s: SessionDep,
+    svc: ServicesDep,
+    p: CurrentUser,
+    audit: Annotated[AuditWriter, Depends(get_audit_writer)],
+) -> None:
+    """Zones and rules go with the camera; its events and alerts stay in the history."""
+    loc = await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
+    before = await CameraService(s, svc.sync).delete(camera_id, audit)
+    await _record(s, p, "camera.deleted", loc, before, before=before)
 
 
 async def _record(
