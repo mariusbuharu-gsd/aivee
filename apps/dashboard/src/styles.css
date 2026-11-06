@@ -2684,6 +2684,16 @@ label.btn:focus-within {
   display: flex;
   gap: 4px;
 }
+.setup-title {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.setup-left {
+  color: var(--text);
+}
+.setup-extra {
+  margin-top: 6px;
+}
 .setup-bar {
   height: 6px;
   border-radius: 999px;
