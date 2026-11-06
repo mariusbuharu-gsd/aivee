@@ -19,6 +19,7 @@ from aivee_api.alerts.router import router as alerts_router
 from aivee_api.audit.router import router as audit_router
 from aivee_api.auth.router import router as auth_router
 from aivee_api.cameras.router import router as cameras_router
+from aivee_api.capabilities import router as capabilities_router
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.deps import Services
 from aivee_api.devices.router import router as devices_router
@@ -137,6 +138,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         alerts_router,
         videos_router,
         frames_router,
+        capabilities_router,
     ):
         app.include_router(router)
 

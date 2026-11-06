@@ -11,10 +11,10 @@ from aivee_api.auth.deps import CurrentUser
 from aivee_api.auth.permissions import DEVICES_MANAGE
 from aivee_api.auth.principal import Principal
 from aivee_api.auth.scope import authorize_at, camera_location
+from aivee_api.capabilities import videos_available
 from aivee_api.db.models import VideoUploadRow
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Invalid, NotFound, Unavailable
-from aivee_api.videos.kind import is_upload_device
 from aivee_api.videos.probe import UnreadableVideo
 from aivee_api.videos.schemas import VideoAlert, VideoOut
 from aivee_api.videos.service import (
@@ -67,9 +67,7 @@ async def upload_video(
     `copy_from_camera_id`, and queue it. It never notifies the staff."""
     loc = _location(p, location_id or location_query)
     settings = svc.settings
-    if svc.videos is None or not settings.mqtt_upload_password:
-        raise Unavailable(OFF_RO)
-    if not is_upload_device(settings.mqtt_upload_user):
+    if not videos_available(svc):
         raise Unavailable(OFF_RO)
     if loc != svc.sync.site:
         raise Invalid(NOT_HERE_RO)
