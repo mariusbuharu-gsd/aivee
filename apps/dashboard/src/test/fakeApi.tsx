@@ -6,6 +6,7 @@ import type { ApiClient, Me } from '../api/client';
 import { ROLE_PERMISSIONS } from '../api/mockAccounts';
 import { ApiContext } from '../api/context';
 import { AuthContext, type AuthState } from '../auth/context';
+import { Toaster } from '../ui/Toaster';
 
 const noop = () => () => undefined;
 
@@ -96,7 +97,9 @@ export function renderWithApi(ui: ReactElement, api: ApiClient = fakeApi()) {
     ...render(
       <ApiContext.Provider value={api}>
         <AuthContext.Provider value={fakeAuth()}>
-          <MemoryRouter>{ui}</MemoryRouter>
+          <MemoryRouter>
+            <Toaster>{ui}</Toaster>
+          </MemoryRouter>
         </AuthContext.Provider>
       </ApiContext.Provider>,
     ),
