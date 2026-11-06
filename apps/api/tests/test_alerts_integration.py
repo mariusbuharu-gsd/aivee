@@ -5,6 +5,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -317,6 +318,61 @@ async def test_service_metrics(api: httpx.AsyncClient, sessions: Any) -> None:
     since = (T0 + timedelta(seconds=150)).isoformat()
     m = (await api.get("/api/metrics/service", params={"from": since})).json()
     assert (m["alerts"], m["wait"]["median_s"]) == (2, 105)
+
+
+async def test_alerts_and_events_page_with_before(api: httpx.AsyncClient, sessions: Any) -> None:
+    """`before` (an ISO time) pages both lists: only rows strictly older than it."""
+    a = _event("opened", 0, zone="t1")
+    b = _event("opened", 10, zone="t2")
+    c = _event("opened", 20, zone="t3")
+    for e in (a, b, c):
+        await _ingest(sessions, e)
+    await _ingest(sessions, _event("closed", 30, zone="t1"))
+
+    def ids(r: httpx.Response) -> list[str]:
+        assert r.status_code == 200, r.text
+        return [v["event_id"] for v in r.json()]
+
+    first = (await api.get("/api/alerts?limit=2")).json()
+    assert [v["event_id"] for v in first] == [c.event_id, b.event_id]
+    older = await api.get("/api/alerts", params={"limit": 2, "before": first[-1]["opened_at"]})
+    assert ids(older) == [a.event_id]
+
+    page = (await api.get("/api/events?limit=2")).json()
+    assert [e["state"] for e in page] == ["closed", "opened"]
+    rest = await api.get("/api/events", params={"before": page[-1]["at"]})
+    assert ids(rest) == [b.event_id, a.event_id]
+    assert (await api.get("/api/events?before=yesterday")).status_code == 422
+
+
+async def test_service_heatmap(api: httpx.AsyncClient, client_as: Client, sessions: Any) -> None:
+    for i, wait in enumerate([60, 100]):
+        await _ingest(sessions, _event("opened", i * 200, zone=f"z{i}"))
+        await _ingest(sessions, _event("arrived", i * 200 + wait, zone=f"z{i}"))
+    old = T0 - timedelta(days=10)
+    await _ingest(sessions, _event("opened", (old - T0).total_seconds(), zone="old"))
+
+    r = await api.get("/api/metrics/service/heatmap", params={"location_id": "demo"})
+    assert r.status_code == 200, r.text
+    m = r.json()
+    assert m["timezone"] == "Europe/Bucharest" and "from" in m and "to" in m
+    assert len(m["cells"]) == 7 and {len(row) for row in m["cells"]} == {24}
+    # the 10-day-old alert is outside the default 7 days
+    assert sum(c["alerts"] for row in m["cells"] for c in row) == 2
+    first = T0.astimezone(ZoneInfo("Europe/Bucharest"))
+    second = (T0 + timedelta(seconds=200)).astimezone(ZoneInfo("Europe/Bucharest"))
+    if (first.weekday(), first.hour) == (second.weekday(), second.hour):
+        assert m["cells"][first.weekday()][first.hour] == {"alerts": 2, "wait_median_s": 80}
+    else:
+        assert m["cells"][first.weekday()][first.hour] == {"alerts": 1, "wait_median_s": 60}
+
+    since = (T0 - timedelta(days=30)).isoformat()
+    m = (await api.get("/api/metrics/service/heatmap", params={"from": since})).json()
+    assert sum(c["alerts"] for row in m["cells"] for c in row) == 3
+
+    otto = await client_as("otto@a.ro")
+    r = await otto.get("/api/metrics/service/heatmap", params={"location_id": "demo"})
+    assert r.status_code == 404
 
 
 async def test_live_feed_pushes_folded_alerts_and_keeps_raw_events_legacy(

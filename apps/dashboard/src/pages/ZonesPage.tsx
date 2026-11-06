@@ -25,6 +25,7 @@ import {
   type Draft,
 } from '../zones/geometry';
 import './ZonesPage.css';
+import { BusyLabel } from '../ui/Eyes';
 
 const newId = () => `z-${Date.now().toString(36)}`;
 
@@ -243,7 +244,9 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                 {saving ? 'se salvează…' : 'modificări nesalvate'}
               </span>
               <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>
-                {saving ? 'Se salvează…' : 'Salvează zonele'}
+                <BusyLabel busy={saving} idle="Salvează zonele">
+                  Se salvează…
+                </BusyLabel>
               </button>
             </>
           ) : (

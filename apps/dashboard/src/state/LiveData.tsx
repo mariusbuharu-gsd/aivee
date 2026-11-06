@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type {
   AlertCase,
   AlertView,
@@ -13,6 +13,9 @@ import { foldAlerts } from '../alerts/fold';
 import { LiveDataContext, toLoadError, type LiveData, type LoadError } from './context';
 
 const METRICS_POLL_MS = 5_000;
+/** Events per `GET /api/events` page (the API's default); a full page means older ones exist. */
+const EVENTS_PAGE = 50;
+const CASES_PAGE = 100;
 
 /** Loads shared dashboard state once and keeps it fresh from the API's subscriptions. */
 export function LiveDataProvider({ children }: { children: ReactNode }) {
@@ -25,6 +28,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<LoadError | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [hasOlder, setHasOlder] = useState(false);
   const { location, can } = useAuth();
   const locationId = location?.id ?? null;
   const canView = can('alerts.view');
@@ -39,9 +43,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     if (!locationId || !canView) return;
     let alive = true;
     let pending: ReturnType<typeof setTimeout> | undefined;
+    // Merged, not replaced: older pages loaded by `loadOlder` keep their lifecycles.
     const load = () =>
-      api.listAlertCases({ location_id: locationId, limit: 100 }).then(
-        (rows) => alive && setCases(Object.fromEntries(rows.map((c) => [c.event_id, c]))),
+      api.listAlertCases({ location_id: locationId, limit: CASES_PAGE }).then(
+        (rows) => alive && setCases((prev) => ({ ...prev, ...byEventId(rows) })),
         () => undefined,
       );
     void load();
@@ -70,7 +75,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     Promise.all([
       api.listCameras(),
       canRules ? api.listRules() : Promise.resolve([]),
-      api.listAlerts(),
+      api.listAlerts({ limit: EVENTS_PAGE }),
       canReview ? api.listSuggestions() : Promise.resolve([]),
       api.getMetrics(),
     ])
@@ -80,6 +85,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
         setCameras(c);
         setRules(r);
         setEvents((prev) => mergeEvents(a, prev));
+        setHasOlder(a.length >= EVENTS_PAGE);
         setSuggestions((prev) => mergeSuggestions(s, prev));
         setMetrics(m);
       })
@@ -136,6 +142,33 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const loadingOlder = useRef(false);
+  /** One page before the oldest event held; the lifecycles of alerts opened before it too. */
+  const loadOlder = useCallback(async () => {
+    if (loadingOlder.current) return;
+    const oldest = events.reduce<string | null>(
+      (min, e) => (min === null || e.at < min ? e.at : min),
+      null,
+    );
+    if (oldest === null) return;
+    loadingOlder.current = true;
+    try {
+      const [page, older] = await Promise.all([
+        api.listAlerts({ before: oldest, limit: EVENTS_PAGE }),
+        locationId && canView
+          ? api
+              .listAlertCases({ location_id: locationId, before: oldest, limit: CASES_PAGE })
+              .catch(() => [])
+          : Promise.resolve([]),
+      ]);
+      setEvents((prev) => mergeEvents(prev, page));
+      setCases((prev) => ({ ...byEventId(older), ...prev }));
+      setHasOlder(page.length >= EVENTS_PAGE);
+    } finally {
+      loadingOlder.current = false;
+    }
+  }, [api, events, locationId, canView]);
+
   const alerts = useMemo(() => foldAlerts(events), [events]);
 
   const value = useMemo<LiveData>(
@@ -157,10 +190,14 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       dropSuggestion,
       cases,
       ack,
+      hasOlder,
+      loadOlder,
     }),
     [
       cases,
       ack,
+      hasOlder,
+      loadOlder,
       cameras,
       rules,
       events,
@@ -198,4 +235,8 @@ function upsert<T extends { id: string }>(list: T[], item: T): T[] {
 function mergeEvents(loaded: AlertView[], live: AlertView[]): AlertView[] {
   const seen = new Set(loaded.map((e) => e.event_id));
   return [...loaded, ...live.filter((e) => !seen.has(e.event_id))];
+}
+
+function byEventId(rows: AlertCase[]): Record<string, AlertCase> {
+  return Object.fromEntries(rows.map((c) => [c.event_id, c]));
 }

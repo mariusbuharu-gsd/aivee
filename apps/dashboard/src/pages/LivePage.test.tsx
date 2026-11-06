@@ -62,6 +62,36 @@ describe('Live', () => {
     expect(screen.getAllByLabelText(/^\d+ (deschise|noi)$/)).toHaveLength(1);
   });
 
+  it('the side column asks the Alerte question and lists at most 5 closed rows', async () => {
+    const user = userEvent.setup();
+    const api = renderLive('owner@aivee.demo', false);
+    api.emitSuggestion();
+    const side = await screen.findByRole('complementary', { name: 'Alerte recente' });
+    const question = await within(side).findByRole('article', {
+      name: /^#\d+ pare să fie din personal\?$/,
+    });
+    expect(question).toHaveClass('suggestion-q-side');
+    expect(within(side).queryByText(/scor/)).toBeNull();
+    expect(within(question).getByRole('button', { name: /^Da, #\d+ e din personal$/ }));
+    expect(within(question).getByRole('button', { name: /^Nu, #\d+ e client$/ }));
+
+    const rows = await within(side).findByRole('list', { name: 'Alerte închise' });
+    expect(rows.querySelectorAll(':scope > li')).toHaveLength(5);
+    expect(within(rows).getAllByTestId('dur-bar').length).toBeGreaterThan(0);
+    expect(within(side).queryByText('Vezi desfășurarea')).toBeNull();
+    expect(within(side).getByRole('link', { name: 'Toate alertele' })).toHaveAttribute(
+      'href',
+      '/alerte',
+    );
+    // A row opens on click and shows how the alert went.
+    const first = rows.querySelector<HTMLElement>(':scope > li');
+    if (!first) throw new Error('no row');
+    const summary = first.querySelector('summary');
+    if (!summary) throw new Error('no summary');
+    await user.click(summary);
+    expect(within(first).getByRole('list', { name: 'Desfășurarea alertei' })).toBeVisible();
+  });
+
   it('"Merg eu" on the band tells colleagues who goes, the alert stays open', async () => {
     const user = userEvent.setup();
     renderLive('staff@aivee.demo');

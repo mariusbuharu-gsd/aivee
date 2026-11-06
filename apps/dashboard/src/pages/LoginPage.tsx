@@ -8,6 +8,7 @@ import { isEmail, safeNext } from '../auth/session';
 import { AuthScene, AuthShell } from '../components/AuthShell';
 import { Banner } from '../ui/Banner';
 import { PasswordInput } from '../ui/controls';
+import { BusyLabel } from '../ui/Eyes';
 
 /** The demo accounts as the roles they stand for; one click signs in. */
 const DEMO_ROLES: Record<Role, { label: string; can: string }> = {
@@ -93,7 +94,9 @@ export function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
         />
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-          {busy ? 'Se verifică…' : 'Intră în cont'}
+          <BusyLabel busy={busy} idle="Intră în cont">
+            Se verifică…
+          </BusyLabel>
         </button>
         <div className="auth-forgot">
           <button

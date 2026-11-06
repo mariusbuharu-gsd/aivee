@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Annotated
 
 from aivee_contracts.events import BEFORE_SUFFIX
@@ -34,7 +34,11 @@ async def list_events(
     s: SessionDep,
     access: Annotated[Access, Depends(require(ALERTS_VIEW))],
     limit: int = Query(50, ge=1, le=500),
+    before: Annotated[
+        datetime | None, Query(description="Paging: only events before this ISO time")
+    ] = None,
 ) -> list[EventOut]:
+    """Newest first. The dashboard pages back with `before` = the oldest `at` it holds."""
     stmt = (
         events_at(access.location_id)
         .where(EventRow.state.in_(LEGACY_STATES))  # `arrived` only reaches the dashboard folded
@@ -42,6 +46,8 @@ async def list_events(
         .order_by(EventRow.at.desc())
         .limit(limit)
     )
+    if before is not None:
+        stmt = stmt.where(EventRow.at < before)
     return [event_out(r) for r in await s.scalars(stmt)]
 
 

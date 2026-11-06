@@ -239,6 +239,22 @@ describe('HttpApi videos', () => {
   });
 });
 
+describe('HttpApi alert paging', () => {
+  it('pages events and alert cases back with `before` and `limit`', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json([]), json([]), json([]));
+    api.setLocation('centru');
+    await api.listAlerts();
+    await api.listAlerts({ before: '2026-11-06T10:00:00+00:00', limit: 50 });
+    await api.listAlertCases({ location_id: 'centru', before: '2026-11-06T10:00:00Z', limit: 100 });
+    expect(fetch.mock.calls.map(([u]) => String(u))).toEqual([
+      'http://api:8000/api/events?location_id=centru',
+      'http://api:8000/api/events?before=2026-11-06T10%3A00%3A00%2B00%3A00&limit=50&location_id=centru',
+      'http://api:8000/api/alerts?location_id=centru&before=2026-11-06T10%3A00%3A00Z&limit=100',
+    ]);
+  });
+});
+
 describe('HttpApi accounts (auth-roles-audit spec)', () => {
   it('sends the session cookie and scopes resources to the current location', async () => {
     const api = new HttpApi('http://api:8000');

@@ -27,6 +27,18 @@ const rule = entry('r', 'rule.updated', 30, {
 });
 
 describe('foldHistory', () => {
+  it('folds an alert split across two "Mai vechi" pages back into one thread', () => {
+    const page1 = [entry('3', 'alert.closed', 120), rule];
+    const page2 = [
+      entry('2', 'alert.acknowledged', 60, { actor: ana }),
+      entry('1', 'alert.opened', 0),
+    ];
+    expect(foldHistory(page1).map((i) => i.type)).toEqual(['entry', 'entry']);
+    const out = foldHistory([...page1, ...page2]);
+    expect(out.map((i) => i.type)).toEqual(['thread', 'entry']);
+    expect(out[0]?.type === 'thread' && out[0].steps).toHaveLength(3);
+  });
+
   it('folds one alert into one thread at the place of its newest entry', () => {
     const items = [
       entry('4', 'alert.closed', 120),

@@ -12,6 +12,16 @@
 .alerts-main .feed-group {
   margin: 0 0 8px;
 }
+/* "Mai multe" under the closed rows: the next page, quiet and centred. */
+.alerts-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.alerts-more-q {
+  align-self: flex-start;
+}
 .alerts-side {
   display: flex;
   flex-direction: column;

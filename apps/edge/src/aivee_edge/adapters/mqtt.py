@@ -8,9 +8,12 @@
   `camera_id`, else the first one) over the camera given at construction.
 - `commands` (not retained) are queued; the pipeline drains them with `take_commands()` on
   its own thread, so the network thread never touches pipeline state.
+- Transport: plain TCP by default; `transport="websockets"` (+ `ws_path`) and `tls=True` let a
+  remote edge reach the broker as `wss://host:443/path` through an HTTPS reverse proxy.
 """
 
 import logging
+import ssl
 import threading
 import time
 from collections import deque
@@ -39,6 +42,7 @@ log = logging.getLogger(__name__)
 
 SESSION_EXPIRY_S = 3600
 MAX_PENDING_COMMANDS = 256
+TRANSPORTS = ("tcp", "websockets")
 
 
 class MqttEdgeClient:
@@ -57,7 +61,12 @@ class MqttEdgeClient:
         camera_id: str | None = None,
         version: str = "0.1.0",
         keepalive: int = 30,
+        transport: str = "tcp",
+        tls: bool = False,
+        ws_path: str = "/mqtt",
     ) -> None:
+        if transport not in TRANSPORTS:
+            raise ValueError(f"MQTT transport must be one of {TRANSPORTS}, not {transport!r}")
         self.topics = Topics(site=site, device=device)
         self._host, self._port, self._keepalive = host, port, keepalive
         self._device, self._version = device, version
@@ -74,7 +83,13 @@ class MqttEdgeClient:
             callback_api_version=CallbackAPIVersion.VERSION2,
             client_id=f"edge-{site}-{device}",
             protocol=mqtt.MQTTv5,
+            transport="websockets" if transport == "websockets" else "tcp",
         )
+        if transport == "websockets":
+            self._client.ws_set_options(path=ws_path)
+        if tls:
+            # System CA bundle, hostname checked: the server presents a public certificate.
+            self._client.tls_set_context(ssl.create_default_context())
         self._client.username_pw_set(user, password)
         self._client.will_set(self.topics.status, self._status("offline"), qos=1, retain=True)
         self._client.on_connect = self._on_connect

@@ -181,6 +181,9 @@ def build_client(settings: EdgeSettings) -> MqttEdgeClient:
         settings.device,
         camera=fallback,
         camera_id=settings.camera_id,
+        transport=settings.mqtt_transport,
+        tls=settings.mqtt_tls,
+        ws_path=settings.mqtt_ws_path,
     )
 
 

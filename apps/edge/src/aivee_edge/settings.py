@@ -1,6 +1,7 @@
 """Edge configuration from the environment (and `.env` when run from the repo root)."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,15 +10,20 @@ ROTATIONS = (0, 90, 180, 270)
 
 
 class EdgeSettings(BaseSettings):
-    """Env: MQTT_HOST, MQTT_PORT, MQTT_EDGE_USER, MQTT_EDGE_PASSWORD, SITE, DEVICE,
-    CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, GRACE_S, DETECTOR_MODEL, POSE_MODEL,
-    APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH, STAFF_W_APPEARANCE,
-    STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE, CONFIG_WAIT_S, VISUAL_HZ."""
+    """Env: MQTT_HOST, MQTT_PORT, MQTT_TRANSPORT, MQTT_TLS, MQTT_WS_PATH, MQTT_EDGE_USER,
+    MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, GRACE_S,
+    DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH,
+    STAFF_W_APPEARANCE, STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE,
+    CONFIG_WAIT_S, VISUAL_HZ."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883
+    mqtt_transport: Literal["tcp", "websockets"] = "tcp"
+    """`websockets` for a remote edge behind an HTTPS proxy (with MQTT_TLS=true, port 443)."""
+    mqtt_tls: bool = False
+    mqtt_ws_path: str = "/mqtt"
     mqtt_edge_user: str = "edge-01"
     mqtt_edge_password: str = ""
 

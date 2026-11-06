@@ -7,6 +7,7 @@ import {
   type AlertCase,
   type AlertView,
   type AuditPage,
+  type AlertPageQuery,
   type AuditQuery,
   type Invite,
   type InviteInfo,
@@ -17,6 +18,7 @@ import {
   type Member,
   type RegisterInput,
   type Role,
+  type ServiceHeatmap,
   type ServiceMetrics,
   type ApiClient,
   type CameraFrame,
@@ -226,8 +228,11 @@ export class HttpApi implements ApiClient {
     await this.request<undefined>(`/api/rules/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
-  async listAlerts() {
-    return (await this.request<AlertView[]>('/api/events')).map(this.withSnapshot);
+  async listAlerts(q: AlertPageQuery = {}) {
+    const qs = query(q);
+    return (await this.request<AlertView[]>(`/api/events${qs ? `?${qs}` : ''}`)).map(
+      this.withSnapshot,
+    );
   }
 
   async listSuggestions() {
@@ -447,7 +452,7 @@ export class HttpApi implements ApiClient {
     return this.request<AuditPage>(`/api/audit?${query(q)}`);
   }
 
-  listAlertCases(q: { location_id: string; state?: string; limit?: number }) {
+  listAlertCases(q: { location_id: string; state?: string; limit?: number; before?: string }) {
     return this.request<AlertCase[]>(`/api/alerts?${query(q)}`);
   }
 
@@ -457,6 +462,10 @@ export class HttpApi implements ApiClient {
 
   getServiceMetrics(q: { location_id: string; from?: string; to?: string }) {
     return this.request<ServiceMetrics>(`/api/metrics/service?${query(q)}`);
+  }
+
+  getServiceHeatmap(q: { location_id: string; from?: string; to?: string }) {
+    return this.request<ServiceHeatmap>(`/api/metrics/service/heatmap?${query(q)}`);
   }
 }
 
