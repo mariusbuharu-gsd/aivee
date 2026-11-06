@@ -1,7 +1,8 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from aivee_contracts.rules import Rule
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from aivee_api.audit.record import record
 from aivee_api.audit.repository import Target
@@ -11,8 +12,9 @@ from aivee_api.auth.principal import Principal
 from aivee_api.auth.scope import authorize_camera, authorize_rule, camera_ids_at, rule_location
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Conflict
-from aivee_api.rules.schemas import FromTextIn, FromTextOut, RuleIn, RulePatch
+from aivee_api.rules.schemas import FromTextIn, FromTextOut, RuleIn, RulePatch, RuleStats
 from aivee_api.rules.service import RuleService
+from aivee_api.rules.stats import rule_stats
 from aivee_api.videos.kind import is_upload_camera
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
@@ -81,6 +83,14 @@ async def rule_from_text(
         rule = await service.create(RuleIn.model_validate(rule.model_dump()))
         await _created(s, p, loc, rule)
     return FromTextOut(rule=rule, explanation_ro=explanation, saved=data.save)
+
+
+@router.get("/stats")
+async def get_rule_stats(
+    s: SessionDep, access: RulesAccess, days: Annotated[int, Query(ge=1, le=90)] = 7
+) -> RuleStats:
+    """Alerts each rule of the location raised per day, the last `days` days (UTC)."""
+    return await rule_stats(s, access.location_id, days, datetime.now(UTC).date())
 
 
 @router.get("/{rule_id}")

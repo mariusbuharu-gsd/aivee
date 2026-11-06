@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../api/context';
 import { RuleComposer, RuleDraftEditor } from '../components/RuleComposer';
 import type { Rule } from '../contracts';
 import { useAuth } from '../auth/context';
 import { shortRule } from '../rules/chips';
 import { describeRule } from '../rules/describe';
+import { RuleSparkline } from '../rules/RuleSparkline';
 import { ruleTemplates } from '../rules/templates';
 import { useLiveData } from '../state/context';
 import { Banner } from '../ui/Banner';
@@ -17,9 +18,21 @@ import './RulesPage.css';
 import { BusyLabel } from '../ui/Eyes';
 
 export function RulesPage() {
+  const api = useApi();
   const { rules, cameras, addRule } = useLiveData();
   const { location } = useAuth();
   const [cameraId, setCameraId] = useState<string>('');
+  const [stats, setStats] = useState<Map<string, number[]>>(new Map());
+  useEffect(() => {
+    let live = true;
+    api.getRuleStats(7).then(
+      (s) => live && setStats(new Map(s.rules.map((r) => [r.rule_id, r.per_day]))),
+      () => live && setStats(new Map()), // the cards just show no sparkline
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, location?.id]);
   const selected = cameraId || cameras[0]?.id || '';
   const picker =
     cameras.length > 1 ? (
@@ -60,26 +73,26 @@ export function RulesPage() {
         {groups.map((g) => (
           <div key={g.camera.id}>
             {cameras.length > 1 && <h3 className="feed-group">{g.camera.name}</h3>}
-            <RuleList rules={g.rules} />
+            <RuleList rules={g.rules} stats={stats} />
           </div>
         ))}
-        {orphans.length > 0 && <RuleList rules={orphans} />}
+        {orphans.length > 0 && <RuleList rules={orphans} stats={stats} />}
       </section>
     </div>
   );
 }
 
-function RuleList({ rules }: { rules: Rule[] }) {
+function RuleList({ rules, stats }: { rules: Rule[]; stats: Map<string, number[]> }) {
   return (
     <ul className="cards">
       {rules.map((r) => (
-        <RuleCard key={r.id} rule={r} />
+        <RuleCard key={r.id} rule={r} perDay={stats.get(r.id)} />
       ))}
     </ul>
   );
 }
 
-function RuleCard({ rule }: { rule: Rule }) {
+function RuleCard({ rule, perDay }: { rule: Rule; perDay?: number[] }) {
   const api = useApi();
   const toast = useToast();
   const { addRule, removeRule } = useLiveData();
@@ -149,6 +162,7 @@ function RuleCard({ rule }: { rule: Rule }) {
       </div>
       <p className="rule-line">{shortRule(rule)}</p>
       {rule.prompt_ro && <p className="muted small rule-prompt">„{rule.prompt_ro}”</p>}
+      {perDay && <RuleSparkline perDay={perDay} />}
       {error && <Banner tone="error" title={error} />}
       <details className="tech">
         <summary>Detalii</summary>

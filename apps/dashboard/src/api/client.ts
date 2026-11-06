@@ -109,6 +109,13 @@ export interface SavedZones {
   warnings_ro: string[];
 }
 
+/** `GET /api/rules/stats?days=N`: alerts each rule raised per (UTC) day, oldest day first. */
+export interface RuleStats {
+  /** ISO dates (`YYYY-MM-DD`), the last N days up to today. */
+  days: string[];
+  rules: { rule_id: string; total: number; per_day: number[] }[];
+}
+
 /** A rule drafted from Romanian text; not saved until the user confirms it. */
 export interface RuleDraft {
   rule: Rule;
@@ -218,6 +225,8 @@ export interface ApiClient extends AccountApi {
   /** Pause/resume (`enabled`) or edit a saved rule; the edge gets the new version. */
   updateRule(id: string, patch: RulePatch): Promise<Rule>;
   deleteRule(id: string): Promise<void>;
+  /** Alerts per rule per day over the last `days` days (default 7), current location. */
+  getRuleStats(days?: number): Promise<RuleStats>;
   listAlerts(): Promise<AlertView[]>;
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe;
   listSuggestions(): Promise<SuggestionView[]>;
@@ -292,6 +301,9 @@ export interface Location {
   name: string;
   type: string;
   telegram_chat_id?: string | null;
+  /** `GET /api/locations` only: live cameras at the location, and those whose device is online. */
+  cameras_total?: number;
+  cameras_online?: number;
 }
 
 /** "Conectează Telegram" deep links (`POST /api/locations/{id}/telegram/link`), single use. */
@@ -313,6 +325,8 @@ export interface Member {
   name: string;
   email: string;
   role: Role;
+  /** Has a Web Push subscription: their phone or browser gets the alerts. */
+  push_enabled?: boolean;
 }
 
 export interface Invite {
