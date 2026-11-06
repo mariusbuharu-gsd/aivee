@@ -83,7 +83,7 @@ class YoloDetector:
     ) -> None:
         from ultralytics import YOLO
 
-        self._model = YOLO(str(model_path), task="detect")
+        self._model: Any = YOLO(str(model_path), task="detect")
         self._names: dict[int, str] = dict(self._model.names)
         self._class_ids = class_ids_for(self._names, classes)
         self._conf = conf

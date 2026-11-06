@@ -63,7 +63,7 @@ class PoseEstimator:
     ) -> None:
         from ultralytics import YOLO
 
-        self._model = YOLO(str(model_path), task="pose")
+        self._model: Any = YOLO(str(model_path), task="pose")
         self._conf = conf
         self._imgsz = imgsz
         self._min_iou = min_iou
