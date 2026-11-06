@@ -1,0 +1,132 @@
+# AiVee on the GSD develop swarm: stack `aivee-demo`, deployed from ~/aivee-demo on the manager
+# (gsd-manager). Secrets: ~/aivee-demo/aivee.env next to this file (mode 600, never in git).
+# Images are built on a laptop and pushed to Nexus (deploy/aivee-demo/build.sh); see README.md.
+#
+#   https://aivee.earth.sv.gsd.com.ro       site       presentation site (static)
+#   https://app-aivee.earth.sv.gsd.com.ro   dashboard  SPA + same-origin /api, /ws → api
+#   wss://mqtt-aivee.earth.sv.gsd.com.ro    mosquitto  MQTT over WebSockets for remote edges
+#
+# Everything is pinned to dev-worker-1: the database, the broker's retained state and the
+# snapshots volume shared by api and ingest live there, and dev-worker-2 crashes now and then.
+# A change to this file is a stack deploy with TAG set to the images already pushed:
+#   TAG=<sha8> docker stack deploy --with-registry-auth -c stack.yml aivee-demo
+x-pin: &pin
+  placement: { constraints: ["node.hostname == dev-worker-1"] }
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    env_file: aivee.env
+    volumes: [pg-data:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      retries: 30
+    deploy:
+      <<: *pin
+      resources: { limits: { memory: 1g } }
+
+  # Same entrypoint and ACL as local (infra/mosquitto), plus the WebSockets listener :9001 and
+  # the extra device accounts from MQTT_EXTRA_DEVICES (edge-coleg-1..3).
+  mosquitto:
+    image: docker-hub.gsd.com.ro/aivee/mosquitto:${TAG:?set TAG}
+    env_file: aivee.env
+    volumes: [mosquitto-data:/mosquitto/data]
+    networks: [internal, traefik-network]
+    deploy:
+      <<: *pin
+      resources: { limits: { memory: 128m } }
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.aivee-demo-mqtt.rule: Host(`mqtt-aivee.earth.sv.gsd.com.ro`)
+        traefik.http.routers.aivee-demo-mqtt.entrypoints: web
+        traefik.http.services.aivee-demo-mqtt.loadbalancer.server.port: "9001"
+
+  api:
+    image: docker-hub.gsd.com.ro/aivee/api:${TAG:?set TAG}
+    env_file: aivee.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SITE: demo
+      DEVICE: edge-01
+      SNAPSHOT_DIR: /data/snapshots
+      VIDEO_DIR: /data/videos
+      CORS_ORIGINS: https://app-aivee.earth.sv.gsd.com.ro
+      DASHBOARD_URL: https://app-aivee.earth.sv.gsd.com.ro
+      COOKIE_SECURE: "true"
+      # Video upload is off on the server: without MQTT_UPLOAD_PASSWORD POST /api/videos
+      # answers 503 (the clip runner needs the edge + models inside this image).
+      MQTT_UPLOAD_PASSWORD: ""
+    volumes:
+      - snapshots:/data/snapshots
+      - videos:/data/videos
+    networks: [internal]
+    deploy:
+      <<: *pin
+      resources: { limits: { memory: 1g } }
+      update_config: { order: stop-first, failure_action: rollback }
+
+  # One replica. TELEGRAM_POLL=false: the laptop's ingest already long-polls the same bot and
+  # Telegram allows one getUpdates caller per bot (a second one gets 409). Sending still works.
+  # "Conectează Telegram" and "Preiau ✋" need the poller: give the server its own bot
+  # (TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME in aivee.env) and drop this override.
+  ingest:
+    image: docker-hub.gsd.com.ro/aivee/ingest:${TAG:?set TAG}
+    env_file: aivee.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SNAPSHOT_DIR: /data/snapshots
+      TELEGRAM_POLL: "false"
+      PUBLIC_DASHBOARD_URL: https://app-aivee.earth.sv.gsd.com.ro
+    volumes: [snapshots:/data/snapshots]
+    networks: [internal]
+    deploy:
+      <<: *pin
+      replicas: 1
+      resources: { limits: { memory: 512m } }
+      restart_policy: { condition: any, delay: 5s }
+
+  dashboard:
+    image: docker-hub.gsd.com.ro/aivee/dashboard:${TAG:?set TAG}
+    networks: [internal, traefik-network]
+    deploy:
+      <<: *pin
+      resources: { limits: { memory: 64m } }
+      update_config: { order: start-first, failure_action: rollback }
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.aivee-demo-app.rule: Host(`app-aivee.earth.sv.gsd.com.ro`)
+        traefik.http.routers.aivee-demo-app.entrypoints: web
+        traefik.http.services.aivee-demo-app.loadbalancer.server.port: "80"
+
+  site:
+    image: docker-hub.gsd.com.ro/aivee/site:${TAG:?set TAG}
+    networks: [traefik-network]
+    deploy:
+      <<: *pin
+      resources: { limits: { memory: 32m } }
+      update_config: { order: start-first, failure_action: rollback }
+      labels:
+        traefik.enable: "true"
+        traefik.http.routers.aivee-demo-site.rule: Host(`aivee.earth.sv.gsd.com.ro`)
+        traefik.http.routers.aivee-demo-site.entrypoints: web
+        traefik.http.services.aivee-demo-site.loadbalancer.server.port: "80"
+
+volumes:
+  pg-data:
+  mosquitto-data:
+  snapshots:
+  videos:
+
+networks:
+  internal:
+    driver: overlay
+  traefik-network:
+    external: true
