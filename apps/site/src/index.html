@@ -49,6 +49,7 @@
         <nav aria-label="Secțiuni">
           <ul class="snav__links" id="snav-links">
             <li><a href="#poveste">Povestea</a></li>
+            <li><a href="#reguli">Reguli</a></li>
             <li><a href="#cum">Cum funcționează</a></li>
             <li><a href="#confidentialitate">Confidențialitate</a></li>
             <li><a href="#demo">Demo</a></li>
@@ -164,50 +165,62 @@
         </div>
       </section>
 
+      <!-- Rules in Romanian: the logo eyes read the request and drop what they understood into chips. -->
+      <section id="reguli" class="section section--tint rules" aria-labelledby="reguli-titlu">
+        <div class="wrap rules__grid">
+          <div class="rules__intro">
+            <p class="eyebrow">Reguli în limba română</p>
+            <h2 id="reguli-titlu">Scrii cum vorbești. AiVee citește.</h2>
+            <p class="lead">
+              Nu ai meniuri de configurat. Ochii trec prin propoziția ta, iau din ea locul, timpii și pe
+              cine să anunțe, și îți arată ce au înțeles înainte să pornească regula.
+            </p>
+          </div>
+          <figure class="reader" aria-label="Exemplu: AiVee citește o cerere în română și scoate din ea regula">
+            <svg class="reader__eyes" viewBox="4.5 25.5 91 49" aria-hidden="true">
+              <circle class="ring" cx="29" cy="50" r="19" /><circle class="pupil" cx="29" cy="50" r="8" />
+              <circle class="ring" cx="71" cy="50" r="19" /><circle class="pupil" cx="71" cy="50" r="8" />
+            </svg>
+            <blockquote class="reader__text">„Anunță-mă dacă <span class="k hit" data-i="0">la o masă</span> stă <span class="k hit" data-i="1">cineva mai mult de un minut</span> și <span class="k hit" data-i="2">nu trece niciun ospătar 5 minute</span>.”</blockquote>
+            <figcaption class="reader__cap">Ce a înțeles AiVee</figcaption>
+            <ul class="reader__chips">
+              <li class="chip" data-i="0"><small>Unde</small><span>la orice masă</span></li>
+              <li class="chip" data-i="1"><small>Client</small><span>stă peste 1 min</span></li>
+              <li class="chip" data-i="2"><small>Ospătar</small><span>lipsește 5 min</span></li>
+              <li class="chip chip--then" data-i="3"><small>Atunci</small><span>anunță echipa pe telefon</span></li>
+            </ul>
+          </figure>
+        </div>
+      </section>
+
       <!-- How it works -->
       <section id="cum" class="section" aria-labelledby="cum-titlu">
         <div class="wrap">
           <p class="eyebrow">Cum funcționează</p>
           <h2 id="cum-titlu">Cum funcționează, în 3 pași</h2>
-          <div class="cum__grid">
-            <ol class="steps">
-              <li class="step">
-                <span class="step__n" aria-hidden="true">1</span>
-                <div>
-                  <h3>Conectezi camera și desenezi zona</h3>
-                  <p>Camera pe care o ai deja trimite imaginea către AiVee. Pe o imagine de la ea trasezi zonele care contează: mese, casa, intrarea, un raft. Durează un minut.</p>
-                </div>
-              </li>
-              <li class="step">
-                <span class="step__n" aria-hidden="true">2</span>
-                <div>
-                  <h3>Scrii regula în română</h3>
-                  <p>AiVee îți arată ce a înțeles. Tu confirmi, modifici sau renunți. Nimic nu pornește fără acordul tău.</p>
-                </div>
-              </li>
-              <li class="step">
-                <span class="step__n" aria-hidden="true">3</span>
-                <div>
-                  <h3>Primești alerta</h3>
-                  <p>Pe telefon, cu o poză în care fețele sunt blurate. Alerta se închide singură când cineva din personal ajunge în zonă.</p>
-                </div>
-              </li>
-            </ol>
-            <figure class="reader" aria-label="Exemplu: AiVee citește o cerere în română și scoate din ea regula">
-              <svg class="reader__eyes" viewBox="4.5 25.5 91 49" aria-hidden="true">
-                <circle class="ring" cx="29" cy="50" r="19" /><circle class="pupil" cx="29" cy="50" r="8" />
-                <circle class="ring" cx="71" cy="50" r="19" /><circle class="pupil" cx="71" cy="50" r="8" />
-              </svg>
-              <blockquote class="reader__text">„Anunță-mă dacă <span class="k hit" data-i="0">la o masă</span> stă <span class="k hit" data-i="1">cineva mai mult de un minut</span> și <span class="k hit" data-i="2">nu trece niciun ospătar 5 minute</span>.”</blockquote>
-              <figcaption class="reader__cap">Ce a înțeles AiVee</figcaption>
-              <ul class="reader__chips">
-                <li class="chip" data-i="0"><small>Unde</small><span>la orice masă</span></li>
-                <li class="chip" data-i="1"><small>Client</small><span>stă peste 1 min</span></li>
-                <li class="chip" data-i="2"><small>Ospătar</small><span>lipsește 5 min</span></li>
-                <li class="chip chip--then" data-i="3"><small>Atunci</small><span>anunță echipa pe telefon</span></li>
-              </ul>
-            </figure>
-          </div>
+          <ol class="steps">
+            <li class="step">
+              <span class="step__n" aria-hidden="true">1</span>
+              <div>
+                <h3>Conectezi camera și desenezi zona</h3>
+                <p>Camera pe care o ai deja trimite imaginea către AiVee. Pe o imagine de la ea trasezi zonele care contează: mese, casa, intrarea, un raft. Durează un minut.</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step__n" aria-hidden="true">2</span>
+              <div>
+                <h3>Scrii regula în română</h3>
+                <p>AiVee îți arată ce a înțeles. Tu confirmi, modifici sau renunți. Nimic nu pornește fără acordul tău.</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step__n" aria-hidden="true">3</span>
+              <div>
+                <h3>Primești alerta</h3>
+                <p>Pe telefon, cu o poză în care fețele sunt blurate. Alerta se închide singură când cineva din personal ajunge în zonă.</p>
+              </div>
+            </li>
+          </ol>
           <p class="note-text">
             Personalul îl înveți din 2–3 poze cu uniforma și o propoziție („personalul poartă tricou
             bordo”). AiVee observă și cum se mișcă: cine trece pe la multe zone e probabil angajat. Te
@@ -378,7 +391,8 @@
             <h2 id="pilot-titlu">Vrei să vezi AiVee pe camerele tale?</h2>
             <p class="lead">
               Căutăm restaurante independente din Sibiu care vor să încerce AiVee cu camerele pe care le
-              au deja. Sună-ne, scrie-ne sau lasă-ne datele și stabilim împreună ce urmărim.
+              au deja. Sună-ne, scrie-ne sau lasă-ne datele: îți arătăm AiVee pe sala ta în 20 de minute și
+              stabilim împreună ce urmărim.
             </p>
             <dl class="contact">
               <div class="contact__row">
