@@ -1,0 +1,36 @@
+/* Locații: one column of cards; each card says what the location still lacks, as a button. */
+.locations-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.locations-intro p {
+  margin: 0;
+}
+.locations-page {
+  max-width: 820px;
+}
+.location-card {
+  align-items: center;
+}
+/* Name, "curentă" and ⋯ stay on one line on a phone. */
+.location-card .location-open {
+  flex: 1 1 0;
+}
+.location-needs {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+.location-needs .telegram-connect {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.locations-first {
+  max-width: 520px;
+}
