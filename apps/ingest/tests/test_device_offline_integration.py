@@ -145,7 +145,8 @@ async def test_offline_closes_open_and_acknowledged_alerts_once(
     assert all(r.location_id == SITE and r.org_id == "org" for r in system)
     assert all(r.after == {"reason": "device_offline"} for r in system)
 
-    texts = [t for n in notifiers for t in n.texts]
+    # t3 closed by itself earlier (its own "client left" follow-up); one device note.
+    texts = [t for n in notifiers for t in n.texts if t[3] == "device"]
     assert len(texts) == 1
     text, tag, title, kind = texts[0]
     assert text == "edge-01 s-a deconectat — 2 alerte închise"

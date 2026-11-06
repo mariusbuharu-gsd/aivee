@@ -2,9 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from zoneinfo import ZoneInfo
 
+from aivee_api.alerts.schemas import AlertView
 from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent
 
@@ -27,6 +28,23 @@ class Notifier(Protocol):
         notification); `title` is the push title where the channel has one; `kind` tells
         the dashboard's service worker whether the replaced notification rings again."""
         ...
+
+
+@runtime_checkable
+class LifecycleNotifier(Protocol):
+    """Optional on a notifier: how the alert ends and the reminders while it is open."""
+
+    async def alert_resolved(self, view: AlertView, line: str) -> None:
+        """The alert ended (`line` says how, e.g. "✅ Rezolvat · …"): Telegram edits the
+        original message, dropping its buttons."""
+        ...
+
+    async def alert_reminder(self, view: AlertView, text: str) -> None:
+        """ "⏰ Încă neservit: Masa 1, de 4 min" while it is open and nobody arrived."""
+        ...
+
+
+REMINDER_TITLE = "AiVee · Încă neservit"
 
 
 def with_prefix(prefix: str, text: str) -> str:
@@ -56,3 +74,9 @@ class LogNotifier:
         self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
         log.info("ALERT %s (alert: %s)", text, tag)
+
+    async def alert_resolved(self, view: AlertView, line: str) -> None:
+        log.info("ALERT %s %s", view.event_id, line)
+
+    async def alert_reminder(self, view: AlertView, text: str) -> None:
+        log.info("ALERT %s (alert: %s)", text, view.event_id)

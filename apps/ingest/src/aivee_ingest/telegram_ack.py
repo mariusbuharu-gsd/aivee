@@ -68,7 +68,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _event_of(view: AlertView) -> AlertEvent:
+def event_of(view: AlertView) -> AlertEvent:
     return AlertEvent(
         event_id=view.event_id,
         rule_id=view.rule_id,
@@ -122,7 +122,7 @@ class DbAckStore:
             entry = acknowledged_entry(acked, AlertUser(f"telegram:{telegram_user_id}", name))
             await self._audit.append(s, replace(entry, after={"via": "telegram"}))
             await s.commit()
-        context = await alert_context(self._sessions, _event_of(acked))
+        context = await alert_context(self._sessions, event_of(acked))
         return AckOutcome("acked", by=name, at=at, context=context)
 
 

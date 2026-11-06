@@ -5,6 +5,8 @@ from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Float,
@@ -121,6 +123,12 @@ class EventRow(Base):
     acknowledged_by_name: Mapped[str | None] = mapped_column(Text)
     # Set once when the shift is told again that nobody arrived after the ack (ingest).
     realerted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The Telegram alert as sent (ingest edits it when the alert resolves) and the last
+    # "⏰ Încă neservit" reminder (REMIND_S).
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    telegram_photo: Mapped[bool | None] = mapped_column(Boolean)
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Set when the system (not the edge) closed it: device_offline | device_restarted |

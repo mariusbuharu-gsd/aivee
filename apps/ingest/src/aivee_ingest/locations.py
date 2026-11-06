@@ -57,3 +57,17 @@ async def alert_context(
         conditions=conditions,
         verification=view.verification if view else None,
     )
+
+
+async def rule_conditions(
+    sessions: async_sessionmaker[AsyncSession], rule_id: str
+) -> list[Condition]:
+    """The rule's conditions, empty when the rule is gone or unreadable."""
+    async with sessions() as s:
+        row = await s.get(RuleRow, rule_id)
+    if row is None:
+        return []
+    try:
+        return list(Rule.model_validate(row.rule).all_of)
+    except ValidationError:
+        return []

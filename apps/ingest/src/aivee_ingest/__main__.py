@@ -18,6 +18,8 @@ from aivee_ingest.handler import IngestHandler
 from aivee_ingest.locations import alert_context, telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
 from aivee_ingest.realert import Realerter, run_realerts
+from aivee_ingest.remind import Reminder, run_reminders
+from aivee_ingest.sent import DbSentMessages
 from aivee_ingest.telegram import ContextLookup, TelegramNotifier
 from aivee_ingest.telegram_ack import AlertCallbacks, DbAckStore
 from aivee_ingest.telegram_link import (
@@ -63,6 +65,7 @@ def build_notifier(
                 chat_for=chat_for,
                 context_for=context_for,
                 dashboard_url=settings.public_dashboard_url,
+                sent=DbSentMessages(sessions) if sessions is not None else None,
             )
         )
     else:
@@ -101,6 +104,11 @@ async def main() -> None:
     realerter = Realerter(sessions, notifier, audit, settings.realert_after_s)
 
     jobs = [run_worker(settings, handler), run_realerts(realerter, settings.realert_interval_s)]
+    if settings.remind_s > 0:
+        reminder = Reminder(sessions, notifier, settings.remind_s)
+        jobs.append(run_reminders(reminder, settings.realert_interval_s))
+    else:
+        log.info("alert reminders off (REMIND_S=0)")
     if settings.telegram_bot_token and settings.telegram_poll:
         bot_api = HttpBotApi(settings.telegram_bot_token)
         callbacks = AlertCallbacks(

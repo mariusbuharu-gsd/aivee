@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class IngestSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_INGEST_USER, MQTT_INGEST_PASSWORD, SNAPSHOT_DIR,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PREFIX, TELEGRAM_POLL, PUBLIC_DASHBOARD_URL,
-    REALERT_AFTER_S,
+    REALERT_AFTER_S, REMIND_S,
     VERIFY_ALERTS, VERIFY_MODEL, VERIFY_TIMEOUT_S, ANTHROPIC_API_KEY
     (+ POSTGRES_* via aivee_api.db.settings,
     VAPID_* via aivee_api.push.settings for Web Push)."""
@@ -32,6 +32,9 @@ class IngestSettings(BaseSettings):
     the whole message over a bad button URL."""
     realert_after_s: float = 120
     """Re-alert the whole location when nobody arrived this long after "Merg eu"."""
+    remind_s: float = 120
+    """Remind the location every this many seconds while an alert is open and nobody
+    arrived ("⏰ Încă neservit"); 0 turns reminders off."""
     realert_interval_s: float = 5
     """How often each replica looks for alerts to re-alert."""
     verify_alerts: bool = False

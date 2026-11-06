@@ -10,6 +10,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
+from aivee_api.alerts.schemas import AlertView
 from aivee_api.db.repositories import CameraRepository
 from aivee_api.push.sender import PushKind, PushMessage, PushSender
 from aivee_api.push.service import push_to_location
@@ -17,7 +18,7 @@ from aivee_contracts.events import AlertEvent
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_ingest.locations import alert_location
-from aivee_ingest.notify import Notifier
+from aivee_ingest.notify import REMINDER_TITLE, LifecycleNotifier, Notifier
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +61,12 @@ class WebPushNotifier:
         )
         await push_to_location(self._sessions, self._sender, message, location_id)
 
+    async def alert_resolved(self, view: AlertView, line: str) -> None:
+        """Nothing to edit: the follow-up (same tag) already replaced the notification."""
+
+    async def alert_reminder(self, view: AlertView, text: str) -> None:
+        await self.send_text(text, view.event_id, title=REMINDER_TITLE, kind="realert")
+
     async def _zone_name(self, camera_id: str, zone_id: str) -> str:
         async with self._sessions() as s:
             camera = await CameraRepository(s).get(camera_id)
@@ -90,7 +97,24 @@ class CompositeNotifier:
         )
         self._log_failures(results, f"follow-up {tag}")
 
-    def _log_failures(self, results: Sequence[object], what: str) -> None:
-        for notifier, result in zip(self.notifiers, results, strict=True):
+    async def alert_resolved(self, view: AlertView, line: str) -> None:
+        targets = [n for n in self.notifiers if isinstance(n, LifecycleNotifier)]
+        results = await asyncio.gather(
+            *(n.alert_resolved(view, line) for n in targets), return_exceptions=True
+        )
+        self._log_failures(results, f"resolved {view.event_id}", targets)
+
+    async def alert_reminder(self, view: AlertView, text: str) -> None:
+        targets = [n for n in self.notifiers if isinstance(n, LifecycleNotifier)]
+        results = await asyncio.gather(
+            *(n.alert_reminder(view, text) for n in targets), return_exceptions=True
+        )
+        self._log_failures(results, f"reminder {view.event_id}", targets)
+
+    def _log_failures(
+        self, results: Sequence[object], what: str, notifiers: Sequence[object] | None = None
+    ) -> None:
+        targets = self.notifiers if notifiers is None else notifiers
+        for notifier, result in zip(targets, results, strict=True):
             if isinstance(result, BaseException):
                 log.error("%s failed for %s: %s", type(notifier).__name__, what, result)

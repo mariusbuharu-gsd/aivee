@@ -28,7 +28,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Who reads it | Names |
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
-| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
+| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `REALERT_AFTER_S`, `REMIND_S` (default 120, 0 = off), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
 | Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
@@ -190,6 +190,17 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
 Design: [plans/2026-11-06-video-upload-design.md](../plans/2026-11-06-video-upload-design.md). The API queues
 clips (one at a time) and runs `python -m aivee_edge --clip-epoch …` as the device `MQTT_UPLOAD_USER`
 (`upload-01`, `%u` ACL) on camera `video-<id>`, which carries a copy of a live camera's zones and rules.
+How an alert ends (ingest, `lifecycle.py`): on `arrived` the follow-up "Un angajat a ajuns…" goes out and
+the original Telegram alert is edited to "✅ Rezolvat · un angajat a ajuns după 25 s · preluată de Ana" without
+buttons; a `closed` with no arrival (re-checked after 3 s, in case the `arrived` is still on its way) sends
+"👋 Clientul a plecat de la Masa 1 fără să fie servit (a așteptat 3 min 10 s)" and edits the original to
+"⚪ Închisă · clientul a plecat" (object/visual rules get neutral wording); a device going offline edits its
+open alerts the same way. The Telegram chat and message id are kept on the opened row
+(`events.telegram_chat_id`, `telegram_message_id`, `telegram_photo`). While an alert is open and nobody
+arrived, every `REMIND_S` the location gets "⏰ Încă neservit: Masa 1, de 4 min" (Telegram: a reply to the
+alert with the same buttons; Web Push: kind `realert`), claimed atomically on `events.reminded_at` so it goes
+out once per period whatever the replica count, and survives restarts. "Preiau" never closes an alert.
+
 Event time = clip epoch + clip position. Ingest never notifies, verifies, re-alerts or audits alerts from
 an `upload-*` device or a `video-*` camera, and the device going offline closes nothing; the API closes what
 is still open as `video_end`. Upload alerts stay out of alerts, the live feed, events, metrics, devices,
