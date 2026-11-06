@@ -48,3 +48,26 @@ describe('MockApi timeline', () => {
     api.dispose();
   });
 });
+
+describe('MockApi demo alerts', () => {
+  it('includes an object_gone alert confirmed by the AI check, with before/after snapshots', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const alerts = await api.listAlerts();
+    const gone = alerts.find((a) => a.verification);
+    expect(gone?.summary_ro).toBe('Masa 1: a dispărut paharul de vin');
+    expect(gone?.verification).toEqual({
+      status: 'confirmed',
+      summary_ro: 'Masa 1: a dispărut paharul de vin',
+      object_ro: 'pahar de vin',
+    });
+    expect(gone?.snapshot_url).toMatch(/^data:image\/svg\+xml,/);
+    expect(gone?.before_snapshot_url).toMatch(/^data:image\/svg\+xml,/);
+    expect(gone?.before_snapshot_url).not.toBe(gone?.snapshot_url);
+    const rules = await api.listRules();
+    const rule = rules.find((r) => r.id === gone?.rule_id);
+    if (!rule) throw new Error('the demo alert has no rule');
+    expect(rule.all_of[0].kind).toBe('object_gone');
+    expect(describeRule(rule)).toMatch(/dispare un obiect/);
+    api.dispose();
+  });
+});

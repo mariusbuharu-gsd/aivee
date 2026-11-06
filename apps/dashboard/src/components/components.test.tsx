@@ -181,6 +181,70 @@ describe('AlertFeed', () => {
     expect(screen.queryByRole('img', { name: 'Captură cu fețele estompate' })).toBeNull();
   });
 
+  const gone: AlertItem = {
+    key: 'e-9',
+    rule_id: 'r-pahar',
+    camera_id: 'c',
+    zone_id: 'z-1',
+    summary_ro: 'Masa 1: a dispărut un obiect',
+    opened_at: new Date(Date.now() - 30_000).toISOString(),
+    closed_at: null,
+    snapshot: true,
+    snapshot_url: 'http://api/api/snapshots/e-9',
+    before_snapshot_url: 'http://api/api/snapshots/e-9-before',
+    verification: {
+      status: 'confirmed',
+      summary_ro: 'Masa 1: a dispărut paharul de vin',
+      object_ro: 'pahar de vin',
+    },
+  };
+
+  it('shows the AI verdict, its summary and the before/after snapshots', () => {
+    render(<AlertFeed items={[gone]} zoneName={(id) => names[id] ?? id} showSnapshot />);
+    expect(screen.getByText('Confirmat de AI')).toBeInTheDocument();
+    expect(screen.getByText('Masa 1: a dispărut paharul de vin')).toBeInTheDocument();
+    expect(screen.getByText('Înainte')).toBeInTheDocument();
+    expect(screen.getByText('După')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /^Înainte/ })).toHaveAttribute(
+      'src',
+      'http://api/api/snapshots/e-9-before',
+    );
+    expect(screen.getByRole('img', { name: /^După/ })).toHaveAttribute(
+      'src',
+      'http://api/api/snapshots/e-9',
+    );
+  });
+
+  it.each([
+    ['rejected', 'Neconfirmat'],
+    ['pending', 'Se verifică…'],
+  ] as const)('labels a %s verification', (status, label) => {
+    render(
+      <AlertFeed
+        items={[{ ...gone, verification: { status } }]}
+        zoneName={(id) => names[id] ?? id}
+      />,
+    );
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it('looks like a plain alert when the AI check is unavailable', () => {
+    render(
+      <AlertFeed
+        items={[{ ...gone, verification: { status: 'unavailable', summary_ro: 'ignorat' } }]}
+        zoneName={(id) => names[id] ?? id}
+        showSnapshot
+      />,
+    );
+    expect(screen.queryByText(/Confirmat de AI|Neconfirmat|Se verifică/)).toBeNull();
+    expect(screen.queryByText('ignorat')).toBeNull();
+    expect(screen.queryByText('Înainte')).toBeNull();
+    const shots = screen.getAllByRole('img');
+    expect(shots).toHaveLength(1);
+    expect(shots[0]).toHaveAccessibleName('Captură cu fețele estompate');
+    expect(shots[0]).toHaveAttribute('src', 'http://api/api/snapshots/e-9');
+  });
+
   it('shows an empty state', () => {
     render(<AlertFeed items={[]} zoneName={(id) => id} />);
     expect(screen.getByText('Nicio alertă încă.')).toBeInTheDocument();

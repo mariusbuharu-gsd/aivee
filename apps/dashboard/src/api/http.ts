@@ -117,8 +117,12 @@ export class HttpApi implements ApiClient {
   /** Snapshot paths are relative to the API (`/api/snapshots/<id>`). */
   private withSnapshot = (e: AlertView): AlertView => ({
     ...e,
-    snapshot_url: e.snapshot_url ? new URL(e.snapshot_url, `${this.base}/`).toString() : null,
+    snapshot_url: this.absolute(e.snapshot_url),
+    before_snapshot_url: this.absolute(e.before_snapshot_url),
   });
+
+  private absolute = (path: string | null | undefined) =>
+    path ? new URL(path, `${this.base}/`).toString() : null;
 
   listCameras() {
     return this.request<CameraView[]>('/api/cameras');

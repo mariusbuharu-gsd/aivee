@@ -8,6 +8,7 @@ import type {
   Metrics,
   Rule,
   StaffSuggestion,
+  Verification,
   Zone,
 } from '../contracts';
 
@@ -53,6 +54,10 @@ export interface AlertView extends AlertEvent {
   /** Who closed it: the edge (someone came) or the system (the camera stopped watching). */
   closed_by?: 'edge' | 'system' | null;
   closed_reason?: 'device_offline' | 'device_restarted' | 'camera_deleted' | null;
+  /** The vision model's second opinion; `unavailable` (or absent) means a normal alert. */
+  verification?: Verification | null;
+  /** `object_gone` only: the frame before the object disappeared; `snapshot_url` is "after". */
+  before_snapshot_url?: string | null;
 }
 
 /** `PUT /api/cameras/{id}/zones?warnings=true`. */

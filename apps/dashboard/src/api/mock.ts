@@ -132,10 +132,39 @@ function seedRules(): Rule[] {
       cooldown_s: 60,
       enabled: true,
     },
+    {
+      id: 'r-pahar',
+      camera_id: 'cam-sala',
+      name: 'Obiect dispărut',
+      prompt_ro: 'Spune-mi dacă dispare un pahar de pe o masă',
+      zone_tag: 'table',
+      all_of: [{ kind: 'object_gone', role: 'any', objects: ['wine glass'], min_duration_s: 60 }],
+      action: { type: 'push', target: null },
+      cooldown_s: 300,
+      enabled: true,
+    },
   ];
 }
 
-function seedAlerts(): AlertEvent[] {
+/**
+ * Stand-in snapshots for the mock (the real ones are face-blurred JPEGs from the API): a table
+ * seen from above, with or without the wine glass. Colours are the brand's night tokens.
+ */
+function tableSketch(withGlass: boolean): string {
+  const glass = withGlass
+    ? '<circle cx="104" cy="44" r="9" fill="none" stroke="#7dd3fc" stroke-width="3"/>'
+    : '';
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90">' +
+    '<rect width="160" height="90" fill="#1b1d22"/>' +
+    '<ellipse cx="80" cy="47" rx="56" ry="28" fill="#23262d" stroke="#e6e8ec" stroke-width="2"/>' +
+    '<circle cx="58" cy="48" r="11" fill="none" stroke="#a3a9b4" stroke-width="2"/>' +
+    glass +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function seedAlerts(): AlertView[] {
   const ev = (
     id: string,
     rule: string,
@@ -158,6 +187,19 @@ function seedAlerts(): AlertEvent[] {
     ev('e-2', 'r-neservit', 'z-masa-1', 'closed', 46, 'Masa 1: ospătarul a ajuns'),
     ev('e-3', 'r-mana', 'z-masa-2', 'opened', 21, 'Masa 2: un client a ridicat mâna'),
     ev('e-4', 'r-mana', 'z-masa-2', 'closed', 20, 'Masa 2: clientul a fost servit'),
+    // An object disappeared from a table, confirmed by the AI check (before/after snapshots).
+    // Closed, so the open alerts of the demo timeline stay the first "Merg eu" on the page.
+    {
+      ...ev('e-5', 'r-pahar', 'z-masa-1', 'opened', 9, 'Masa 1: a dispărut paharul de vin'),
+      snapshot_url: tableSketch(false),
+      before_snapshot_url: tableSketch(true),
+      verification: {
+        status: 'confirmed',
+        summary_ro: 'Masa 1: a dispărut paharul de vin',
+        object_ro: 'pahar de vin',
+      },
+    },
+    ev('e-6', 'r-pahar', 'z-masa-1', 'closed', 7, 'Masa 1: masa a fost verificată'),
   ];
 }
 
@@ -253,7 +295,7 @@ export class MockApi implements ApiClient {
   readonly kind = 'mock';
   private cameras = seedCameras();
   private rules = seedRules();
-  private alerts = seedAlerts();
+  private alerts: AlertView[] = seedAlerts();
   private suggestions: StaffSuggestion[] = [];
   private resolved = new Set<string>();
   private alertSubs = new Set<(e: AlertView) => void>();
