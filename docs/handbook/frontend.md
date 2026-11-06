@@ -41,7 +41,10 @@ Base `VITE_API_URL`. Errors: `{detail: {code, message_ro}}` — show `message_ro
 | GET | `/api/staff/suggestions` · POST `.../{id}/confirm` · `.../{id}/reject` | |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | multipart field `photo` (images or a short video) |
 | GET | `/api/metrics` | `DashboardMetrics`; `alert_latency_ms` may be `null` |
-| WS | `/ws/events` | `{type: 'alert' \| 'suggestion' \| 'detections', data, camera_id?}` (`detections` arriving with the edge-commands PR) |
+| GET | `/api/push/public-key` | VAPID key; 503 when the server has no keys |
+| POST/DELETE | `/api/push/subscribe` | body = `PushSubscription.toJSON()` / `{endpoint}` |
+| POST | `/api/push/test` | test push to every subscription → `{sent, removed, failed}` |
+| WS | `/ws/events` | `{type: 'alert' \| 'suggestion', data}` and `{type: 'detections', camera_id, data: [{track_id, role, box: [x,y,w,h], staff_score, raised_hand}]}` |
 
 Contract types: `packages/contracts` → `make schema` → `npm run contracts`. Don't hand-write API types.
 
@@ -62,8 +65,16 @@ Contract types: `packages/contracts` → `make schema` → `npm run contracts`. 
   how long, one action.
 - Privacy is visible: faces are blurred, staff confirmation is explicit ("Pare angajat — confirmi?").
 
+## PWA and push (`src/pwa/`, `src/push/`)
+- `vite-plugin-pwa` (injectManifest): manifest colours are read from the `--ink` / `--ground` tokens,
+  icons in `public/icons/` (rendered from `docs/brand/aivee-app-icon.svg`; maskable has a full-bleed ink ground).
+- `src/pwa/sw.ts` precaches the app shell (offline navigation in production builds), shows push
+  notifications and opens `/alerte` on tap. The API is never cached; `OfflineBanner` probes `/healthz`.
+- Alerte page → "Notificări pe telefon": states indisponibil / blocate / oprite / active, plus "Trimite un test".
+- Push needs a secure context: `localhost` or HTTPS. On a phone, serve the dashboard and the API over HTTPS
+  (e.g. `tailscale serve`) and add that origin to the API's `CORS_ORIGINS`.
+
 ## Still to build (frontend)
-- PWA: manifest + service worker + web push for alerts (Should).
 - Presentation site `apps/site` (static, GitHub Pages): problem, how it works, privacy, architecture, team, demo video.
 - Pitch slides and demo video (see the demo script in the design doc).
 
