@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -50,6 +50,25 @@ describe('auth', () => {
     await user.type(screen.getByLabelText('Parolă'), MOCK_PASSWORD);
     await user.click(screen.getByRole('button', { name: 'Intră în cont' }));
     expect(await screen.findByRole('heading', { name: 'Alerte' })).toBeVisible();
+  });
+
+  it('signs in with one click on a demo role card', async () => {
+    const user = userEvent.setup();
+    renderAt('/alerte');
+    const demo = await screen.findByRole('group', { name: /Încearcă un cont demo/ });
+    await user.click(within(demo).getByRole('button', { name: /Manager/ }));
+    expect(await screen.findByRole('heading', { name: 'Alerte' })).toBeVisible();
+  });
+
+  it('lights the current step and fills it as the form is filled', async () => {
+    const user = userEvent.setup();
+    renderAt('/cont-nou');
+    const progress = await screen.findByRole('progressbar', { name: 'Cont completat' });
+    expect(progress).toHaveAttribute('aria-valuenow', '0');
+    await user.type(screen.getByLabelText('Numele tău'), 'Ana Pop');
+    await user.type(screen.getByLabelText('Email'), 'ana@bistro.ro');
+    expect(progress).toHaveAttribute('aria-valuenow', '2');
+    expect(progress.closest('li')).toHaveAttribute('aria-current', 'step');
   });
 
   it('shows the API message for a wrong password', async () => {

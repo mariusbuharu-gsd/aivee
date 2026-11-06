@@ -2,11 +2,20 @@ import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useApi } from '../api/context';
 import { MOCK_PASSWORD, MOCK_USERS } from '../api/mockAccounts';
+import type { Role } from '../api/client';
 import { useAuth } from '../auth/context';
 import { isEmail, safeNext } from '../auth/session';
-import { AuthShell } from '../components/AuthShell';
+import { AuthScene, AuthShell } from '../components/AuthShell';
 import { Banner } from '../ui/Banner';
 import { PasswordInput } from '../ui/controls';
+
+/** The demo accounts as the roles they stand for; one click signs in. */
+const DEMO_ROLES: Record<Role, { label: string; can: string }> = {
+  owner: { label: 'Proprietar', can: 'vede tot, setează reguli' },
+  manager: { label: 'Manager', can: 'reguli, camere, tură' },
+  staff: { label: 'Ospătar', can: 'alertele și „Merg eu”' },
+};
+const roleOf = (email: string) => email.split('@')[0] as Role;
 
 export function LoginPage() {
   const api = useApi();
@@ -20,6 +29,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [forgot, setForgot] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const sceneRef = useRef<HTMLDivElement>(null);
 
   if (status === 'authed') return <Navigate to={next} replace />;
 
@@ -28,10 +38,14 @@ export function LoginPage() {
     if (busy) return;
     if (!isEmail(email)) return setError('Scrie o adresă de email validă.');
     if (!password) return setError('Scrie parola.');
+    await signIn(email, password);
+  }
+
+  async function signIn(who: string, secret: string) {
     setBusy(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(who, secret);
       navigate(next, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut intra în cont.');
@@ -43,13 +57,10 @@ export function LoginPage() {
 
   return (
     <AuthShell
+      watch={sceneRef}
       aside={
         <>
-          <div className="auth-alert" aria-hidden="true">
-            <span className="pill pill-alert">deschisă</span>
-            <p className="auth-alert-title">Masa 4 așteaptă de 6 min</p>
-            <p className="auth-alert-meta mono">cam-sala · 2 clienți · niciun ospătar</p>
-          </div>
+          <AuthScene ref={sceneRef} />
           <h2 className="auth-claim">Ochii în plus ai personalului tău.</h2>
           <p className="auth-lead">
             Video-ul e analizat și aruncat, în cloud-ul nostru din UE sau, la cerere, pe un
@@ -104,22 +115,30 @@ export function LoginPage() {
           Nu ai cont? <Link to="/cont-nou">Creează unul</Link>
         </p>
         {api.kind === 'mock' && (
-          <div className="auth-demo">
-            <p className="small muted">Conturi demo (parola {MOCK_PASSWORD}):</p>
-            <div className="auth-demo-users">
-              {MOCK_USERS.map((u) => (
-                <button
-                  key={u}
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => {
-                    setEmail(u);
-                    setPassword(MOCK_PASSWORD);
-                  }}
-                >
-                  {u.split('@')[0]}
-                </button>
-              ))}
+          <div className="auth-demo" role="group" aria-labelledby="demo-h">
+            <p id="demo-h" className="small muted">
+              Încearcă un cont demo (parola {MOCK_PASSWORD}):
+            </p>
+            <div className="auth-demo-roles">
+              {MOCK_USERS.map((u) => {
+                const r = DEMO_ROLES[roleOf(u)];
+                return (
+                  <button
+                    key={u}
+                    type="button"
+                    className="auth-role"
+                    disabled={busy}
+                    onClick={() => {
+                      setEmail(u);
+                      setPassword(MOCK_PASSWORD);
+                      void signIn(u, MOCK_PASSWORD);
+                    }}
+                  >
+                    <strong>{r.label}</strong>
+                    <small>{r.can}</small>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

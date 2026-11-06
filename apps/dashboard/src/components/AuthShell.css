@@ -1,0 +1,182 @@
+/* Sign-in pages: the live scene on Intră în cont, equal labels, demo role cards, register steps. */
+
+/* Email and Parolă read the same: PasswordInput renders a <label>, the other fields a <span>. */
+.auth-form .field > label {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* The logo's pupils glide toward the scene. */
+.auth-pupil {
+  transition: transform 0.6s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+
+.auth-scene {
+  margin: 0;
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.auth-cam {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--night-border);
+  background: linear-gradient(180deg, var(--night-3) 0 46%, var(--night-2) 46% 100%);
+}
+.auth-cam > span {
+  position: absolute;
+}
+.auth-cam-live {
+  left: 10px;
+  top: 8px;
+  font-size: 0.7rem;
+  color: var(--live-on-night);
+}
+.auth-cam-wall {
+  left: 8%;
+  top: 14%;
+  width: 26%;
+  height: 26%;
+  border: 1px solid var(--night-border);
+  border-radius: 4px;
+}
+.auth-cam-table {
+  left: 55%;
+  top: 70%;
+  width: 32%;
+  height: 8%;
+  border-radius: 999px;
+  background: var(--night-border);
+}
+.auth-cam-zone {
+  left: 51%;
+  top: 56%;
+  width: 40%;
+  height: 32%;
+  border: 2px solid var(--coral);
+  border-radius: 6px;
+  background: rgba(255, 92, 108, 0.14);
+  animation: auth-zone 2.4s ease-in-out infinite;
+}
+.auth-cam-guest {
+  width: 10%;
+  height: 36%;
+  border: 1.5px solid var(--guest-on-night);
+  border-radius: 4px;
+}
+.auth-cam-label {
+  left: 51%;
+  top: 89%;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--coral);
+  color: var(--ink);
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.auth-cam-timer {
+  font-variant-numeric: tabular-nums;
+}
+@keyframes auth-zone {
+  50% {
+    background: rgba(255, 92, 108, 0.28);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-pupil {
+    transition: none;
+  }
+  .auth-cam-zone {
+    animation: none;
+  }
+}
+
+/* Demo accounts as roles: one click signs in. */
+.auth-demo-roles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.auth-role {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.auth-role:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+.auth-role:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+.auth-role strong {
+  font-size: 0.92rem;
+}
+.auth-role small {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+@media (max-width: 480px) {
+  .auth-demo-roles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Cont nou: the current step is lit and fills as the form is filled; the others wait. */
+.auth-steps li:not([aria-current='step']) {
+  opacity: 0.55;
+}
+.auth-steps li[aria-current='step'] {
+  margin-inline: -14px;
+  padding: 12px 14px;
+  border: 1px solid var(--night-border);
+  border-radius: var(--radius);
+  background: var(--night-3);
+}
+.auth-steps li[aria-current='step'] > span:last-child {
+  flex: 1;
+}
+.auth-step-progress {
+  margin-top: 6px;
+  height: 4px;
+  max-width: 240px;
+  border-radius: 999px;
+  background: var(--night-border);
+  overflow: hidden;
+}
+.auth-step-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  transition: width 0.3s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-step-progress > span {
+    transition: none;
+  }
+}
+@media (min-width: 861px) {
+  .auth-step-phone {
+    display: none;
+  }
+}
+@media (max-width: 860px) {
+  .auth-scene {
+    display: none;
+  }
+}
