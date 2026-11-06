@@ -7,8 +7,20 @@ import { detectionLabel } from '../live/detections';
 import { LivePlayer } from '../live/LivePlayer';
 import { toSvgPoints } from '../zones/geometry';
 import { Icon } from './Icon';
+import './live.css';
 
-export function CameraTile({ camera }: { camera: CameraView }) {
+/**
+ * One camera on Live. `hot` marks zones with an open alert (zone id → timer text): the zone is
+ * outlined in coral with the time on it, so the owner sees where, not only that. An offline
+ * camera collapses to one row: what is down and where to look.
+ */
+export function CameraTile({
+  camera,
+  hot = {},
+}: {
+  camera: CameraView;
+  hot?: Record<string, string>;
+}) {
   const api = useApi();
   const { can } = useAuth();
   const [detections, setDetections] = useState<Detection[]>([]);
@@ -20,29 +32,55 @@ export function CameraTile({ camera }: { camera: CameraView }) {
 
   const shown = camera.online ? detections : [];
 
+  if (!camera.online) {
+    return (
+      <article className="tile tile-down" aria-label={`Camera ${camera.name}`}>
+        <span className="badge badge-off">OFFLINE</span>
+        <div className="tile-down-text">
+          <strong>{camera.name}</strong>
+          <span className="tile-down-what">
+            <span>Dispozitiv offline</span>
+            <span className="mono">{camera.device}</span>
+          </span>
+          <span className="muted small">Alertele de la această cameră nu vin până revine.</span>
+        </div>
+        {can('devices.manage') && (
+          <Link to="/dispozitive" className="link">
+            Ce să verific
+          </Link>
+        )}
+      </article>
+    );
+  }
+
   return (
     <article className="tile" aria-label={`Camera ${camera.name}`}>
       <div className="tile-media">
-        <LivePlayer cameraId={camera.id} enabled={camera.online} label={camera.name} />
-        {camera.online ? (
-          <svg className="overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
-            {(camera.zones ?? []).map((z) => (
-              <polygon key={z.id} className="zone-outline" points={toSvgPoints(z.polygon)} />
-            ))}
-          </svg>
-        ) : (
-          <div className="tile-offline" role="status">
-            <Icon name="offline" size={28} />
-            <span>Dispozitiv offline</span>
-            <span className="muted mono">{camera.device}</span>
-            <span className="muted small">Alertele de la această cameră nu vin până revine.</span>
-            {can('devices.manage') && (
-              <Link to="/dispozitive" className="link">
-                Ce să verific
-              </Link>
-            )}
-          </div>
-        )}
+        <LivePlayer cameraId={camera.id} enabled label={camera.name} />
+        <svg className="overlay" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+          {(camera.zones ?? []).map((z) => (
+            <polygon
+              key={z.id}
+              className={`zone-outline${hot[z.id] ? ' zone-hot' : ''}`}
+              points={toSvgPoints(z.polygon)}
+            />
+          ))}
+        </svg>
+        {(camera.zones ?? [])
+          .filter((z) => hot[z.id])
+          .map((z) => {
+            const xs = z.polygon.map((p) => p[0]);
+            const ys = z.polygon.map((p) => p[1]);
+            return (
+              <span
+                key={z.id}
+                className="zone-hot-label mono"
+                style={{ left: `${Math.min(...xs) * 100}%`, top: `${Math.max(...ys) * 100}%` }}
+              >
+                {z.name} · {hot[z.id]}
+              </span>
+            );
+          })}
         {shown.map((d) => (
           <div
             key={d.track_id}
@@ -57,9 +95,7 @@ export function CameraTile({ camera }: { camera: CameraView }) {
             <span className="det-label mono">{detectionLabel(d)}</span>
           </div>
         ))}
-        <span className={`badge ${camera.online ? 'badge-live' : 'badge-off'}`}>
-          {camera.online ? 'LIVE' : 'OFFLINE'}
-        </span>
+        <span className="badge badge-live">LIVE</span>
       </div>
       <footer className="tile-foot">
         <div className="tile-title">

@@ -62,15 +62,16 @@ export function Icon({
   );
 }
 
-export function Logo() {
+/** The brand mark. `watching`: the pupils look down at "Sala acum" while an alert is open. */
+export function Logo({ watching = false }: { watching?: boolean }) {
   return (
-    <span className="logo">
+    <span className={`logo${watching ? ' is-watching' : ''}`}>
       {/* The brand mark from docs/brand/aivee-mark-white.svg: two eyes, coral pupils. */}
       <svg width="40" height="22" viewBox="4.5 25.5 91 49" aria-hidden="true" focusable="false">
         <circle cx="29" cy="50" r="19" fill="none" stroke="currentColor" strokeWidth="7" />
-        <circle cx="32.6" cy="51.8" r="8" fill="var(--coral)" />
+        <circle className="logo-pupil" cx="32.6" cy="51.8" r="8" fill="var(--coral)" />
         <circle cx="71" cy="50" r="19" fill="none" stroke="currentColor" strokeWidth="7" />
-        <circle cx="74.6" cy="51.8" r="8" fill="var(--coral)" />
+        <circle className="logo-pupil" cx="74.6" cy="51.8" r="8" fill="var(--coral)" />
       </svg>
       <span className="logo-word">aivee</span>
     </span>
