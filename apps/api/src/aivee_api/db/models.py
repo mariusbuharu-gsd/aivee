@@ -110,7 +110,9 @@ class EventRow(Base):
     # the opened row carries the folded times and who acknowledged it.
     alert_id: Mapped[str | None] = mapped_column(String(64), index=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
-    acknowledged_by_id: Mapped[str | None] = mapped_column(String(64))
+    acknowledged_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_events_acknowledged_by_id")
+    )
     acknowledged_by_name: Mapped[str | None] = mapped_column(Text)
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

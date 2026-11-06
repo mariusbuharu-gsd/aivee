@@ -1,15 +1,14 @@
 """alert lifecycle: arrived events, acknowledgement and folded times on the opened row
 
 Revision ID: 0004_alert_lifecycle
-Revises: 0002_push_subscriptions (to become 0003_auth_tenancy at merge)
+Revises: 0003_auth_tenancy
 Create Date: 2026-11-06
 
 The opened event's row carries the folded alert: `acknowledged_*` (written by the API),
 `arrived_at` / `closed_at` (copied by ingest from the later events). Every event row points
 at its alert's opened event through `alert_id`.
 
-`acknowledged_by_id` has no FK yet: the users table comes from the auth stream; add the FK
-when the two are merged.
+`acknowledged_by_id` references users.id (ON DELETE SET NULL); the name stays on the row.
 """
 
 from collections.abc import Sequence
@@ -18,9 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004_alert_lifecycle"
-# TEMPORARY: the auth stream's "0003_auth_tenancy" does not exist on develop yet; the chain
-# becomes 0002_push_subscriptions → 0003_auth_tenancy → 0004_alert_lifecycle at merge.
-down_revision: str | None = "0002_push_subscriptions"
+down_revision: str | None = "0003_auth_tenancy"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -36,6 +33,14 @@ def upgrade() -> None:
     op.add_column("events", sa.Column("closed_at", sa.DateTime(timezone=True)))
     op.create_index("ix_events_alert_id", "events", ["alert_id"])
     op.create_index("ix_events_acknowledged_at", "events", ["acknowledged_at"])
+    op.create_foreign_key(
+        "fk_events_acknowledged_by_id",
+        "events",
+        "users",
+        ["acknowledged_by_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
     # Existing rows: every opened row is its own alert; fold the closed rows the way the
     # dashboard did (the next closed event of the same camera, rule and zone).
     op.execute("UPDATE events SET alert_id = event_id WHERE state = 'opened'")
@@ -63,6 +68,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("DELETE FROM events WHERE state = 'arrived'")
+    op.drop_constraint("fk_events_acknowledged_by_id", "events", type_="foreignkey")
     op.drop_index("ix_events_acknowledged_at", "events")
     op.drop_index("ix_events_alert_id", "events")
     for column in (
