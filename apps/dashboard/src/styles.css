@@ -513,12 +513,17 @@ details summary {
 }
 .player,
 .player video,
+.player img,
 .player-placeholder,
 .player-placeholder svg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+}
+/* MJPEG (cloud frames): transparent until the first frame, so the placeholder shows through. */
+.player img {
+  object-fit: cover;
 }
 .player video {
   object-fit: cover;
@@ -911,7 +916,8 @@ details summary {
   color: var(--muted-2);
 }
 /* In the editor the frame must not be cropped: zone coordinates are relative to the full frame. */
-.editor .player video {
+.editor .player video,
+.editor .player img {
   object-fit: fill;
 }
 .editor-still {

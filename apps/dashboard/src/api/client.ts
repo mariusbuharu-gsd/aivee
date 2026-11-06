@@ -216,6 +216,11 @@ export interface ApiClient extends AccountApi {
    * Rejects with an ApiError (404 `not_found` until the camera has sent one).
    */
   captureFrame(cameraId: string): Promise<CameraFrame>;
+  /**
+   * `GET /api/cameras/{id}/live.mjpg` for an `<img>`: the frames a connector posts over HTTPS
+   * (cloud mode). 404 while none came recently. Null when the API has no such stream (mock).
+   */
+  liveMjpegUrl(cameraId: string): string | null;
   saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones>;
   listRules(): Promise<Rule[]>;
   /** Translate a Romanian request into a draft rule; nothing is saved. */

@@ -505,6 +505,11 @@ export class MockApi implements ApiClient {
     );
   }
 
+  /** No connector in mock mode: the live view keeps its placeholder. */
+  liveMjpegUrl(): string | null {
+    return null;
+  }
+
   async captureFrame(cameraId: string): Promise<CameraFrame> {
     await wait(this.latency);
     const cam = this.cameras.find((c) => c.id === cameraId);
