@@ -27,7 +27,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Who reads it | Names |
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
-| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
+| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
 | Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
@@ -150,6 +150,30 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
 - While ingest polls, `make telegram-id` (also `getUpdates`) conflicts with it and sees no updates: use
   "Conectează Telegram" instead, or set `TELEGRAM_POLL=false` and restart ingest first.
 - A manual chat id (PATCH `telegram_chat_id`) clears the stored title.
+
+## Telegram alert message and "Preiau ✋"
+
+`aivee_ingest/alert_message.py` (pure) + `telegram.py` + `telegram_ack.py`.
+- Format (photo caption, or text without a snapshot), `parse_mode=HTML`, every name escaped:
+  `🔴 <b>headline</b>` / explanation / blank / `📍 location · camera · HH:MM` (Europe/Bucharest).
+  Names come from the DB (`locations.alert_context`: site, camera, zone, rule, verification); ids
+  only when a name is missing. The branch is the rule's most specific condition, in the edge's
+  order: object_gone ("Masa 1: a dispărut un pahar de vin" / "Verifică masa."), pose ("Masa 2: un
+  client cheamă"), objects_unattended ("Masa 3 e nedebarasată de 3 min"), count ("Bar: 4 persoane
+  așteaptă"), absent ("Masa 1 așteaptă de 1 min" / "Nu a venit nimeni la client."), present; no
+  rule → the edge's `summary_ro`. A confirmed vision check's `summary_ro` is the explanation.
+- Inline keyboard: `Preiau ✋` (`callback_data` `ack:<alert id>`) and, only when
+  `PUBLIC_DASHBOARD_URL` is https with a public host, `Vezi în aplicație` → `<url>/alerte`.
+- A 400 on the rich send is retried once as plain `sendMessage` without keyboard or parse mode.
+- The getUpdates poller (`allowed_updates` = message, my_chat_member, callback_query) hands a
+  button press to `AlertCallbacks`: only from the chat the alert went to (the location's chat,
+  else `TELEGRAM_CHAT_ID`); `AlertRepository.acknowledge` with the sender's first name
+  (`acknowledged_by_id` empty: no AiVee account) and audit `alert.acknowledged` (actor
+  `telegram:<user id>`, `after.via = telegram`). Toasts: "Preluată ✓" (the message gets
+  "✋ Preluată de Ana · 16:58" and loses the button), "Deja preluată de X", "Alerta s-a închis"
+  (button removed). No "X merge la" Web Push for a Telegram ack (that one is sent by the API).
+- Not done: editing the message to "✅ Rezolvată" on close needs the sent message id stored
+  per alert (a migration); closed events are split between replicas, so memory will not do.
 
 ## Video analysis (uploaded clips)
 

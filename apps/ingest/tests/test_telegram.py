@@ -5,6 +5,8 @@ from pathlib import Path
 import httpx
 import pytest
 from aivee_contracts.events import AlertEvent
+from aivee_contracts.rules import Condition
+from aivee_ingest.alert_message import AlertContext
 from aivee_ingest.notify import LogNotifier, alert_text
 from aivee_ingest.telegram import TelegramNotifier
 
@@ -94,7 +96,7 @@ async def test_prefix_marks_alert_and_follow_up_messages() -> None:
     await notifier.notify(EVENT, None)
     await notifier.send_text("Ana a ajuns la Masa 1 după 2 min 10 s", kind="arrived")
     texts = [json.loads(r.content)["text"] for r in seen]
-    assert texts[0].startswith("[test] Alertă AiVee: Masa 1")
+    assert texts[0].startswith("[test] 🔴 <b>Masa 1")
     assert texts[1] == "[test] Ana a ajuns la Masa 1 după 2 min 10 s"
     assert all(r.url.path == "/botTOKEN/sendMessage" for r in seen)
 
@@ -130,3 +132,88 @@ async def test_no_chat_at_all_sends_nothing(caplog: pytest.LogCaptureFixture) ->
     await notifier.notify(EVENT, None)
     await notifier.send_text("x", tag="e1", kind="realert")
     assert seen == [] and "no Telegram chat" in caplog.text
+
+
+async def _names(event: AlertEvent) -> AlertContext:
+    return AlertContext(
+        event,
+        zone_name="Masa 1",
+        location_name="Terasa <demo>",
+        camera_name="Sala principală",
+        conditions=[Condition(kind="absent", role="staff", min_duration_s=60)],
+    )
+
+
+async def test_alert_is_html_with_names_and_the_preiau_button() -> None:
+    client, seen = _recording_client()
+    notifier = TelegramNotifier("TOKEN", "-100", client, context_for=_names)
+    await notifier.notify(EVENT, None)
+    (req,) = seen
+    payload = json.loads(req.content)
+    assert payload["parse_mode"] == "HTML"
+    assert payload["text"] == (
+        "🔴 <b>Masa 1 așteaptă de 1 min</b>\nNu a venit nimeni la client.\n\n"
+        "📍 Terasa &lt;demo&gt; · Sala principală · 14:30"
+    )
+    assert payload["reply_markup"] == {
+        "inline_keyboard": [[{"text": "Preiau ✋", "callback_data": "ack:e1"}]]
+    }
+    assert "cam1" not in payload["text"] and "masa-1" not in payload["text"]
+
+
+async def test_photo_caption_carries_the_keyboard_and_the_dashboard_link(tmp_path: Path) -> None:
+    snap = tmp_path / "e1.jpg"
+    snap.write_bytes(b"\xff\xd8blurred")
+    client, seen = _recording_client()
+    notifier = TelegramNotifier(
+        "TOKEN", "-100", client, context_for=_names, dashboard_url="https://aivee.example.com"
+    )
+    await notifier.notify(EVENT, snap)
+    (req,) = seen
+    assert req.url.path == "/botTOKEN/sendPhoto"
+    body = req.content.decode("utf-8", "replace")
+    assert 'name="parse_mode"' in body
+    assert "<b>Masa 1 așteaptă de 1 min</b>" in body
+    markup = body.split('name="reply_markup"')[1].split("\r\n\r\n", 1)[1].split("\r\n")[0]
+    assert json.loads(markup)["inline_keyboard"][0][1] == {
+        "text": "Vezi în aplicație",
+        "url": "https://aivee.example.com/alerte",
+    }
+
+
+async def test_a_refused_rich_send_is_retried_once_as_plain_text(tmp_path: Path) -> None:
+    snap = tmp_path / "e1.jpg"
+    snap.write_bytes(b"\xff\xd8blurred")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if len(seen) == 1:
+            return httpx.Response(400, json={"ok": False, "description": "Bad Request: button"})
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    notifier = TelegramNotifier("TOKEN", "-100", client, context_for=_names, prefix="[test]")
+    await notifier.notify(EVENT, snap)
+    assert [r.url.path for r in seen] == ["/botTOKEN/sendPhoto", "/botTOKEN/sendMessage"]
+    retry = json.loads(seen[1].content)
+    assert set(retry) == {"chat_id", "text"}  # no parse mode, no keyboard
+    assert retry["text"].startswith("[test] 🔴 Masa 1 așteaptă de 1 min\n")
+    assert "Terasa <demo>" in retry["text"]
+
+
+async def test_a_failing_plain_retry_still_raises() -> None:
+    notifier, seen = _notifier(status=400)
+    with pytest.raises(RuntimeError):
+        await notifier.notify(EVENT, None)
+    assert len(seen) == 2
+
+
+async def test_names_lookup_failure_falls_back_to_the_edge_summary() -> None:
+    async def broken(_: AlertEvent) -> AlertContext:
+        raise RuntimeError("db down")
+
+    client, seen = _recording_client()
+    notifier = TelegramNotifier("TOKEN", "-100", client, context_for=broken)
+    await notifier.notify(EVENT, None)
+    assert json.loads(seen[0].content)["text"].startswith("🔴 <b>Masa 1 așteaptă de 5 minute</b>")

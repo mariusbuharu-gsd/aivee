@@ -9,14 +9,17 @@ from aivee_api.alerts.audit import RepositoryAuditWriter
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.push.sender import WebPushSender
 from aivee_api.push.settings import VapidSettings
+from aivee_contracts.events import AlertEvent
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aivee_ingest.alert_message import AlertContext
 from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
-from aivee_ingest.locations import telegram_chat_for
+from aivee_ingest.locations import alert_context, telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
 from aivee_ingest.realert import Realerter, run_realerts
-from aivee_ingest.telegram import TelegramNotifier
+from aivee_ingest.telegram import ContextLookup, TelegramNotifier
+from aivee_ingest.telegram_ack import AlertCallbacks, DbAckStore
 from aivee_ingest.telegram_link import (
     AdvisoryPollLock,
     DbLinkStore,
@@ -43,12 +46,23 @@ def build_notifier(
         async def chat_for(event_id: str) -> str | None:
             return await telegram_chat_for(sessions, event_id) if sessions is not None else None
 
+        context_for: ContextLookup | None = None
+        if sessions is not None:
+            db = sessions
+
+            async def names_for(event: AlertEvent) -> AlertContext:
+                return await alert_context(db, event)
+
+            context_for = names_for
+
         notifiers.append(
             TelegramNotifier(
                 settings.telegram_bot_token,
                 settings.telegram_chat_id,
                 prefix=settings.telegram_prefix,
                 chat_for=chat_for,
+                context_for=context_for,
+                dashboard_url=settings.public_dashboard_url,
             )
         )
     else:
@@ -89,7 +103,13 @@ async def main() -> None:
     jobs = [run_worker(settings, handler), run_realerts(realerter, settings.realert_interval_s)]
     if settings.telegram_bot_token and settings.telegram_poll:
         bot_api = HttpBotApi(settings.telegram_bot_token)
-        bot = TelegramLinkBot(bot_api, DbLinkStore(sessions))
+        callbacks = AlertCallbacks(
+            bot_api,
+            DbAckStore(sessions, audit, settings.telegram_chat_id),
+            prefix=settings.telegram_prefix,
+            dashboard_url=settings.public_dashboard_url,
+        )
+        bot = TelegramLinkBot(bot_api, DbLinkStore(sessions), callbacks)
         jobs.append(run_link_poller(bot, bot_api, AdvisoryPollLock(engine)))
     else:
         log.info("Telegram link poller off (no TELEGRAM_BOT_TOKEN, or TELEGRAM_POLL=false)")
