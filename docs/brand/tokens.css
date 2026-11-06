@@ -1,0 +1,60 @@
+/*
+ * AiVee design tokens — the single source of truth for colour, type, radius and spacing.
+ * Copy this block into an app's stylesheet (apps/dashboard/src/styles.css, apps/site) and
+ * build every rule on the variables, never on raw hex values. See README.md for the rules.
+ *
+ * Look: a light working surface, a night "chrome" (sidebar, footer, camera media) in brand ink,
+ * and coral used sparingly for what needs attention.
+ */
+:root {
+  /* Brand */
+  --ink: #14161b; /* logo ink, primary buttons, night chrome */
+  --coral: #ff5c6c; /* logo pupils; fills and strokes only — 3.0:1 on white, never small text */
+  --coral-strong: #c8283e; /* coral as text or icon on light ground (5.5:1) */
+  --coral-deep: #9e1b2e; /* text on coral tint (6.6:1) */
+  --coral-tint: #ffe3e6; /* badge / chip fill */
+  --coral-wash: #fff4f5; /* open-alert card fill */
+  --coral-line: #ffc2c9; /* open-alert card border */
+
+  /* Light ground (the working surface) */
+  --ground: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9; /* inputs, inset rows */
+  --surface-3: #eef0f3; /* hovered / pressed, placeholders */
+  --border: #d5d9df; /* controls */
+  --border-soft: #e2e5ea; /* cards, dividers */
+  --text: #14161b; /* 18:1 on white */
+  --muted: #4b515c; /* secondary text, 8:1 */
+  --muted-2: #5a606c; /* captions, mono meta, 6.3:1 */
+
+  /* Night chrome (sidebar, footer, camera media, alert snapshots) */
+  --night: #14161b;
+  --night-2: #1b1d22; /* camera media ground */
+  --night-3: #23262d; /* raised on night */
+  --night-border: #2a2e36;
+  --night-text: #f2f3f5;
+  --night-muted: #a3a9b4; /* 7.7:1 on night */
+
+  /* Semantic */
+  --live: #1f6f99; /* online / live as text on light (5.5:1) */
+  --live-tint: #e3f3fb;
+  --live-deep: #0b4a66; /* text on live tint */
+  --live-on-night: #7dd3fc; /* live badge, staff boxes and staff zones on camera media */
+  --guest-on-night: #e6e8ec; /* guest boxes and table zones on camera media */
+  --danger: #c8283e; /* offline, errors (same hue as coral-strong on purpose) */
+  --danger-on-night: #ff8a96;
+
+  /* Type */
+  --display: 'Fredoka', 'Figtree', system-ui, sans-serif; /* logo, page titles; weight 600 */
+  --sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif; /* UI and body; 400–700 */
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace; /* ids, numbers, labels */
+
+  /* Shape and rhythm */
+  --radius-lg: 18px; /* large cards, phone sheets */
+  --radius: 14px; /* cards, panels, camera tiles */
+  --radius-sm: 10px; /* buttons, inputs, rows */
+  --radius-xs: 6px; /* chips, detection labels */
+  --gap: 16px;
+  --tap: 44px; /* minimum touch target */
+  --shadow-pop: 0 18px 40px rgba(20, 22, 27, 0.18); /* floating cards only (toasts, notifications) */
+}
