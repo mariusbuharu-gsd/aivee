@@ -34,6 +34,7 @@
     <script type="module" src="nav.js"></script>
     <script type="module" src="story.js"></script>
     <script type="module" src="contact.js"></script>
+    <script type="module" src="form.js"></script>
   </head>
   <body>
     <a class="skip" href="#continut">Sari la conținut</a>
@@ -348,7 +349,7 @@
         </div>
       </section>
 
-      <!-- Pilot / contact. Selectable text + copy buttons, no mailto: reliance. -->
+      <!-- Pilot / contact. Selectable text + copy buttons; the form opens the visitor's e-mail app. -->
       <section id="pilot" class="pilot" aria-labelledby="pilot-titlu">
         <div class="wrap pilot__grid">
           <div class="pilot__intro">
@@ -356,7 +357,7 @@
             <h2 id="pilot-titlu">Vrei să vezi AiVee pe camerele tale?</h2>
             <p class="lead">
               Căutăm restaurante independente din Sibiu care vor să încerce AiVee cu camerele pe care le
-              au deja. Sună-ne sau scrie-ne și stabilim împreună ce urmărim.
+              au deja. Sună-ne, scrie-ne sau lasă-ne datele și stabilim împreună ce urmărim.
             </p>
             <dl class="contact">
               <div class="contact__row">
@@ -381,6 +382,35 @@
             <p class="contact__status" role="status" aria-live="polite"></p>
           </div>
 
+          <div class="demo-form">
+            <!-- No backend: a valid submit opens a mailto: to the address above, prefilled from the fields. -->
+            <form id="demo-form" novalidate aria-labelledby="form-titlu">
+              <h3 id="form-titlu" class="demo-form__title">Cere un demo</h3>
+              <div class="f"><label for="f-name">Nume</label><input id="f-name" name="name" autocomplete="name" aria-describedby="e-name" /><span class="err" id="e-name"></span></div>
+              <div class="f"><label for="f-place">Restaurant</label><input id="f-place" name="place" autocomplete="organization" aria-describedby="e-place" /><span class="err" id="e-place"></span></div>
+              <div class="f"><label for="f-contact">Email sau telefon</label><input id="f-contact" name="contact" autocomplete="email" placeholder="nume@restaurant.ro sau 07xx xxx xxx" aria-describedby="e-contact" /><span class="err" id="e-contact"></span></div>
+              <div class="f"><label for="f-city">Oraș <span class="opt">(opțional)</span></label><input id="f-city" name="city" autocomplete="address-level2" /></div>
+              <fieldset class="f f--full">
+                <legend>Număr de mese <span class="opt">(opțional)</span></legend>
+                <div class="segs">
+                  <label><input type="radio" name="tables" value="1–10" /><span>1–10</span></label>
+                  <label><input type="radio" name="tables" value="11–30" /><span>11–30</span></label>
+                  <label><input type="radio" name="tables" value="30+" /><span>30+</span></label>
+                </div>
+              </fieldset>
+              <div class="f f--full"><label for="f-msg">Mesaj <span class="opt">(opțional)</span></label><textarea id="f-msg" name="msg" rows="4" placeholder="Ce camere ai, când ți-ar fi bine să vorbim…"></textarea></div>
+              <div class="demo-form__send">
+                <button type="submit" class="btn btn--coral">Cere un demo</button>
+                <span class="fine">Se deschide aplicația ta de email, cu mesajul gata scris.</span>
+              </div>
+            </form>
+            <div class="done" id="demo-done" role="status" tabindex="-1" hidden>
+              <span class="done__tick" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+              <h3>Mulțumim!</h3>
+              <p>Ți-am deschis emailul cu mesajul gata scris. Dacă nu s-a deschis, scrie-ne la <strong class="num">marius.buharu@gsdgroup.net</strong>.</p>
+              <button type="button" class="btn btn--line btn--small" id="demo-again">Completează din nou</button>
+            </div>
+          </div>
         </div>
       </section>
 
