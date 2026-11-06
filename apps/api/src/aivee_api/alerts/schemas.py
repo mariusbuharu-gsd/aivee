@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
+from aivee_contracts.events import Verification
 from pydantic import BaseModel, Field
 
 from aivee_api.alerts.domain import AlertState, ClosedBy, CloseReason, Measure, ServiceStats
@@ -50,6 +51,12 @@ class AlertView(BaseModel):
     device_id: str = ""
     snapshot: bool = False
     snapshot_url: str | None = None
+    before_snapshot_url: str | None = Field(
+        None, description='object_gone: the "before" image; `snapshot_url` is the "after"'
+    )
+    verification: Verification | None = Field(
+        None, description="A vision model's second opinion (VERIFY_ALERTS); None: not checked"
+    )
 
 
 class AlertViewMessage(BaseModel):
@@ -94,3 +101,17 @@ class ServiceMetrics(BaseModel):
             reaction=MeasureOut.of(stats.reaction),
             travel=MeasureOut.of(stats.travel),
         )
+
+
+class VerificationCount(BaseModel):
+    rule_id: str
+    status: str = Field(description="pending | confirmed | rejected | unavailable")
+    alerts: int
+
+
+class VerificationMetrics(BaseModel):
+    """Verified alerts per rule and status: rejected / (confirmed + rejected) is the
+    false-alarm rate the vision check caught."""
+
+    location_id: str | None
+    counts: list[VerificationCount]

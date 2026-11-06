@@ -121,6 +121,16 @@ class EventRow(Base):
     # Set when the system (not the edge) closed it: device_offline | device_restarted |
     # camera_deleted.
     closed_reason: Mapped[str | None] = mapped_column(String(32))
+    # The "before" JPEG of an object_gone alert (the snapshot is the "after").
+    before_snapshot_path: Mapped[str | None] = mapped_column(Text)
+    # A vision model's second opinion, once per alert (ingest): pending | confirmed |
+    # rejected | unavailable. By rule_id and status: the false-alarm rate per rule.
+    verification_status: Mapped[str | None] = mapped_column(String(16))
+    verification_summary_ro: Mapped[str | None] = mapped_column(Text)
+    verification_object_ro: Mapped[str | None] = mapped_column(Text)
+    verification_model: Mapped[str | None] = mapped_column(String(64))
+    verification_latency_ms: Mapped[int | None] = mapped_column(Integer)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint("state IN ('opened', 'arrived', 'closed')", name="event_state"),

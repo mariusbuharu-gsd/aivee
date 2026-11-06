@@ -5,8 +5,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
 from aivee_api.alerts.audit import AuditWriter, get_audit_writer, going_ro
 from aivee_api.alerts.auth import AckAccess, ViewAccess
-from aivee_api.alerts.schemas import AlertView, ServiceMetrics
-from aivee_api.alerts.service import acknowledge, list_alerts, service_metrics
+from aivee_api.alerts.schemas import AlertView, ServiceMetrics, VerificationMetrics
+from aivee_api.alerts.service import (
+    acknowledge,
+    list_alerts,
+    service_metrics,
+    verification_metrics,
+)
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.push.router import get_vapid
 from aivee_api.push.sender import PushMessage, PushSender, WebPushSender
@@ -75,3 +80,11 @@ async def get_service_metrics(
     end: Annotated[datetime | None, Query(alias="to")] = None,
 ) -> ServiceMetrics:
     return await service_metrics(s, access, location_id, start, end)
+
+
+@router.get("/api/metrics/verification")
+async def get_verification_metrics(
+    s: SessionDep, access: ViewAccess, location_id: str | None = None
+) -> VerificationMetrics:
+    """Verified alerts per rule and status (VERIFY_ALERTS)."""
+    return await verification_metrics(s, access, location_id)

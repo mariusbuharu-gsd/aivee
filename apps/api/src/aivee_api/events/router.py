@@ -4,6 +4,7 @@ import logging
 from datetime import timedelta
 from typing import Annotated
 
+from aivee_contracts.events import BEFORE_SUFFIX
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -46,9 +47,10 @@ async def list_events(
 async def get_snapshot(
     event_id: str, p: CurrentUser, s: SessionDep, svc: ServicesDep
 ) -> FileResponse:
-    """The blurred JPEG of an event (alerts.view) or of a staff suggestion (staff.review)."""
+    """The blurred JPEG of an event (alerts.view) or of a staff suggestion (staff.review).
+    `<event_id>-before` is the "before" image of an object change, with its event's rights."""
     missing = "Imaginea nu există."
-    loc = await event_location(s, event_id)
+    loc = await event_location(s, event_id.removesuffix(BEFORE_SUFFIX))
     if loc is not None:
         authorize_at(p, ALERTS_VIEW, loc, missing)
     else:
