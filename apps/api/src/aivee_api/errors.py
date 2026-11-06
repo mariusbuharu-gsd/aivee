@@ -15,6 +15,21 @@ class DomainError(Exception):
         self.message_ro = message_ro
 
 
+class Unauthenticated(DomainError):
+    status = 401
+    code = "unauthenticated"
+
+
+class Forbidden(DomainError):
+    status = 403
+    code = "forbidden"
+
+
+class RateLimited(DomainError):
+    status = 429
+    code = "rate_limited"
+
+
 class NotFound(DomainError):
     status = 404
     code = "not_found"

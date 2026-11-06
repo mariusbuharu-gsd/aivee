@@ -69,12 +69,13 @@ def _unit(*hot: int) -> list[float]:
 
 def test_migration_upgrade_and_downgrade(empty_db_url: str) -> None:
     # Sync test: Alembic's async env runs its own event loop.
+    # Later migrations add their own tables (see their tests); these must always exist.
     upgrade(empty_db_url)
-    assert asyncio.run(_tables(empty_db_url)) == TABLES
+    assert asyncio.run(_tables(empty_db_url)) >= TABLES
     downgrade(empty_db_url)
     assert asyncio.run(_tables(empty_db_url)) == set()
     upgrade(empty_db_url)
-    assert asyncio.run(_tables(empty_db_url)) == TABLES
+    assert asyncio.run(_tables(empty_db_url)) >= TABLES
 
 
 async def test_duplicate_event_is_stored_once(

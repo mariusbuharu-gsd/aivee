@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 import pytest
 from aivee_api.alerts.audit import AlertAuditEntry, get_audit_writer
+from aivee_api.db.repositories import DeviceRepository
 from aivee_api.deps import Services
 from aivee_api.edge.publisher import RecordingPublisher
 from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
@@ -70,10 +71,46 @@ class Audit:
         self.entries.append(entry)
 
 
+STAFF = "ana@life.ro"
+PASSWORD = "parola-life-1"
+
+
+async def _ana_serves_at(sessions: Any, site: str, device: str) -> None:
+    """The test's location and device, and Ana (staff there, who logs in). Seeded before
+    ingest subscribes, so retained statuses of earlier tests cannot claim the device."""
+    from aivee_api.accounts.models import Membership, Organization, User
+    from aivee_api.auth.passwords import hash_password
+    from aivee_api.db.models import Site
+
+    async with sessions() as s:
+        s.add(Organization(id="org-life", name="Life"))
+        await s.flush()
+        s.add(Site(id=site, name="Locație", org_id="org-life"))
+        s.add(
+            User(
+                id="u-ana",
+                org_id="org-life",
+                email=STAFF,
+                name="Ana",
+                password_hash=hash_password(PASSWORD),
+            )
+        )
+        await s.flush()
+        s.add(Membership(user_id="u-ana", location_id=site, role="staff"))
+        await DeviceRepository(s).ensure_device(site, device)
+        await s.commit()
+
+
 @pytest.fixture
 async def api(
-    sessions: async_sessionmaker[AsyncSession], tmp_path: Path, audit: Audit
+    broker: Any,
+    site: str,
+    sessions: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+    audit: Audit,
 ) -> AsyncIterator[httpx.AsyncClient]:
+    """Logged in as Ana."""
+    await _ana_serves_at(sessions, site, broker.edge[0])
     settings = ApiSettings(snapshot_dir=tmp_path / "api", mqtt_enabled=False)
     settings.snapshot_dir.mkdir()
     services = Services(
@@ -88,6 +125,8 @@ async def api(
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
+        login = {"email": STAFF, "password": PASSWORD}
+        assert (await client.post("/api/auth/login", json=login)).status_code == 200
         yield client
 
 
@@ -137,9 +176,7 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
         )
 
         async def alerts() -> list[dict[str, Any]]:
-            # The DB is fresh, but the session-wide broker replays other tests' retained
-            # `edge-01` status, so the device's site (= location) may be any of them.
-            r = await api.get("/api/alerts")
+            r = await api.get("/api/alerts", params={"location_id": site})
             assert r.status_code == 200, r.text
             return list(r.json())
 
@@ -155,7 +192,7 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
 
         opened = await until("opened")
         assert opened["zone_name"] == "Masa 1" and opened["rule_id"] == "demo-unattended"
-        r = await api.post(f"/api/alerts/{opened['event_id']}/ack", headers={"X-Demo-User": "Ana"})
+        r = await api.post(f"/api/alerts/{opened['event_id']}/ack")
         assert r.status_code == 200, r.text
         assert r.json()["state"] == "acknowledged"
 
@@ -168,7 +205,7 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
         await asyncio.gather(*tasks, return_exceptions=True)
 
     assert closed["event_id"] == opened["event_id"]
-    assert closed["acknowledged_by"] == "Ana"
+    assert (closed["acknowledged_by"], closed["acknowledged_by_id"]) == ("Ana", "u-ana")
     assert closed["arrived_at"] is not None and not closed["unacknowledged_arrival"]
     # Simulated: opens at 60 s, the waiter stays at Masa 1 from 90 s → arrived at 95 s.
     expected_wait = 35 / SPEED

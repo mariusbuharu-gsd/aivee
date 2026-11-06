@@ -1,8 +1,7 @@
-"""Audit port for `alert.*` entries. The audit_log table comes from the auth stream (A).
+"""Audit port for `alert.*` entries.
 
-Until then `LoggingAuditWriter` logs each entry. At merge, implement `AuditWriter` over
-stream A's audit repository (`append` in the caller's session, so the entry commits with
-the change) and return it from `get_audit_writer` (API) / pass it to `IngestHandler`.
+`RepositoryAuditWriter` appends to audit_log in the caller's session, so the entry commits
+with the change (the API's ack, ingest's event). `LoggingAuditWriter` only logs (tests).
 """
 
 import logging
@@ -14,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aivee_api.alerts.auth import CurrentUser
 from aivee_api.alerts.domain import duration_ro
 from aivee_api.alerts.schemas import AlertView
+from aivee_api.audit.repository import Actor, AuditRepository, Target
+from aivee_api.db.models import Site
 
 log = logging.getLogger(__name__)
 
@@ -55,11 +56,28 @@ class LoggingAuditWriter:
         )
 
 
-_DEFAULT = LoggingAuditWriter()
+class RepositoryAuditWriter:
+    """Writes the entry to audit_log; the organization is the location's."""
+
+    async def append(self, session: AsyncSession, entry: AlertAuditEntry) -> None:
+        site = await session.get(Site, entry.location_id) if entry.location_id else None
+        await AuditRepository(session).append(
+            entry.kind,
+            Actor(entry.actor_kind, entry.actor_id, entry.actor_name),
+            org_id=site.org_id if site else None,
+            location_id=entry.location_id,
+            target=Target(entry.target_type, entry.target_id, entry.target_label),
+            before=entry.before,
+            after=entry.after,
+            summary=entry.summary_ro,
+        )
+
+
+_DEFAULT = RepositoryAuditWriter()
 
 
 def get_audit_writer() -> AuditWriter:
-    """FastAPI dependency; override (or change) at merge to write the real audit_log."""
+    """FastAPI dependency (tests override it)."""
     return _DEFAULT
 
 

@@ -5,6 +5,7 @@ import contextlib
 import logging
 import signal
 
+from aivee_api.alerts.audit import RepositoryAuditWriter
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.push.sender import WebPushSender
 from aivee_api.push.settings import VapidSettings
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
+from aivee_ingest.locations import telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
 from aivee_ingest.telegram import TelegramNotifier
 from aivee_ingest.webpush import CompositeNotifier, WebPushNotifier
@@ -26,17 +28,22 @@ def build_notifier(
     vapid: VapidSettings | None = None,
 ) -> Notifier:
     notifiers: list[Notifier] = []
-    if settings.telegram_bot_token and settings.telegram_chat_id:
-        log.info("notifier: Telegram")
+    if settings.telegram_bot_token and (settings.telegram_chat_id or sessions is not None):
+        log.info("notifier: Telegram (location chat, else TELEGRAM_CHAT_ID)")
+
+        async def chat_for(event_id: str) -> str | None:
+            return await telegram_chat_for(sessions, event_id) if sessions is not None else None
+
         notifiers.append(
             TelegramNotifier(
                 settings.telegram_bot_token,
                 settings.telegram_chat_id,
                 prefix=settings.telegram_prefix,
+                chat_for=chat_for,
             )
         )
     else:
-        log.info("notifier: log (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set)")
+        log.info("notifier: log (TELEGRAM_BOT_TOKEN not set)")
         notifiers.append(LogNotifier())
     vapid = vapid or VapidSettings()
     if sessions is not None and vapid.enabled:
@@ -51,7 +58,12 @@ async def main() -> None:
     settings = IngestSettings()
     engine = make_engine()
     sessions = make_session_factory(engine)
-    handler = IngestHandler(sessions, settings.snapshot_dir, build_notifier(settings, sessions))
+    handler = IngestHandler(
+        sessions,
+        settings.snapshot_dir,
+        build_notifier(settings, sessions),
+        audit=RepositoryAuditWriter(),
+    )
     task = asyncio.create_task(run_worker(settings, handler))
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):

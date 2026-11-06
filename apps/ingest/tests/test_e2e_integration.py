@@ -24,6 +24,7 @@ import httpx
 import pytest
 import uvicorn
 import websockets
+from aivee_api.db.repositories import DeviceRepository
 from aivee_api.deps import Services
 from aivee_api.edge.publisher import MqttEdgeLink
 from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
@@ -31,6 +32,7 @@ from aivee_api.main import create_app
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.settings import ApiSettings
 from aivee_contracts.events import AlertEvent
+from aivee_contracts.topics import Topics
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
@@ -101,6 +103,36 @@ async def _until(cond: Callable[[], Awaitable[bool]], timeout: float = 15) -> No
     await asyncio.wait_for(poll(), timeout)
 
 
+OWNER = "owner@e2e.ro"
+PASSWORD = "parola-e2e-1"
+
+
+async def _owner_of(sessions: Any, site: str, device: str) -> None:
+    """An organization that owns the test's location and device, and its owner (who logs
+    in)."""
+    from aivee_api.accounts.models import Organization, User
+    from aivee_api.auth.passwords import hash_password
+    from aivee_api.db.models import Site
+
+    async with sessions() as s:
+        s.add(Organization(id="org-e2e", name="E2E"))
+        await s.flush()
+        s.add(Site(id=site, name="Locație e2e", org_id="org-e2e"))
+        s.add(
+            User(
+                id="u-e2e",
+                org_id="org-e2e",
+                email=OWNER,
+                name="Owner",
+                password_hash=hash_password(PASSWORD),
+                is_owner=True,
+            )
+        )
+        await s.flush()
+        await DeviceRepository(s).ensure_device(site, device)
+        await s.commit()
+
+
 @dataclass
 class Stack:
     base_url: str
@@ -115,6 +147,9 @@ async def stack(broker: Any, sessions: Any, site: str, tmp_path: Path) -> AsyncI
     device = broker.edge[0]
     snapshots = tmp_path / "data" / "snapshots"  # one dir, as in compose + `make api`
     tasks: list[asyncio.Task[Any]] = []
+    # Before ingest subscribes: retained statuses of earlier tests' sites must not claim
+    # edge-01 (a device keeps the location it was first seen at).
+    await _owner_of(sessions, site, device)
 
     # ingest
     ingest_ready = asyncio.Event()
@@ -164,9 +199,16 @@ async def stack(broker: Any, sessions: Any, site: str, tmp_path: Path) -> AsyncI
         await asyncio.to_thread(edge.start)
         base_url = f"http://127.0.0.1:{port}"
         async with httpx.AsyncClient(base_url=base_url) as http:
+            login = {"email": OWNER, "password": PASSWORD}
+            assert (await http.post("/api/auth/login", json=login)).status_code == 200
             yield Stack(base_url, http, edge, snapshots, device)
     finally:
         await asyncio.to_thread(edge.stop)
+        # Clear this site's retained status: the broker outlives the test, and a device keeps
+        # the location it was first seen at, so a stale status would claim the next test's
+        # edge-01 for this site.
+        with contextlib.suppress(Exception):
+            await link.publish(Topics(site=site, device=device).status, b"", qos=1, retain=True)
         server.should_exit = True
         for t in tasks[:-1]:
             t.cancel()
@@ -194,7 +236,8 @@ async def test_fake_edge_alert_reaches_events_and_the_websocket(stack: Stack) ->
     layout = fake_edge.Layout.from_camera(camera)
 
     ws_url = stack.base_url.replace("http", "ws", 1) + "/ws/events"
-    async with websockets.connect(ws_url) as ws:
+    cookie = f"aivee_session={stack.http.cookies['aivee_session']}"
+    async with websockets.connect(ws_url, additional_headers={"Cookie": cookie}) as ws:
         await asyncio.sleep(0.3)  # the feed's cursor starts at connect
         rec = await asyncio.to_thread(
             fake_edge.run_scenario,

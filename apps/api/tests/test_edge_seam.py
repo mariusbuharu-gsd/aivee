@@ -115,7 +115,7 @@ def test_mqtt_link_forwards_detections_with_the_topic_device() -> None:
 
 
 class _NoFeed:
-    def __init__(self, _sessions: Any) -> None: ...
+    def __init__(self, _sessions: Any, _locations: Any = None) -> None: ...
 
     async def start(self) -> None: ...
 
@@ -123,11 +123,25 @@ class _NoFeed:
         return []
 
 
+class _AllowAll:
+    alert_locations: frozenset[str] = frozenset()
+
+    async def refresh(self, _sessions: Any) -> None: ...
+
+    def allows(self, _message: BaseModel) -> bool:
+        return True
+
+
+async def _allow_all(_ws: Any, _services: Any) -> _AllowAll:
+    return _AllowAll()
+
+
 def test_ws_events_pushes_live_detections(
     monkeypatch: pytest.MonkeyPatch, settings: ApiSettings, translator: Any, services_factory: Any
 ) -> None:
     monkeypatch.setattr(events_router, "LiveFeed", _NoFeed)
     monkeypatch.setattr(events_router, "AlertFeed", _NoFeed)
+    monkeypatch.setattr(events_router, "authenticate_ws", _allow_all)
     services: Services = services_factory(settings, None, RecordingPublisher(), translator)
     app = create_app(services)
     msg = DetectionsMessage.from_detections(_detections())

@@ -1,16 +1,18 @@
 """Alert lifecycle endpoints against a real Postgres: ack, folded view, metrics, live feed."""
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
+from aivee_api.accounts.models import Membership, Organization, User
 from aivee_api.alerts.audit import AlertAuditEntry, get_audit_writer
-from aivee_api.alerts.auth import Access, DemoUser, require_view
 from aivee_api.alerts.live import AlertFeed
 from aivee_api.alerts.repository import AlertRepository
+from aivee_api.auth.passwords import hash_password
+from aivee_api.db.models import Site
 from aivee_api.db.repositories import CameraRepository, DeviceRepository, EventRepository
 from aivee_api.deps import Services
 from aivee_api.edge.publisher import RecordingPublisher
@@ -24,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.integration
 
+PASSWORD = "parola-alerte-1"
 T0 = datetime.now(UTC).replace(microsecond=0) - timedelta(minutes=30)
 
 
@@ -50,11 +53,66 @@ def app(
     return app
 
 
+USERS = {
+    # email: (id, name, owner, staff location)
+    "olga@a.ro": ("u-olga", "Olga", True, None),
+    "ana@a.ro": ("u-ana", "Ana", False, "demo"),
+    "ion@a.ro": ("u-ion", "Ion", False, "demo"),
+    "otto@a.ro": ("u-otto", "Otto", False, "other"),
+}
+
+
+@pytest.fixture(autouse=True)
+async def tenancy(sessions: Any) -> None:
+    """org-a: locations `demo` and `other`; Olga owns it, Ana and Ion serve at `demo`,
+    Otto at `other`."""
+    pw = hash_password(PASSWORD)
+    async with sessions() as s:
+        s.add(Organization(id="org-a", name="Org A"))
+        s.add_all(
+            [
+                Site(id="demo", name="Sala", org_id="org-a", type="restaurant"),
+                Site(id="other", name="Terasa", org_id="org-a", type="terrace"),
+            ]
+        )
+        await s.flush()
+        for email, (uid, name, owner, _) in USERS.items():
+            s.add(
+                User(
+                    id=uid, org_id="org-a", email=email, name=name, password_hash=pw, is_owner=owner
+                )
+            )
+        await s.flush()
+        for uid, _, _, loc in USERS.values():
+            if loc:
+                s.add(Membership(user_id=uid, location_id=loc, role="staff"))
+        await s.commit()
+
+
+Client = Callable[[str], Any]
+
+
 @pytest.fixture
-async def api(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+async def client_as(app: FastAPI, login: Any) -> AsyncIterator[Client]:
+    """`await client_as("ana@a.ro")`: a logged-in client (its own cookie jar)."""
+    clients: list[httpx.AsyncClient] = []
+
+    async def make(email: str) -> httpx.AsyncClient:
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+        clients.append(client)
+        await login(client, email, PASSWORD)
+        return client
+
+    yield make
+    for client in clients:
+        await client.aclose()
+
+
+@pytest.fixture
+async def api(client_as: Client) -> httpx.AsyncClient:
+    """The owner: sees every location of the organization."""
+    client: httpx.AsyncClient = await client_as("olga@a.ro")
+    return client
 
 
 def _event(state: str, seconds: float, zone: str = "t1", rule: str = "r1") -> AlertEvent:
@@ -92,8 +150,9 @@ async def camera(sessions: Any) -> None:
 
 
 async def test_lifecycle_opened_ack_arrived_closed(
-    api: httpx.AsyncClient, sessions: Any, camera: None, audit: RecordingAudit
+    api: httpx.AsyncClient, client_as: Client, sessions: Any, camera: None, audit: RecordingAudit
 ) -> None:
+    ana, ion = await client_as("ana@a.ro"), await client_as("ion@a.ro")
     opened = _event("opened", 0)
     await _ingest(sessions, opened)
     [view] = (await api.get("/api/alerts")).json()
@@ -101,17 +160,18 @@ async def test_lifecycle_opened_ack_arrived_closed(
     assert (view["state"], view["location_id"], view["zone_name"]) == ("opened", "demo", "Masa Unu")
     assert view["wait_s"] is None and view["acknowledged_by"] is None
 
-    r = await api.post(f"/api/alerts/{opened.event_id}/ack", headers={"X-Demo-User": "Ana"})
+    r = await ana.post(f"/api/alerts/{opened.event_id}/ack")
     assert r.status_code == 200, r.text
     acked = r.json()
     assert acked["state"] == "acknowledged"
-    assert (acked["acknowledged_by"], acked["acknowledged_by_id"]) == ("Ana", "demo-ana")
+    assert (acked["acknowledged_by"], acked["acknowledged_by_id"]) == ("Ana", "u-ana")
     assert acked["reaction_s"] is not None
     assert [e.kind for e in audit.entries] == ["alert.acknowledged"]
     assert audit.entries[0].summary_ro == "Ana a preluat alerta de la Masa Unu"
     assert (audit.entries[0].actor_kind, audit.entries[0].location_id) == ("user", "demo")
+    assert audit.entries[0].actor_id == "u-ana"
 
-    again = await api.post(f"/api/alerts/{opened.event_id}/ack", headers={"X-Demo-User": "Ion"})
+    again = await ion.post(f"/api/alerts/{opened.event_id}/ack")
     assert again.status_code == 409
     assert again.json()["detail"] == {
         "code": "already_acknowledged",
@@ -193,19 +253,46 @@ async def test_arrival_without_ack_and_list_filters(api: httpx.AsyncClient, sess
     assert view_a["zone_name"] == "Masa 1"
 
 
-async def test_view_access_limits_locations(
-    app: FastAPI, api: httpx.AsyncClient, sessions: Any
-) -> None:
-    await _ingest(sessions, _event("opened", 0))
+async def test_view_access_limits_locations(client_as: Client, sessions: Any) -> None:
+    opened = _event("opened", 0)
+    await _ingest(sessions, opened)
     await _ingest(sessions, _event("opened", 5, zone="x"), device="edge-99")
 
-    async def only_other() -> Access:
-        return Access(DemoUser("u1", "Ana"), frozenset({"other"}))
-
-    app.dependency_overrides[require_view] = only_other
-    views = (await api.get("/api/alerts")).json()
+    otto = await client_as("otto@a.ro")
+    views = (await otto.get("/api/alerts")).json()
     assert [v["location_id"] for v in views] == ["other"]
-    assert (await api.get("/api/alerts?location_id=demo")).status_code == 404
+    assert (await otto.get("/api/alerts?location_id=demo")).status_code == 404
+    assert (await otto.post(f"/api/alerts/{opened.event_id}/ack")).status_code == 404
+    m = await otto.get("/api/metrics/service", params={"location_id": "demo"})
+    assert m.status_code == 404
+
+
+async def test_alerts_need_a_session(app: FastAPI) -> None:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as anon:
+        assert (await anon.get("/api/alerts")).status_code == 401
+        assert (await anon.post("/api/alerts/x/ack")).status_code == 401
+
+
+async def test_the_ack_writes_the_real_audit_log(
+    settings: ApiSettings, sessions: Any, translator: Any, services_factory: Any, login: Any
+) -> None:
+    services: Services = services_factory(settings, sessions, RecordingPublisher(), translator)
+    app = create_app(services)  # no writer override: RepositoryAuditWriter
+    opened = _event("opened", 0)
+    await _ingest(sessions, opened)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as ana:
+        await login(ana, "ana@a.ro", PASSWORD)
+        assert (await ana.post(f"/api/alerts/{opened.event_id}/ack")).status_code == 200
+        [row] = (await ana.get("/api/audit", params={"kind": "alert"})).json()["items"]
+    assert (row["kind"], row["actor"]["id"], row["location_id"]) == (
+        "alert.acknowledged",
+        "u-ana",
+        "demo",
+    )
+    assert row["summary_ro"] == "Ana a preluat alerta de la Masa 1"
 
 
 async def test_service_metrics(api: httpx.AsyncClient, sessions: Any) -> None:
@@ -230,7 +317,7 @@ async def test_service_metrics(api: httpx.AsyncClient, sessions: Any) -> None:
 
 
 async def test_live_feed_pushes_folded_alerts_and_keeps_raw_events_legacy(
-    api: httpx.AsyncClient, sessions: Any
+    api: httpx.AsyncClient, client_as: Client, sessions: Any
 ) -> None:
     feed, raw = AlertFeed(sessions), LiveFeed(sessions)
     await feed.start()
@@ -241,7 +328,8 @@ async def test_live_feed_pushes_folded_alerts_and_keeps_raw_events_legacy(
     assert (m.type, m.data.event_id, m.data.state) == ("alert", opened.event_id, "opened")
     assert [r.data.state for r in await raw.poll()] == ["opened"]  # type: ignore[attr-defined]
 
-    await api.post(f"/api/alerts/{opened.event_id}/ack", headers={"X-Demo-User": "Ana"})
+    ana = await client_as("ana@a.ro")
+    await ana.post(f"/api/alerts/{opened.event_id}/ack")
     [m] = await feed.poll()
     assert m.data.state == "acknowledged" and m.data.acknowledged_by
     assert await feed.poll() == []
