@@ -45,6 +45,16 @@ class Gone(DomainError):
     code = "gone"
 
 
+class TooLarge(DomainError):
+    status = 413
+    code = "too_large"
+
+
+class UnsupportedType(DomainError):
+    status = 415
+    code = "unsupported_type"
+
+
 class Invalid(DomainError):
     status = 422
     code = "invalid"
