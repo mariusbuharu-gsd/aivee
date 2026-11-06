@@ -76,3 +76,27 @@ async def test_log_notifier_logs(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level("INFO")
     await LogNotifier().notify(EVENT, None)
     assert "Masa 1 așteaptă" in caplog.text
+
+
+async def test_prefix_marks_alert_and_follow_up_messages() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"ok": True})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    notifier = TelegramNotifier("TOKEN", "-100", client, prefix="[test]")
+    await notifier.notify(EVENT, None)
+    await notifier.send_text("Ana a ajuns la Masa 1 după 2 min 10 s")
+    texts = [json.loads(r.content)["text"] for r in seen]
+    assert texts[0].startswith("[test] Alertă AiVee: Masa 1")
+    assert texts[1] == "[test] Ana a ajuns la Masa 1 după 2 min 10 s"
+    assert all(r.url.path == "/botTOKEN/sendMessage" for r in seen)
+
+
+async def test_follow_up_error_raises_without_leaking_token() -> None:
+    notifier, _ = _notifier(status=500)
+    with pytest.raises(RuntimeError) as err:
+        await notifier.send_text("x")
+    assert "TOKEN" not in str(err.value)

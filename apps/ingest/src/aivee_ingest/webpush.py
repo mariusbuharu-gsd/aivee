@@ -35,6 +35,13 @@ class WebPushNotifier:
         )
         await push_to_all(self._sessions, self._sender, message)
 
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        """Follow-up (staff arrived); the same `tag` replaces the alert's notification."""
+        message = PushMessage(
+            title="AiVee · Angajat sosit", body=text, url="/alerte", tag=tag or "aivee"
+        )
+        await push_to_all(self._sessions, self._sender, message)
+
     async def _zone_name(self, camera_id: str, zone_id: str) -> str:
         async with self._sessions() as s:
             camera = await CameraRepository(s).get(camera_id)
@@ -54,11 +61,15 @@ class CompositeNotifier:
         results = await asyncio.gather(
             *(n.notify(event, snapshot) for n in self.notifiers), return_exceptions=True
         )
+        self._log_failures(results, f"event {event.event_id}")
+
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        results = await asyncio.gather(
+            *(n.send_text(text, tag) for n in self.notifiers), return_exceptions=True
+        )
+        self._log_failures(results, f"follow-up {tag}")
+
+    def _log_failures(self, results: Sequence[object], what: str) -> None:
         for notifier, result in zip(self.notifiers, results, strict=True):
             if isinstance(result, BaseException):
-                log.error(
-                    "%s failed for event %s: %s",
-                    type(notifier).__name__,
-                    event.event_id,
-                    result,
-                )
+                log.error("%s failed for %s: %s", type(notifier).__name__, what, result)

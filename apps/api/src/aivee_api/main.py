@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from aivee_api.alerts.router import router as alerts_router
 from aivee_api.cameras.router import router as cameras_router
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.deps import Services
@@ -105,6 +106,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         staff_router,
         metrics_router,
         push_router,
+        alerts_router,
     ):
         app.include_router(router)
 

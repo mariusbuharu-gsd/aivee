@@ -47,6 +47,11 @@ class Recording:
         if self.fail:
             raise RuntimeError("boom")
 
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        self.calls.append(f"{tag}:{text}")
+        if self.fail:
+            raise RuntimeError("boom")
+
 
 # ---------- unit ----------
 
@@ -58,6 +63,15 @@ async def test_composite_keeps_going_when_one_notifier_fails(
     await CompositeNotifier([broken, ok]).notify(EVENT, None)
     assert broken.calls == ["e1"] and ok.calls == ["e1"]
     assert "Recording failed for event e1" in caplog.text
+
+
+async def test_composite_sends_follow_up_text_to_every_notifier(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    broken, ok = Recording(fail=True), Recording()
+    await CompositeNotifier([broken, ok]).send_text("Ana a ajuns la Masa 1 după 40 s", "e1")
+    assert broken.calls == ok.calls == ["e1:Ana a ajuns la Masa 1 după 40 s"]
+    assert "Recording failed" in caplog.text
 
 
 def test_build_notifier_adds_web_push_only_with_vapid_keys() -> None:
@@ -123,3 +137,14 @@ async def test_web_push_without_subscriptions_sends_nothing(sessions: Any) -> No
     sender = FakeSender()
     await WebPushNotifier(sessions, sender).notify(EVENT, None)
     assert sender.sent == []
+
+
+@pytest.mark.integration
+async def test_web_push_follow_up_replaces_the_alert_notification(sessions: Any) -> None:
+    await _seed(sessions, "https://p/1")
+    sender = FakeSender()
+    await WebPushNotifier(sessions, sender).send_text("Ana a ajuns la Masa 1 după 40 s", "e1")
+    [(_, msg)] = sender.sent
+    assert msg["title"] == "AiVee · Angajat sosit"
+    assert msg["body"] == "Ana a ajuns la Masa 1 după 40 s"
+    assert msg["url"] == "/alerte" and msg["tag"] == "e1"

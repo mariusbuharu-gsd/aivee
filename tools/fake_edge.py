@@ -9,7 +9,8 @@ real device. Publishes as the edge MQTT user from .env.
 
 Scenarios (simulated seconds; --speed compresses wall time):
   unattended  two guests sit at Masa 1; nobody comes; alert opens at 60 s; a waiter who
-              walks between the other tables and the kitchen comes to Masa 1 → closes
+              walks between the other tables and the kitchen comes to Masa 1 at 90 s
+              and stays → arrived at 95 s (ARRIVE_S = 5 s) → closes
   hand        a guest at Masa 2 raises a hand → opens; hand down → closes
   queue       three guests wait at the entrance with no staff → opens; seated → closes
   uncleared   guests leave Masa 3 with cups on it → opens after 60 s; cleared → closes
@@ -274,7 +275,7 @@ def _unattended(t: float, layout: Layout) -> tuple[list[TrackObs], list[ObjectOb
     if 5 <= t < 90:
         tracks.append(_person(7, *_walking(waiter_round(layout, "masa-1"), t - 5)))
     elif t >= 90:
-        tracks.append(_at(layout, 7, "masa-1"))  # the waiter finally comes to Masa 1
+        tracks.append(_at(layout, 7, "masa-1"))  # the waiter comes and stays (ARRIVE_S)
     return tracks, []
 
 
@@ -304,7 +305,7 @@ def _uncleared(t: float, layout: Layout) -> tuple[list[TrackObs], list[ObjectObs
 SCENARIOS = {
     s.name: s
     for s in (
-        Scenario("unattended", 100, _unattended, ("demo-unattended",)),
+        Scenario("unattended", 105, _unattended, ("demo-unattended",)),
         Scenario("hand", 15, _hand, ("demo-hand",)),
         Scenario("queue", 40, _queue, ("demo-queue",)),
         Scenario("uncleared", 95, _uncleared, ("demo-uncleared",)),
@@ -542,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
     for ev in rec.alerts:
         zone = next((z for z in layout.camera.zones if z.id == ev.zone_id), None)
         print(
-            f"fake_edge: {ev.state:6} event_id={ev.event_id} rule={ev.rule_id} "
+            f"fake_edge: {ev.state:7} event_id={ev.event_id} rule={ev.rule_id} "
             f"zone={ev.zone_id} ({zone.name if zone else '?'}) {ev.summary_ro}"
         )
     return 0

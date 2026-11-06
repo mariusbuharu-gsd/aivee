@@ -86,8 +86,18 @@ class EventRow(Base):
     summary_ro: Mapped[str] = mapped_column(Text, default="")
     snapshot_path: Mapped[str | None] = mapped_column(Text)
     received_at: Mapped[datetime] = _now()
+    # Alert lifecycle (aivee_api.alerts): every row points at its alert's opened event;
+    # the opened row carries the folded times and who acknowledged it.
+    alert_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    acknowledged_by_id: Mapped[str | None] = mapped_column(String(64))
+    acknowledged_by_name: Mapped[str | None] = mapped_column(Text)
+    arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (CheckConstraint("state IN ('opened', 'closed')", name="event_state"),)
+    __table_args__ = (
+        CheckConstraint("state IN ('opened', 'arrived', 'closed')", name="event_state"),
+    )
 
 
 class StaffProfileRow(Base):

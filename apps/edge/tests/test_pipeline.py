@@ -178,7 +178,7 @@ def walker_position(t: float) -> tuple[float, float]:
 # -- tests ---------------------------------------------------------------------------
 
 
-def test_unattended_table_opens_then_closes_when_staff_like_walker_arrives() -> None:
+def test_unattended_table_arrives_then_closes_when_staff_like_walker_stays() -> None:
     frames = []
     for ts in range(0, 121):
         tracks = list(guests(ts))
@@ -191,11 +191,17 @@ def test_unattended_table_opens_then_closes_when_staff_like_walker_arrives() -> 
     p = pipeline(frames, Config([UNATTENDED], ZONES), rec)
     p.run()
 
-    assert rec.states() == [("opened", "unattended", "t1"), ("closed", "unattended", "t1")]
-    opened, closed = rec.alerts[0][0], rec.alerts[1][0]
+    assert rec.states() == [
+        ("opened", "unattended", "t1"),
+        ("arrived", "unattended", "t1"),
+        ("closed", "unattended", "t1"),
+    ]
+    opened, arrived, closed = (e for e, _ in rec.alerts)
     assert opened.at.timestamp() == 60
     assert opened.summary_ro == "Masa 1: neservită de 1 min"
-    assert closed.at.timestamp() == 100
+    # The waiter reaches Masa 1 at 100 and has stayed ARRIVE_S (5 s) at 105.
+    assert arrived.at.timestamp() == closed.at.timestamp() == 105
+    assert rec.alerts[1][1] is None  # no snapshot for arrived
     assert [s.track_id for s in rec.suggestions] == [7]
 
 

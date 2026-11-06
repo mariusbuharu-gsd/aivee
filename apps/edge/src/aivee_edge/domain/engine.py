@@ -3,6 +3,10 @@
 Every enabled rule for this camera is evaluated on every zone carrying its `zone_tag`.
 An alert opens when all conditions hold (and `cooldown_s` has passed since the last
 opening for that rule and zone) and closes when they stop holding.
+
+With `arrive_s` set, an open alert also reports `arrived` once, when a staff member has
+stayed in the zone for `arrive_s` since the alert opened. Staff walking past for less
+than that neither arrives nor counts as staff presence for the rule's conditions.
 """
 
 from collections.abc import Callable
@@ -70,14 +74,17 @@ class SituationEngine:
         camera_id: str,
         to_datetime: Callable[[float], datetime] = utc_from_timestamp,
         grace_s: float = 0.0,
+        arrive_s: float | None = None,
     ) -> None:
         self._grace_s = grace_s
+        self._arrive_s = arrive_s
         self._states: dict[str, ZoneState] = {}
         self._zone_names: dict[str, str] = {}
         self._id_factory = id_factory
         self._camera_id = camera_id
         self._to_datetime = to_datetime
         self._open: set[AlertKey] = set()
+        self._arrived: set[AlertKey] = set()
         self._last_opened: dict[AlertKey, float] = {}
         self._rules: list[Rule] = []
         self.update_rules(rules)
@@ -92,7 +99,9 @@ class SituationEngine:
         starts over; alerts of removed zones close on the next step."""
         old = self._states
         self._states = {
-            z.id: old[z.id] if z.id in old and old[z.id].zone == z else ZoneState(z, self._grace_s)
+            z.id: old[z.id]
+            if z.id in old and old[z.id].zone == z
+            else ZoneState(z, self._grace_s, self._arrive_s or 0.0)
             for z in zones
         }
         self._zone_names.update({z.id: z.name for z in zones})
@@ -110,6 +119,10 @@ class SituationEngine:
                     continue
                 key = (rule.id, state.zone.id)
                 active.add(key)
+                if self._has_arrived(key, state, now):
+                    self._arrived.add(key)
+                    name = state.zone.name
+                    events.append(self._event(key, "arrived", now, f"{name}: a venit un angajat"))
                 ok = all(holds(c, state, now) for c in rule.all_of)
                 if ok and key not in self._open:
                     last = self._last_opened.get(key)
@@ -124,12 +137,19 @@ class SituationEngine:
             events.append(self._close(key, now))
         return events
 
+    def _has_arrived(self, key: AlertKey, state: ZoneState, now: float) -> bool:
+        if self._arrive_s is None or key not in self._open or key in self._arrived:
+            return False
+        since = state.staff_since()
+        return since is not None and now - max(since, self._last_opened[key]) >= self._arrive_s
+
     def _close(self, key: AlertKey, now: float) -> AlertEvent:
         self._open.discard(key)
+        self._arrived.discard(key)
         return self._event(key, "closed", now, f"{self._zone_names[key[1]]}: rezolvat")
 
     def _event(
-        self, key: AlertKey, state: Literal["opened", "closed"], now: float, summary: str
+        self, key: AlertKey, state: Literal["opened", "arrived", "closed"], now: float, summary: str
     ) -> AlertEvent:
         rule_id, zone_id = key
         return AlertEvent(
