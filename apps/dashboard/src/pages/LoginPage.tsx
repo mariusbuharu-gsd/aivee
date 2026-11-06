@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { useApi } from '../api/context';
 import { MOCK_PASSWORD, MOCK_USERS } from '../api/mockAccounts';
 import { useAuth } from '../auth/context';
 import { isEmail, safeNext } from '../auth/session';
 import { AuthShell } from '../components/AuthShell';
+import { Banner } from '../ui/Banner';
+import { PasswordInput } from '../ui/controls';
 
 export function LoginPage() {
   const api = useApi();
@@ -16,6 +18,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgot, setForgot] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   if (status === 'authed') return <Navigate to={next} replace />;
 
@@ -31,6 +35,7 @@ export function LoginPage() {
       navigate(next, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nu am putut intra în cont.');
+      passwordRef.current?.select();
     } finally {
       setBusy(false);
     }
@@ -58,6 +63,7 @@ export function LoginPage() {
           <h1>Intră în cont</h1>
           <p className="muted">Bine ai revenit. Alertele de azi te așteaptă.</p>
         </div>
+        {error && <Banner tone="error" title={error} />}
         <label className="field">
           <span>Email</span>
           <input
@@ -68,24 +74,32 @@ export function LoginPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <label className="field">
-          <span>Parolă</span>
-          <input
-            className="input"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
+        <PasswordInput
+          label="Parolă"
+          ref={passwordRef}
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           {busy ? 'Se verifică…' : 'Intră în cont'}
         </button>
+        <div className="auth-forgot">
+          <button
+            type="button"
+            className="link-btn"
+            aria-expanded={forgot}
+            onClick={() => setForgot((v) => !v)}
+          >
+            Am uitat parola
+          </button>
+          {forgot && (
+            <p className="small muted">
+              Cere-i proprietarului contului un link de invitație nou pe același email; cu el îți
+              alegi altă parolă.
+            </p>
+          )}
+        </div>
         <p className="auth-switch">
           Nu ai cont? <Link to="/cont-nou">Creează unul</Link>
         </p>

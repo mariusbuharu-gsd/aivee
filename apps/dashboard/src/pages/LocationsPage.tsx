@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import type { Location, LocationType } from '../api/client';
+import type { Location } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
-
-const LOCATION_TYPES: { value: LocationType; label: string }[] = [
-  { value: 'restaurant', label: 'Restaurant' },
-  { value: 'terrace', label: 'Terasă / bar' },
-  { value: 'event', label: 'Eveniment' },
-  { value: 'shop', label: 'Magazin' },
-  { value: 'other', label: 'Altceva' },
-];
-const typeLabel = (t: string) => LOCATION_TYPES.find((x) => x.value === t)?.label ?? t;
+import { LOCATION_TYPES, locationTypeLabel as typeLabel } from '../auth/session';
+import { Banner } from '../ui/Banner';
+import { ConfirmDialog } from '../ui/Dialog';
+import { Menu } from '../ui/Menu';
+import { Select } from '../ui/Select';
+import { EmptyState } from '../ui/controls';
+import { useToast } from '../ui/toast';
 
 const slug = (s: string) =>
   s
@@ -27,6 +25,8 @@ export function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Location | null>(null);
+  const toast = useToast();
   const first = me?.locations.length === 0;
 
   const load = useCallback(
@@ -63,13 +63,11 @@ export function LocationsPage() {
       <div className="two-col">
         <section aria-labelledby="loc-h">
           <h2 id="loc-h">Locațiile tale</h2>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="error" title={error} />}
           {locations.length === 0 ? (
-            <p className="muted empty">Nicio locație încă.</p>
+            <EmptyState icon="location" title="Nicio locație încă">
+              Adaug-o pe prima din dreapta: restaurantul, terasa sau evenimentul unde pui camerele.
+            </EmptyState>
           ) : (
             <ul className="locations">
               {locations.map((l) =>
@@ -87,6 +85,7 @@ export function LocationsPage() {
                             telegram_chat_id: v.telegram_chat_id || null,
                           });
                           setEditing(null);
+                          toast({ title: `„${v.name}” a fost salvată` });
                         })
                       }
                     />
@@ -96,34 +95,29 @@ export function LocationsPage() {
                     key={l.id}
                     className={`location-row ${location?.id === l.id ? 'is-current' : ''}`}
                   >
-                    <div className="member-who">
-                      <strong>{l.name}</strong>
-                      <span className="small muted mono">
-                        {l.id} · {typeLabel(l.type)}
-                        {l.telegram_chat_id ? ' · Telegram conectat' : ''}
-                      </span>
-                    </div>
-                    {location?.id === l.id ? (
-                      <span className="pill pill-live">curentă</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => setLocation(l.id)}
-                      >
-                        Deschide
-                      </button>
-                    )}
                     <button
                       type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setEditing(l.id)}
+                      className="location-open"
+                      onClick={() => setLocation(l.id)}
+                      disabled={location?.id === l.id}
+                      aria-label={location?.id === l.id ? undefined : `Deschide ${l.name}`}
                     >
-                      Modifică
+                      <strong>{l.name}</strong>
+                      <span className="small muted">
+                        {typeLabel(l.type)}
+                        {l.telegram_chat_id ? ' · Telegram conectat' : ' · fără Telegram'}
+                      </span>
                     </button>
-                    <DeleteButton
-                      name={l.name}
-                      onConfirm={() => run(() => api.deleteLocation(l.id))}
+                    {location?.id === l.id && <span className="pill pill-live">curentă</span>}
+                    <Menu
+                      label={`Acțiuni pentru ${l.name}`}
+                      items={[
+                        ...(location?.id === l.id
+                          ? []
+                          : [{ label: 'Deschide', onSelect: () => setLocation(l.id) }]),
+                        { label: 'Modifică', onSelect: () => setEditing(l.id) },
+                        { label: 'Șterge locația…', danger: true, onSelect: () => setDeleting(l) },
+                      ]}
                     />
                   </li>
                 ),
@@ -144,36 +138,37 @@ export function LocationsPage() {
                   });
                   await refresh();
                   setLocation(created.id);
+                  toast({
+                    title: `„${created.name}” a fost adăugată`,
+                    text: 'Acum leagă dispozitivul și camerele ei din Dispozitive.',
+                  });
                 })
               }
             />
           </div>
         </aside>
       </div>
+      {deleting && (
+        <ConfirmDialog
+          title={`Ștergi definitiv locația „${deleting.name}”?`}
+          confirmLabel="Șterge locația"
+          confirmText={deleting.name}
+          onClose={() => setDeleting(null)}
+          onConfirm={async () => {
+            await api.deleteLocation(deleting.id);
+            await Promise.all([load(), refresh()]);
+            toast({ title: `Locația „${deleting.name}” a fost ștearsă` });
+          }}
+        >
+          <ul>
+            <li>Camerele, zonele și regulile ei se șterg; dispozitivul nu mai trimite alerte.</li>
+            <li>Echipa ei pierde accesul la locație.</li>
+            <li>Istoricul și metricile ei nu se mai pot vedea.</li>
+          </ul>
+          <p className="small muted">Nu se poate anula.</p>
+        </ConfirmDialog>
+      )}
     </div>
-  );
-}
-
-function DeleteButton({ name, onConfirm }: { name: string; onConfirm: () => void }) {
-  const [asking, setAsking] = useState(false);
-  return asking ? (
-    <span className="confirm">
-      <span className="small muted">Ștergi {name}?</span>
-      <button type="button" className="btn btn-danger btn-sm" onClick={onConfirm}>
-        Șterge
-      </button>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAsking(false)}>
-        Anulează
-      </button>
-    </span>
-  ) : (
-    <button
-      type="button"
-      className="btn btn-ghost btn-sm btn-danger"
-      onClick={() => setAsking(true)}
-    >
-      Șterge
-    </button>
   );
 }
 
@@ -220,49 +215,45 @@ function LocationForm({
         />
       </label>
       {!initial && (
+        <details className="tech">
+          <summary>Avansat: id {idTouched ? id : slug(name) || '—'}</summary>
+          <label className="field">
+            <span>Id (apare în configurarea dispozitivului)</span>
+            <input
+              id={`${prefix}-id`}
+              className="input mono"
+              value={idTouched ? id : slug(name)}
+              onChange={(e) => {
+                setIdTouched(true);
+                setId(e.target.value);
+              }}
+            />
+          </label>
+        </details>
+      )}
+      <Select
+        id={`${prefix}-type`}
+        label="Tip"
+        value={type}
+        options={LOCATION_TYPES}
+        onChange={setType}
+      />
+      {initial && (
         <label className="field">
-          <span>Id (apare în configurarea dispozitivului)</span>
+          <span>Chat Telegram (opțional)</span>
           <input
-            id={`${prefix}-id`}
+            id={`${prefix}-tg`}
             className="input mono"
-            value={idTouched ? id : slug(name)}
-            onChange={(e) => {
-              setIdTouched(true);
-              setId(e.target.value);
-            }}
+            value={telegram}
+            onChange={(e) => setTelegram(e.target.value)}
+            placeholder="-1001234567890"
           />
+          <small className="muted">
+            Adaugă botul AiVee în grupul echipei, apoi scrie aici id-ul grupului.
+          </small>
         </label>
       )}
-      <label className="field">
-        <span>Tip</span>
-        <select
-          id={`${prefix}-type`}
-          className="input"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-        >
-          {LOCATION_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>Chat Telegram (opțional)</span>
-        <input
-          id={`${prefix}-tg`}
-          className="input mono"
-          value={telegram}
-          onChange={(e) => setTelegram(e.target.value)}
-          placeholder="-1001234567890"
-        />
-      </label>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Banner tone="error" title={error} />}
       <div className="row-actions">
         <button type="submit" className="btn btn-primary">
           {submitLabel}

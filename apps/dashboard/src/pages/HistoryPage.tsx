@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import type { AuditEntry, AuditQuery, Member } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth, useLocationId } from '../auth/context';
+import { ROLE_LABEL } from '../auth/session';
+import { describeChanges } from '../history/diff';
+import { Banner } from '../ui/Banner';
+import { Select } from '../ui/Select';
+import { EmptyState, Segmented, Skeleton } from '../ui/controls';
 
 const KINDS: { value: string; label: string }[] = [
   { value: '', label: 'Toate' },
@@ -33,12 +39,28 @@ function periodStart(days: number | null): string | undefined {
 }
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString('ro-RO', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Azi';
+  if (d.toDateString() === yesterday.toDateString()) return 'Ieri';
+  return d.toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function byDay(items: AuditEntry[]): { label: string; items: AuditEntry[] }[] {
+  const out: { label: string; items: AuditEntry[] }[] = [];
+  for (const e of items) {
+    const label = dayLabel(e.at);
+    const last = out[out.length - 1];
+    if (last?.label === label) last.items.push(e);
+    else out.push({ label, items: [e] });
+  }
+  return out;
+}
 
 export function HistoryPage() {
   const api = useApi();
@@ -46,7 +68,9 @@ export function HistoryPage() {
   const { can, me } = useAuth();
   const ownOnly = !can('audit.view');
   const [kind, setKind] = useState('');
-  const [actor, setActor] = useState('');
+  const [params] = useSearchParams();
+  // "Vezi ce a făcut în Istoric" from Echipă opens the page filtered on that person.
+  const [actor, setActor] = useState(() => params.get('cine') ?? '');
   const [period, setPeriod] = useState('7');
   const [members, setMembers] = useState<Member[]>([]);
   const [result, setResult] = useState<{
@@ -103,6 +127,27 @@ export function HistoryPage() {
     };
   }, [api, can, locationId]);
 
+  const actors = [
+    { value: '', label: 'Oricine' },
+    ...(me
+      ? [
+          {
+            value: me.user.id,
+            label: `${me.user.name} (tu)`,
+            leading: <span className="avatar">{initials(me.user.name)}</span>,
+          },
+        ]
+      : []),
+    ...members
+      .filter((m) => m.user_id !== me?.user.id)
+      .map((m) => ({
+        value: m.user_id,
+        label: m.name,
+        hint: ROLE_LABEL[m.role],
+        leading: <span className="avatar">{initials(m.name)}</span>,
+      })),
+  ];
+
   async function more() {
     if (!next) return;
     const page = await api.listAudit(query(next));
@@ -122,106 +167,78 @@ export function HistoryPage() {
         </p>
       </header>
       <form className="filters" aria-label="Filtre istoric" onSubmit={(e) => e.preventDefault()}>
-        <label className="field">
-          <span>Tip</span>
-          <select
-            id="audit-kind"
-            className="input"
-            value={kind}
-            onChange={(e) => setKind(e.target.value)}
-          >
-            {KINDS.map((k) => (
-              <option key={k.value} value={k.value}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select id="audit-kind" label="Tip" value={kind} options={KINDS} onChange={setKind} />
         {!ownOnly && (
-          <label className="field">
-            <span>Cine</span>
-            <select
-              id="audit-actor"
-              className="input"
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-            >
-              <option value="">Oricine</option>
-              {me && <option value={me.user.id}>{me.user.name} (tu)</option>}
-              {members
-                .filter((m) => m.user_id !== me?.user.id)
-                .map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {m.name}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <Select
+            id="audit-actor"
+            label="Cine"
+            searchable={actors.length > 6}
+            searchPlaceholder="Caută o persoană"
+            emptyText="Nimeni cu numele ăsta."
+            value={actor}
+            options={actors}
+            onChange={setActor}
+          />
         )}
-        <div className="field">
-          <span id="period-l">Perioadă</span>
-          <div className="segmented" role="group" aria-labelledby="period-l">
-            {PERIODS.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                className="btn btn-seg"
-                aria-pressed={period === p.value}
-                onClick={() => setPeriod(p.value)}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <Segmented
+          label="Perioadă"
+          value={period}
+          options={PERIODS.map((p) => ({ value: p.value, label: p.label }))}
+          onChange={setPeriod}
+        />
       </form>
+      {(kind || actor) && (
+        <div className="chips" aria-label="Filtre active">
+          {kind && (
+            <button type="button" className="chip" onClick={() => setKind('')}>
+              {KINDS.find((k) => k.value === kind)?.label}
+              <span aria-hidden="true">×</span>
+              <span className="sr-only">Scoate filtrul</span>
+            </button>
+          )}
+          {actor && (
+            <button type="button" className="chip" onClick={() => setActor('')}>
+              {actors.find((x) => x.value === actor)?.label}
+              <span aria-hidden="true">×</span>
+              <span className="sr-only">Scoate filtrul</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setKind('');
+              setActor('');
+            }}
+          >
+            Șterge filtrele
+          </button>
+        </div>
+      )}
       {error && (
-        <p className="error" role="alert">
+        <Banner tone="error" title="Nu am putut încărca istoricul.">
           {error}
-        </p>
+        </Banner>
       )}
       {loading ? (
-        <p className="muted" role="status">
-          Se încarcă istoricul…
-        </p>
+        <Skeleton rows={4} label="Se încarcă istoricul" />
       ) : items.length === 0 ? (
-        <p className="muted empty">Nimic în această perioadă.</p>
+        <EmptyState icon="history" title="Nimic în această perioadă">
+          {kind || actor
+            ? 'Încearcă fără filtre sau o perioadă mai lungă.'
+            : 'Ce se întâmplă în locație apare aici.'}
+        </EmptyState>
       ) : (
-        <ol className="audit" aria-label="Intrări în istoric">
-          {items.map((e) => (
-            <li key={e.id} className="audit-row">
-              <time className="mono small muted" dateTime={e.at}>
-                {when(e.at)}
-              </time>
-              <span className={`audit-actor is-${e.actor.kind}`} title={e.actor.name}>
-                {e.actor.kind === 'user'
-                  ? initials(e.actor.name)
-                  : e.actor.kind === 'device'
-                    ? 'ED'
-                    : 'SY'}
-              </span>
-              <div className="audit-body">
-                <p>{e.summary_ro}</p>
-                <span className="mono small muted">{e.kind}</span>
-                {(e.before !== null || e.after !== null) && (
-                  <details className="audit-diff">
-                    <summary>Vezi modificarea</summary>
-                    <div className="diff">
-                      <div>
-                        <span className="small muted">Înainte</span>
-                        <pre className="json">{JSON.stringify(e.before, null, 2)}</pre>
-                      </div>
-                      <div>
-                        <span className="small muted">După</span>
-                        <pre className="json">{JSON.stringify(e.after, null, 2)}</pre>
-                      </div>
-                    </div>
-                  </details>
-                )}
-              </div>
-            </li>
-          ))}
-        </ol>
+        byDay(items).map((g) => (
+          <section key={g.label} aria-label={g.label}>
+            <h2 className="feed-group">{g.label}</h2>
+            <ol className="audit" aria-label={`Intrări în istoric, ${g.label}`}>
+              {g.items.map((e) => (
+                <AuditRow key={e.id} e={e} />
+              ))}
+            </ol>
+          </section>
+        ))
       )}
       {next && (
         <button type="button" className="btn" onClick={more}>
@@ -229,6 +246,49 @@ export function HistoryPage() {
         </button>
       )}
     </div>
+  );
+}
+
+function AuditRow({ e }: { e: AuditEntry }) {
+  const changes = describeChanges(e.before, e.after);
+  const changed = e.before !== null && e.after !== null;
+  return (
+    <li className="audit-row">
+      <time className="mono small muted" dateTime={e.at}>
+        {when(e.at)}
+      </time>
+      <span className={`audit-actor is-${e.actor.kind}`} title={e.actor.name}>
+        {e.actor.kind === 'user' ? initials(e.actor.name) : e.actor.kind === 'device' ? 'ED' : 'SY'}
+      </span>
+      <div className="audit-body">
+        <p>{e.summary_ro}</p>
+        {changed && changes.length > 0 && (
+          <ul className="changes">
+            {changes.slice(0, 4).map((c) => (
+              <li key={c.label}>
+                <span className="muted">{c.label}:</span> <s>{c.from}</s> → <strong>{c.to}</strong>
+              </li>
+            ))}
+          </ul>
+        )}
+        {(e.before !== null || e.after !== null) && (
+          <details className="tech">
+            <summary>Detalii tehnice</summary>
+            <span className="mono small muted">{e.kind}</span>
+            <div className="diff">
+              <div>
+                <span className="small muted">Înainte</span>
+                <pre className="json">{JSON.stringify(e.before, null, 2)}</pre>
+              </div>
+              <div>
+                <span className="small muted">După</span>
+                <pre className="json">{JSON.stringify(e.after, null, 2)}</pre>
+              </div>
+            </div>
+          </details>
+        )}
+      </div>
+    </li>
   );
 }
 

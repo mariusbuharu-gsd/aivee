@@ -1,4 +1,4 @@
-import { useId, useState, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useId, useState, type ComponentProps, type ReactNode } from 'react';
 import { Icon, type IconName } from '../components/Icon';
 
 /** On/off for something that takes effect at once (a rule). */
@@ -118,7 +118,7 @@ export function Skeleton({ rows = 3, label = 'Se încarcă' }: { rows?: number; 
 export function PasswordInput({
   label,
   ...rest
-}: { label: string } & Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+}: { label: string } & Omit<ComponentProps<'input'>, 'type'>) {
   const [shown, setShown] = useState(false);
   const id = useId();
   return (

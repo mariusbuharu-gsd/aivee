@@ -1,22 +1,50 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import type { Invite, Member, Role } from '../api/client';
+import { useNavigate } from 'react-router';
+import type { Invite, Member, PendingInvite, Role } from '../api/client';
 import { useApi } from '../api/context';
 import { useAuth, useLocationId } from '../auth/context';
 import { isEmail, ROLE_LABEL } from '../auth/session';
+import { Banner } from '../ui/Banner';
+import { ConfirmDialog } from '../ui/Dialog';
+import { Menu } from '../ui/Menu';
+import { Select } from '../ui/Select';
+import { EmptyState, Segmented } from '../ui/controls';
+import { useToast } from '../ui/toast';
+
+const ROLE_OPTIONS: { value: Exclude<Role, 'owner'>; label: string; hint: string }[] = [
+  { value: 'manager', label: ROLE_LABEL.manager, hint: 'reguli, camere, zone, echipă' },
+  { value: 'staff', label: ROLE_LABEL.staff, hint: 'alerte pe telefon și „Merg eu”' },
+];
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('');
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long' });
 
 export function TeamPage() {
   const api = useApi();
+  const toast = useToast();
+  const navigate = useNavigate();
   const locationId = useLocationId();
   const { me, location } = useAuth();
   const isOwner = location?.role === 'owner';
   const [members, setMembers] = useState<Member[]>([]);
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<Member | null>(null);
+  const [revoking, setRevoking] = useState<PendingInvite | null>(null);
 
   const load = useCallback(
     () =>
-      api
-        .listMembers(locationId)
-        .then(setMembers, (e: unknown) => setError(e instanceof Error ? e.message : String(e))),
+      Promise.all([
+        api.listMembers(locationId).then(setMembers),
+        api.listInvites(locationId).then(setInvites, () => setInvites([])),
+      ]).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e))),
     [api, locationId],
   );
   useEffect(() => {
@@ -27,11 +55,19 @@ export function TeamPage() {
   const editable = (m: Member) =>
     m.role !== 'owner' && m.user_id !== me?.user.id && (isOwner || m.role === 'staff');
 
-  async function run(action: () => Promise<unknown>) {
+  async function setRole(m: Member, role: Role, undo = true) {
     setError(null);
     try {
-      await action();
+      await api.updateMember(locationId, m.user_id, role);
       await load();
+      toast({
+        title: `${m.name} e acum ${ROLE_LABEL[role]}`,
+        text:
+          role === 'manager'
+            ? 'Poate schimba reguli, camere și echipa.'
+            : 'Primește alertele și poate apăsa „Merg eu”.',
+        action: undo ? { label: 'Anulează', run: () => setRole(m, m.role, false) } : undefined,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -46,56 +82,85 @@ export function TeamPage() {
       <div className="two-col">
         <section aria-labelledby="members-h">
           <h2 id="members-h">Membri</h2>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="error" title={error} />}
           {members.length === 0 ? (
-            <p className="muted empty">Încă nu e nimeni în echipă. Trimite o invitație.</p>
+            <EmptyState icon="team" title="Încă nu e nimeni în echipă">
+              Trimite o invitație din dreapta; omul primește un link și își face singur contul.
+            </EmptyState>
           ) : (
             <ul className="members">
               {members.map((m) => (
                 <li key={m.user_id} className="member">
                   <span className="audit-actor is-user" aria-hidden="true">
-                    {m.name
-                      .split(/\s+/)
-                      .slice(0, 2)
-                      .map((p) => p[0]?.toUpperCase())
-                      .join('')}
+                    {initials(m.name)}
                   </span>
                   <div className="member-who">
                     <strong>{m.name}</strong>
                     <span className="small muted">{m.email}</span>
                   </div>
-                  {editable(m) ? (
-                    <>
-                      <label className="sr-only" htmlFor={`role-${m.user_id}`}>
-                        Rol pentru {m.name}
-                      </label>
-                      <select
-                        id={`role-${m.user_id}`}
-                        className="input input-sm"
-                        value={m.role}
-                        disabled={!isOwner}
-                        onChange={(e) =>
-                          run(() => api.updateMember(locationId, m.user_id, e.target.value as Role))
-                        }
-                      >
-                        <option value="manager">{ROLE_LABEL.manager}</option>
-                        <option value="staff">{ROLE_LABEL.staff}</option>
-                      </select>
-                      <RemoveButton
-                        name={m.name}
-                        onConfirm={() => run(() => api.removeMember(locationId, m.user_id))}
-                      />
-                    </>
+                  {editable(m) && isOwner ? (
+                    <Select
+                      id={`role-${m.user_id}`}
+                      size="sm"
+                      className="member-role"
+                      label={`Rol pentru ${m.name}`}
+                      hideLabel
+                      value={m.role}
+                      options={ROLE_OPTIONS}
+                      onChange={(r) => void setRole(m, r)}
+                    />
                   ) : (
                     <span className="pill pill-muted">{ROLE_LABEL[m.role]}</span>
+                  )}
+                  {editable(m) ? (
+                    <Menu
+                      label={`Acțiuni pentru ${m.name}`}
+                      items={[
+                        {
+                          label: 'Vezi ce a făcut în Istoric',
+                          onSelect: () =>
+                            navigate(`/istoric?cine=${encodeURIComponent(m.user_id)}`),
+                        },
+                        {
+                          label: 'Scoate din echipă…',
+                          danger: true,
+                          onSelect: () => setRemoving(m),
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <span className="menu-spacer" aria-hidden="true" />
                   )}
                 </li>
               ))}
             </ul>
+          )}
+          {invites.length > 0 && (
+            <>
+              <h2 id="invites-h">În așteptare</h2>
+              <ul className="members" aria-labelledby="invites-h">
+                {invites.map((i) => (
+                  <li key={i.id} className="member is-pending">
+                    <span className="audit-actor" aria-hidden="true">
+                      @
+                    </span>
+                    <div className="member-who">
+                      <strong>{i.email}</strong>
+                      <span className="small muted">
+                        {ROLE_LABEL[i.role]} · expiră pe {day(i.expires_at)}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setRevoking(i)}
+                    >
+                      Retrage
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </section>
         <aside className="side-col">
@@ -113,31 +178,49 @@ export function TeamPage() {
           </div>
         </aside>
       </div>
+      {removing && (
+        <ConfirmDialog
+          icon="team"
+          title={`Scoți din echipa ${location?.name ?? ''}: ${removing.name}?`}
+          confirmLabel="Scoate din echipă"
+          onClose={() => setRemoving(null)}
+          onConfirm={async () => {
+            await api.removeMember(locationId, removing.user_id);
+            await load();
+            toast({
+              title: `${removing.name} nu mai e în echipă`,
+              text: 'Poți trimite oricând o invitație nouă.',
+            });
+          }}
+        >
+          <ul>
+            <li>Nu mai primește alerte de la {location?.name}.</li>
+            <li>Nu mai poate intra în dashboard pentru această locație.</li>
+            <li>Ce a făcut până acum rămâne în Istoric.</li>
+          </ul>
+        </ConfirmDialog>
+      )}
+      {revoking && (
+        <ConfirmDialog
+          icon="x"
+          title={`Retragi invitația pentru ${revoking.email}?`}
+          confirmLabel="Retrage invitația"
+          onClose={() => setRevoking(null)}
+          onConfirm={async () => {
+            await api.revokeInvite(revoking.id);
+            await load();
+            toast({
+              title: 'Invitația a fost retrasă',
+              text: 'Linkul trimis nu mai funcționează.',
+            });
+          }}
+        >
+          <p className="muted">
+            Linkul trimis nu mai funcționează. Dacă te-ai răzgândit, poți trimite oricând unul nou.
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
-  );
-}
-
-/** A two-step remove: the first click asks, the second removes. */
-function RemoveButton({ name, onConfirm }: { name: string; onConfirm: () => void }) {
-  const [asking, setAsking] = useState(false);
-  return asking ? (
-    <span className="confirm">
-      <button type="button" className="btn btn-danger btn-sm" onClick={onConfirm}>
-        Scoate
-      </button>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAsking(false)}>
-        Anulează
-      </button>
-    </span>
-  ) : (
-    <button
-      type="button"
-      className="btn btn-ghost btn-sm"
-      aria-label={`Scoate-l pe ${name} din echipă`}
-      onClick={() => setAsking(true)}
-    >
-      Scoate
-    </button>
   );
 }
 
@@ -151,19 +234,21 @@ function InviteForm({
   onInvited: () => void;
 }) {
   const api = useApi();
+  const toast = useToast();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('staff');
   const [invite, setInvite] = useState<Invite | null>(null);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!isEmail(email)) return setError('Scrie o adresă de email validă.');
+    if (!isEmail(email))
+      return setEmailError('Scrie o adresă de email validă, de exemplu ana@restaurant.ro.');
+    setEmailError(null);
     setBusy(true);
     setError(null);
-    setCopied(false);
     try {
       setInvite(await api.createInvite({ location_id: locationId, role, email: email.trim() }));
       onInvited();
@@ -178,9 +263,16 @@ function InviteForm({
     if (!invite) return;
     try {
       await navigator.clipboard.writeText(invite.invite_url);
-      setCopied(true);
+      toast({
+        title: 'Link copiat',
+        text: `Trimite-l pe WhatsApp sau email. Expiră pe ${day(invite.expires_at)}.`,
+      });
     } catch {
-      setCopied(false);
+      toast({
+        kind: 'error',
+        title: 'Nu am putut copia linkul',
+        text: 'Selectează-l și copiază-l de mână.',
+      });
     }
   }
 
@@ -189,8 +281,8 @@ function InviteForm({
       <h2 id="invite-h" className="h3">
         Invită pe cineva
       </h2>
-      <label className="field">
-        <span>Email</span>
+      <div className="field">
+        <label htmlFor="invite-email">Email</label>
         <input
           id="invite-email"
           className="input"
@@ -198,49 +290,37 @@ function InviteForm({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="ospatar@restaurant.ro"
+          aria-invalid={emailError ? true : undefined}
+          aria-describedby={emailError ? 'invite-email-err' : undefined}
         />
-      </label>
-      <fieldset className="choices">
-        <legend>Rol</legend>
-        <label className="choice">
-          <input
-            type="radio"
-            name="invite-role"
-            checked={role === 'staff'}
-            onChange={() => setRole('staff')}
-          />
-          {ROLE_LABEL.staff}
-        </label>
-        {canInviteManager && (
-          <label className="choice">
-            <input
-              type="radio"
-              name="invite-role"
-              checked={role === 'manager'}
-              onChange={() => setRole('manager')}
-            />
-            {ROLE_LABEL.manager}
-          </label>
+        {emailError && (
+          <small id="invite-email-err" className="field-error">
+            {emailError}
+          </small>
         )}
-      </fieldset>
-      {error && (
-        <p className="error" role="alert">
-          {error}
+      </div>
+      {canInviteManager ? (
+        <Segmented
+          label="Rol"
+          value={role}
+          options={[
+            { value: 'staff', label: ROLE_LABEL.staff },
+            { value: 'manager', label: ROLE_LABEL.manager },
+          ]}
+          onChange={setRole}
+        />
+      ) : (
+        <p className="small muted">
+          Invitați ca {ROLE_LABEL.staff}. Managerii îi invită proprietarul.
         </p>
       )}
+      {error && <Banner tone="error" title={error} />}
       <button type="submit" className="btn btn-primary" disabled={busy}>
         Creează linkul de invitație
       </button>
       {invite && (
         <div className="invite-link" role="status">
-          <span className="small muted">
-            Trimite linkul pe WhatsApp sau email. Expiră pe{' '}
-            {new Date(invite.expires_at).toLocaleDateString('ro-RO', {
-              day: 'numeric',
-              month: 'long',
-            })}
-            .
-          </span>
+          <span className="small muted">Linkul e gata. Expiră pe {day(invite.expires_at)}.</span>
           <div className="invite-copy">
             <input
               className="input mono"
@@ -249,8 +329,8 @@ function InviteForm({
               aria-label="Link de invitație"
               onFocus={(e) => e.target.select()}
             />
-            <button type="button" className="btn" onClick={copy}>
-              {copied ? 'Copiat' : 'Copiază'}
+            <button type="button" className="btn" onClick={() => void copy()}>
+              Copiază
             </button>
           </div>
         </div>

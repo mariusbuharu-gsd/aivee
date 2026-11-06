@@ -103,9 +103,14 @@ describe('App with the mock API', () => {
     const user = userEvent.setup();
     renderApp('/istoric');
     expect(await screen.findByText(/a confirmat că #7 e din personal/)).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('Tip'), 'rule');
+    await user.click(screen.getByRole('combobox', { name: 'Tip' }));
+    await user.click(screen.getByRole('option', { name: 'Reguli' }));
     expect(await screen.findByText(/a schimbat regula „Masă neservită”/)).toBeInTheDocument();
     expect(screen.queryByText(/a confirmat că #7/)).toBeNull();
+    // The change reads in words; the active filter shows as a removable chip.
+    expect(screen.getAllByText(/→/).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Șterge filtrele' }));
+    expect(await screen.findByText(/a confirmat că #7 e din personal/)).toBeInTheDocument();
   });
 
   it('creates an invite link for a new staff member', async () => {
@@ -141,6 +146,45 @@ describe('App with the mock API', () => {
     await user.click(screen.getByRole('button', { name: /Șterge/ }));
     expect(screen.getByRole('heading', { name: /Zone \(2\)/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Salvează zonele' })).toBeEnabled();
+  });
+
+  it('changes a role with undo, removes through a dialog and revokes an invite', async () => {
+    const user = userEvent.setup();
+    renderApp('/echipa', 'owner@aivee.demo');
+    const role = await screen.findByRole('combobox', { name: 'Rol pentru Ana Dumitru' });
+    await user.click(role);
+    await user.click(screen.getByRole('option', { name: /Manager/ }));
+    expect(await screen.findByText('Ana Dumitru e acum Manager')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Anulează' }));
+    await waitFor(() => expect(role).toHaveTextContent('Personal'));
+
+    await user.click(screen.getByRole('button', { name: 'Acțiuni pentru Ana Dumitru' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Scoate din echipă…' }));
+    const dialog = screen.getByRole('dialog', { name: /Scoți din echipa .*: Ana Dumitru/ });
+    await user.click(within(dialog).getByRole('button', { name: 'Scoate din echipă' }));
+    await waitFor(() => expect(screen.queryByText('staff@aivee.demo')).toBeNull());
+
+    expect(screen.getByRole('heading', { name: 'În așteptare' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retrage' }));
+    await user.click(screen.getByRole('button', { name: 'Retrage invitația' }));
+    expect(await screen.findByText('Invitația a fost retrasă')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'În așteptare' })).toBeNull();
+  });
+
+  it('deletes a location only after its name is typed', async () => {
+    const user = userEvent.setup();
+    renderApp('/locatii', 'owner@aivee.demo');
+    await user.click(await screen.findByRole('button', { name: 'Acțiuni pentru Bistro Centru' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Șterge locația…' }));
+    const dialog = screen.getByRole('dialog', { name: /Ștergi definitiv locația „Bistro Centru”/ });
+    const go = within(dialog).getByRole('button', { name: 'Șterge locația' });
+    expect(go).toBeDisabled();
+    await user.type(within(dialog).getByLabelText(/ca să confirmi/), 'Bistro Centru');
+    await user.click(go);
+    expect(await screen.findByText('Locația „Bistro Centru” a fost ștearsă')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Acțiuni pentru Bistro Centru' })).toBeNull(),
+    );
   });
 
   it('undoes a zone delete from the toast and asks before leaving unsaved zones', async () => {

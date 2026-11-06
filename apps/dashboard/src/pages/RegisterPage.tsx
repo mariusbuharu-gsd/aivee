@@ -3,6 +3,8 @@ import { Link, Navigate, useNavigate } from 'react-router';
 import { useAuth } from '../auth/context';
 import { isEmail, MIN_PASSWORD, passwordStrength } from '../auth/session';
 import { AuthShell } from '../components/AuthShell';
+import { Banner } from '../ui/Banner';
+import { PasswordInput } from '../ui/controls';
 import { PasswordMeter } from '../components/PasswordMeter';
 
 const STEPS = [
@@ -99,17 +101,13 @@ export function RegisterPage() {
             placeholder="ex. Bistro Central SRL"
           />
         </label>
-        <label className="field">
-          <span>Parolă</span>
-          <input
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-describedby="pw-hint"
-          />
-        </label>
+        <PasswordInput
+          label="Parolă"
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          aria-describedby="pw-hint"
+        />
         <PasswordMeter id="pw-hint" strength={passwordStrength(password)} />
         <label className="check">
           <input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} />
@@ -118,11 +116,7 @@ export function RegisterPage() {
             local, video-ul nu pleacă din locație.
           </span>
         </label>
-        {error && (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <Banner tone="error" title={error} />}
         <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
           Creează contul și continuă
         </button>
