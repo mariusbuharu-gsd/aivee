@@ -245,6 +245,7 @@ Always built through `aivee_contracts.topics.Topics`. Root `aivee/<site>/<device
 | `config` | → edge | 1, retained | DeviceConfig: cameras + zones (complete) |
 | `profiles` | → edge | 1, retained | StaffProfiles (complete) |
 | `commands` | → edge | 1 | EdgeCommand `confirm_staff` / `reject_staff` |
+| `frames/<camera>` | api → vision worker | 0 | JPEG frames a connector posted over HTTPS (cloud mode behind port 443) |
 
 Ingest splits `events` across replicas with `$share/ingest/aivee/+/+/events`; every replica also reads
 `status`, `suggestions`, `snapshots/+` and `metrics` (inserts are idempotent; each replica stores the
