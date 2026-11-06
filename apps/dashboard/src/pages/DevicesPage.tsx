@@ -5,6 +5,7 @@ import { useApi } from '../api/context';
 import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
 import { Icon } from '../components/Icon';
 import { QrCode } from '../components/QrCode';
+import { StaffCaptureButton } from '../components/StaffCapture';
 import type { Metrics } from '../contracts';
 import { CameraThumb } from '../devices/CameraThumb';
 import { lastSeenRo } from '../devices/lastSeen';
@@ -211,6 +212,7 @@ function CameraCard({
       <Link to={zonesPath(c.id)} className="btn">
         Editează zonele
       </Link>
+      <StaffCaptureButton camera={c} />
     </li>
   );
 }

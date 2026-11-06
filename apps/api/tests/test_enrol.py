@@ -39,7 +39,7 @@ def test_multiple_people_in_one_frame() -> None:
             return [0]
 
     class TwoPeople:
-        def crops(self, frame: Any) -> list[Any]:
+        def crops(self, frame: Any, largest_only: bool = False) -> list[Any]:
             return [1, 2]
 
     class Embed:

@@ -30,6 +30,9 @@ import {
   type NewCamera,
   type PendingInvite,
   type SavedZones,
+  type StaffCapture,
+  type StaffCaptureConfirm,
+  type StaffEnrolResult,
   type StaffProfile,
   type SuggestionView,
   type RulePatch,
@@ -280,6 +283,20 @@ export class HttpApi implements ApiClient {
 
   listStaffProfiles() {
     return this.request<StaffProfile[]>('/api/staff/profiles');
+  }
+
+  captureStaff(cameraId: string, seconds?: number) {
+    return this.request<StaffCapture>('/api/staff/capture', {
+      method: 'POST',
+      body: JSON.stringify({ camera_id: cameraId, ...(seconds ? { seconds } : {}) }),
+    });
+  }
+
+  confirmStaffCapture(token: string, input: StaffCaptureConfirm) {
+    return this.request<StaffEnrolResult>(
+      `/api/staff/capture/${encodeURIComponent(token)}/confirm`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
   }
 
   getMetrics() {

@@ -16,6 +16,7 @@ from aivee_api.locations.telegram import BotUsername
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.rules.translator import RuleTranslator
 from aivee_api.settings import ApiSettings
+from aivee_api.staff.capture import CaptureStore
 from aivee_api.staff.enrol import Enroller
 from aivee_api.videos.probe import probe_duration
 
@@ -36,6 +37,8 @@ class Services:
     live: LiveDetections = field(default_factory=LiveDetections)
     frames: LiveFrames = field(default_factory=LiveFrames)
     """Cloud mode: newest JPEG per camera posted over HTTPS (in memory, single replica)."""
+    captures: CaptureStore = field(default_factory=CaptureStore)
+    """Guided staff captures awaiting confirmation (in memory, single replica)."""
     login_limiter: LoginRateLimiter = field(default_factory=LoginRateLimiter)
     videos: VideoJobs | None = None
     """Queue of uploaded clips to analyse (None: Analiză video is off)."""
