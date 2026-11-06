@@ -5,6 +5,8 @@ import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
 import { MIN_PASSWORD, passwordStrength, ROLE_LABEL } from '../auth/session';
 import { AuthShell } from '../components/AuthShell';
+import { Banner } from '../ui/Banner';
+import { PasswordInput, Skeleton } from '../ui/controls';
 import { PasswordMeter } from '../components/PasswordMeter';
 
 export function InvitePage() {
@@ -61,18 +63,15 @@ export function InvitePage() {
       {loadError ? (
         <div className="auth-form">
           <h1>Invitație</h1>
-          <p className="error" role="alert">
-            {loadError}
-          </p>
-          <p className="muted">Cere-i managerului un link nou.</p>
+          <Banner tone="error" title={loadError}>
+            Cere-i managerului un link nou.
+          </Banner>
           <Link to="/intra" className="btn btn-block">
             Intră în cont
           </Link>
         </div>
       ) : !info ? (
-        <p className="muted" role="status">
-          Se verifică invitația…
-        </p>
+        <Skeleton rows={2} label="Se verifică invitația" />
       ) : (
         <form className="auth-form" onSubmit={submit} noValidate>
           <div className="auth-head">
@@ -91,23 +90,15 @@ export function InvitePage() {
               onChange={(e) => setName(e.target.value)}
             />
           </label>
-          <label className="field">
-            <span>Parolă</span>
-            <input
-              className="input"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              aria-describedby="inv-pw"
-            />
-          </label>
+          <PasswordInput
+            label="Parolă"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            aria-describedby="inv-pw"
+          />
           <PasswordMeter id="inv-pw" strength={passwordStrength(password)} />
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="error" title={error} />}
           <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
             Acceptă invitația
           </button>

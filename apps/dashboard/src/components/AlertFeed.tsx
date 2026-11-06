@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { AlertItem } from '../alerts/fold';
 import type { AlertCase } from '../api/client';
 import { duration } from '../alerts/format';
-import { Icon } from './Icon';
+import { useToast } from '../ui/toast';
+
+const CLOSED_BY_SYSTEM: Record<string, string> = {
+  device_offline: 'dispozitiv deconectat',
+  device_restarted: 'dispozitivul a repornit',
+  camera_deleted: 'camera a fost scoasă',
+};
 
 const time = (iso: string) =>
   new Date(iso).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
@@ -17,6 +23,7 @@ export function AlertFeed({
   zoneName,
   showSnapshot = false,
   emptyText = 'Nicio alertă încă.',
+  empty,
   cases = {},
   onAck,
 }: {
@@ -24,12 +31,14 @@ export function AlertFeed({
   zoneName: (zoneId: string) => string;
   showSnapshot?: boolean;
   emptyText?: string;
+  /** Rendered instead of `emptyText` when given (an EmptyState). */
+  empty?: ReactNode;
   /** Lifecycle per alert key; adds the timeline. */
   cases?: Record<string, AlertCase>;
   /** Shows "Merg eu" on open alerts nobody took yet (omit when the role cannot ack). */
   onAck?: (eventId: string) => Promise<void>;
 }) {
-  if (items.length === 0) return <p className="muted empty">{emptyText}</p>;
+  if (items.length === 0) return empty ?? <p className="muted empty">{emptyText}</p>;
   return (
     <ul className="feed" aria-label="Alerte">
       {items.map((a) => {
@@ -50,9 +59,22 @@ export function AlertFeed({
               </div>
               <p className="feed-summary">{a.summary_ro}</p>
               <p className="muted small mono">
-                {open ? `deschisă de ${waited(a)}` : `rezolvată în ${waited(a)}`}
+                {open
+                  ? `deschisă de ${waited(a)}`
+                  : a.closed_reason !== undefined
+                    ? `închisă de sistem: ${CLOSED_BY_SYSTEM[a.closed_reason ?? ''] ?? 'fără motiv'}`
+                    : `a durat ${waited(a)}`}
+                {!open && lifecycle?.acknowledged_by ? ` · ${lifecycle.acknowledged_by}` : ''}
               </p>
-              {lifecycle && <Timeline c={lifecycle} />}
+              {lifecycle &&
+                (open ? (
+                  <Timeline c={lifecycle} />
+                ) : (
+                  <details className="feed-more">
+                    <summary>Vezi desfășurarea</summary>
+                    <Timeline c={lifecycle} />
+                  </details>
+                ))}
             </div>
             {open && onAck && !lifecycle?.acknowledged_at && (
               <AckButton onAck={() => onAck(a.key)} zone={zoneName(a.zone_id)} />
@@ -64,16 +86,10 @@ export function AlertFeed({
   );
 }
 
-/** The face-blurred JPEG when it loads; the camera placeholder when missing or unreachable. */
+/** The face-blurred JPEG; nothing at all when the edge sent none or it does not load. */
 function Snapshot({ url }: { url: string | null }) {
   const [failed, setFailed] = useState<string | null>(null);
-  if (!url || failed === url) {
-    return (
-      <div className="snapshot" role="img" aria-label="Captură cu fețele estompate">
-        <Icon name="snapshot" size={22} />
-      </div>
-    );
-  }
+  if (!url || failed === url) return null;
   return (
     <a className="snapshot snapshot-img" href={url} target="_blank" rel="noreferrer">
       <img
@@ -90,6 +106,7 @@ function Snapshot({ url }: { url: string | null }) {
 function AckButton({ onAck, zone }: { onAck: () => Promise<void>; zone: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
   return (
     <div className="ack">
       <button
@@ -102,6 +119,10 @@ function AckButton({ onAck, zone }: { onAck: () => Promise<void>; zone: string }
           setError(null);
           try {
             await onAck();
+            toast({
+              title: `Ai preluat ${zone}`,
+              text: 'Colegii văd că vii. Alerta se închide când ajungi.',
+            });
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Nu am putut prelua alerta.');
             setBusy(false);
@@ -133,6 +154,7 @@ export function Timeline({ c }: { c: AlertCase }) {
     {
       label: 'Ajuns',
       at: c.arrived_at,
+      note: c.realerted_at ? 'reamintire trimisă' : undefined,
       gap: c.travel_s !== null ? `drum ${duration(c.travel_s)}` : undefined,
     },
     {

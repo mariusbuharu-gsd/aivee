@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { AlertView } from '../api/client';
 import type { AlertEvent } from '../contracts';
 import { foldAlerts } from './fold';
 
@@ -33,5 +34,17 @@ describe('foldAlerts', () => {
     ]);
     expect(items).toHaveLength(1);
     expect(items[0]?.closed_at).toBeNull();
+  });
+
+  it('remembers why the system closed an alert', () => {
+    const [item] = foldAlerts([
+      ev('a', 'opened', '2026-11-06T10:00:00Z'),
+      {
+        ...ev('b', 'closed', '2026-11-06T10:02:00Z'),
+        closed_by: 'system',
+        closed_reason: 'device_offline',
+      },
+    ] as AlertView[]);
+    expect(item?.closed_reason).toBe('device_offline');
   });
 });

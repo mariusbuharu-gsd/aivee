@@ -3,6 +3,12 @@ import type { AlertCase, AlertView, CameraView, DashboardMetrics } from '../api/
 import type { AlertItem } from '../alerts/fold';
 import type { Rule, StaffSuggestion, Zone } from '../contracts';
 
+/** Why the shared data failed to load: the banner says something different for each. */
+export interface LoadError {
+  kind: 'network' | 'forbidden' | 'other';
+  message: string;
+}
+
 export interface LiveData {
   cameras: CameraView[];
   rules: Rule[];
@@ -11,11 +17,18 @@ export interface LiveData {
   alerts: AlertItem[];
   suggestions: StaffSuggestion[];
   metrics: DashboardMetrics | null;
-  error: string | null;
+  error: LoadError | null;
   loading: boolean;
+  /** Load everything again (the banner's "Încearcă acum"). */
+  retry: () => void;
   setZones: (cameraId: string, zones: Zone[]) => void;
+  /** Add a rule or replace it in place (same id). */
   addRule: (rule: Rule) => void;
+  removeRule: (id: string) => void;
+  /** Add a camera or replace it in place (same id). */
   addCamera: (camera: CameraView) => void;
+  /** Drop a deleted camera and its rules. */
+  removeCamera: (id: string) => void;
   dropSuggestion: (id: string) => void;
   /** Lifecycle per alert, keyed by the opening event id (AlertItem.key). */
   cases: Record<string, AlertCase>;
@@ -38,4 +51,14 @@ export function zoneName(cameras: CameraView[], zoneId: string): string {
     if (z) return z.name;
   }
   return zoneId;
+}
+
+/** Network failures and missing permissions are told apart from other errors. */
+export function toLoadError(e: unknown): LoadError {
+  const message = e instanceof Error ? e.message : String(e);
+  const status = (e as { status?: unknown } | null)?.status;
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === 'network') return { kind: 'network', message };
+  if (status === 403) return { kind: 'forbidden', message };
+  return { kind: 'other', message };
 }

@@ -1,3 +1,4 @@
+import { Banner } from '../ui/Banner';
 import { useEffect, useMemo, useState } from 'react';
 import { browserPushService, PushError, type PushService, type PushState } from './service';
 import './push.css';
@@ -117,11 +118,7 @@ export function PushToggle({ service }: { service?: PushService }) {
           {message}
         </p>
       )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Banner tone="error" title={error} />}
     </section>
   );
 }

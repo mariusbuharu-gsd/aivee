@@ -11,6 +11,7 @@ import {
   type AuditQuery,
   type DurationStat,
   type Invite,
+  type PendingInvite,
   type InviteInfo,
   type Location,
   type Me,
@@ -70,11 +71,13 @@ interface Membership {
   userId: string;
   role: Exclude<Role, 'owner'>;
 }
-interface PendingInvite {
+interface StoredInvite {
   location_id: string;
   role: Role;
   email: string;
   expires_at: string;
+  created_at?: string;
+  created_by?: string;
 }
 
 const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
@@ -159,7 +162,7 @@ export class MockAccounts {
     { locationId: 'demo', userId: 'u-manager', role: 'manager' },
     { locationId: 'demo', userId: 'u-staff', role: 'staff' },
   ];
-  private invites = new Map<string, PendingInvite>([
+  private invites = new Map<string, StoredInvite>([
     [
       MOCK_INVITE_TOKEN,
       {
@@ -170,6 +173,7 @@ export class MockAccounts {
       },
     ],
   ]);
+  private revoked = new Set<string>();
   private audit: AuditEntry[] = seedAudit();
   /** event_id → who pressed "Merg eu" and when; arrival time once the waiter reached the zone. */
   private acks = new Map<
@@ -340,6 +344,9 @@ export class MockAccounts {
   }
 
   getInvite(token: string): InviteInfo {
+    if (this.revoked.has(token)) {
+      throw new ApiError('Invitația a fost retrasă. Cere un link nou.', 'invite_revoked', 410);
+    }
     const inv = this.invites.get(token);
     if (!inv || Date.parse(inv.expires_at) < Date.now()) {
       throw new ApiError('Invitația nu mai este valabilă.', 'invite_invalid', 404);
@@ -355,7 +362,7 @@ export class MockAccounts {
 
   acceptInvite(token: string, input: { name: string; password: string }): Me {
     const info = this.getInvite(token);
-    const inv = this.invites.get(token) as PendingInvite;
+    const inv = this.invites.get(token) as StoredInvite;
     if (input.password.length < MIN_PASSWORD) {
       throw new ApiError(`Parola are nevoie de minim ${MIN_PASSWORD} caractere.`, 'invalid', 422);
     }
@@ -523,7 +530,12 @@ export class MockAccounts {
       throw forbidden('Rolul de proprietar nu se atribuie prin invitație.');
     const token = uid('inv');
     const expires_at = new Date(Date.now() + 7 * 86_400_000).toISOString();
-    this.invites.set(token, { ...input, expires_at });
+    this.invites.set(token, {
+      ...input,
+      expires_at,
+      created_at: new Date().toISOString(),
+      created_by: this.current().id,
+    });
     this.log({
       location_id: input.location_id,
       actor: this.actor(),
@@ -532,6 +544,37 @@ export class MockAccounts {
       summary_ro: `${this.current().name} l-a invitat pe ${input.email} ca ${input.role === 'manager' ? 'manager' : 'personal'}`,
     });
     return { invite_url: `${window.location.origin}/invitatie/${token}`, expires_at };
+  }
+
+  listInvites(locationId: string): PendingInvite[] {
+    const role = this.require('users.manage', locationId);
+    return [...this.invites.entries()]
+      .filter(([, i]) => i.location_id === locationId && Date.parse(i.expires_at) > Date.now())
+      .filter(([, i]) => role === 'owner' || i.role === 'staff')
+      .map(([id, i]) => ({
+        id,
+        email: i.email,
+        role: i.role,
+        location_id: i.location_id,
+        created_by: i.created_by ?? 'u-owner',
+        created_at: i.created_at ?? i.expires_at,
+        expires_at: i.expires_at,
+      }));
+  }
+
+  revokeInvite(id: string): void {
+    const inv = this.invites.get(id);
+    if (!inv) return;
+    this.guardMember(inv.location_id, undefined, inv.role);
+    this.invites.delete(id);
+    this.revoked.add(id);
+    this.log({
+      location_id: inv.location_id,
+      actor: this.actor(),
+      kind: 'user.invite_revoked',
+      target: { type: 'invite', id, label: inv.email },
+      summary_ro: `${this.current().name} a retras invitația pentru ${inv.email}`,
+    });
   }
 
   // --- audit ---------------------------------------------------------------------------------
@@ -673,9 +716,11 @@ export class MockAccounts {
   serviceMetrics(q: { location_id: string; from?: string; to?: string }): ServiceMetrics {
     this.require('alerts.view', q.location_id);
     const cases = this.cases(q.location_id).filter((c) => c.closed_at || c.arrived_at);
+    // A day-sized window gets its own deterministic spread, so the demo trend is not flat.
+    const scale = rangeScale(q.from, q.to);
     const pick = (f: (c: AlertCase) => number | null, i: 0 | 1 | 2) => [
       ...cases.map(f).filter((x): x is number => x !== null),
-      ...HISTORY.map((h) => h[i]),
+      ...HISTORY.map((h) => Math.round(h[i] * scale)),
     ];
     return {
       location_id: q.location_id,
@@ -687,6 +732,13 @@ export class MockAccounts {
       travel: stat(pick((c) => c.travel_s, 2)),
     };
   }
+}
+
+/** 1 for open ranges; 0.7–1.3 for a bounded window, stable per start date. */
+function rangeScale(from?: string, to?: string): number {
+  if (!from || !to) return 1;
+  const day = Math.floor(Date.parse(from) / 86_400_000);
+  return 0.7 + (((day * 37) % 13) / 12) * 0.6;
 }
 
 function seedAudit(): AuditEntry[] {
