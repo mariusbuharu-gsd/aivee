@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import cast
 
 from aivee_contracts.events import AlertEvent
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import ColumnElement, Select, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -141,11 +141,23 @@ class AlertRepository:
         Each close also stores a `closed` event row (a deterministic id per alert and
         reason, so a second replica inserts nothing), which moves the live feed. Returns
         the alerts this call closed; callers serialise per device."""
+        return await self._close_open(EventRow.device_id == device_id, at, reason)
+
+    async def close_open_for_camera(
+        self, camera_id: str, at: datetime, reason: CloseReason
+    ) -> list[AlertView]:
+        """`close_open_for_device` for one camera's alerts (the camera is being deleted).
+        Call it before deleting the camera row, so the views still carry zone names."""
+        return await self._close_open(EventRow.camera_id == camera_id, at, reason)
+
+    async def _close_open(
+        self, which: ColumnElement[bool], at: datetime, reason: CloseReason
+    ) -> list[AlertView]:
         closed = await self.s.execute(
             update(EventRow)
             .where(
+                which,
                 EventRow.state == "opened",
-                EventRow.device_id == device_id,
                 EventRow.closed_at.is_(None),
                 EventRow.at <= at,
             )
@@ -161,7 +173,7 @@ class AlertRepository:
                 insert(EventRow)
                 .values(
                     event_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{view.event_id}/{reason}")),
-                    device_id=device_id,
+                    device_id=view.device_id,
                     rule_id=view.rule_id,
                     camera_id=view.camera_id,
                     zone_id=view.zone_id,
