@@ -1,6 +1,6 @@
 """API test doubles. Unit tests use them without a DB; integration tests add `sessions`."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -197,3 +197,34 @@ async def login_as(client: Any, email: str, password: str = PASSWORD) -> Any:
 @pytest.fixture
 def login() -> Any:
     return login_as
+
+
+@pytest.fixture
+def services(
+    settings: ApiSettings,
+    sessions: Any,
+    publisher: RecordingPublisher,
+    translator: FakeTranslator,
+) -> Services:
+    """Integration services without enrolment models (test files may override this)."""
+    return make_services(settings, sessions, publisher, translator)
+
+
+@pytest.fixture
+def client_factory(services: Services) -> Any:
+    """`async with client_factory() as c:` — one cookie jar per simulated browser."""
+    import httpx
+    from aivee_api.main import create_app
+
+    app = create_app(services)
+
+    def make() -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+    return make
+
+
+@pytest.fixture
+async def api(client_factory: Any) -> AsyncIterator[Any]:
+    async with client_factory() as c:
+        yield c

@@ -1,6 +1,5 @@
 """Register / login / logout / me against Postgres, with cookies like the dashboard uses."""
 
-from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -8,35 +7,9 @@ import httpx
 import pytest
 from aivee_api.accounts.models import SessionRow
 from aivee_api.auth.tokens import hash_token
-from aivee_api.deps import Services
-from aivee_api.main import create_app
 from sqlalchemy import func, select, update
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def services(
-    settings: Any, sessions: Any, publisher: Any, translator: Any, services_factory: Any
-) -> Services:
-    svc: Services = services_factory(settings, sessions, publisher, translator)
-    return svc
-
-
-@pytest.fixture
-def client_factory(services: Services) -> Any:
-    app = create_app(services)
-
-    def make() -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-
-    return make
-
-
-@pytest.fixture
-async def api(client_factory: Any) -> AsyncIterator[httpx.AsyncClient]:
-    async with client_factory() as c:
-        yield c
 
 
 REGISTER = {

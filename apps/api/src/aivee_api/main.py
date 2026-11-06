@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from aivee_api.alerts.router import router as alerts_router
+from aivee_api.accounts.invites import router as invites_router
 from aivee_api.auth.router import router as auth_router
 from aivee_api.cameras.router import router as cameras_router
 from aivee_api.db.session import make_engine, make_session_factory
@@ -25,6 +26,7 @@ from aivee_api.edge.publisher import MqttEdgeLink, RecordingPublisher
 from aivee_api.edge.sync import EdgeCommands, EdgeSync, LoggingEdgeCommands, MqttEdgeCommands
 from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
+from aivee_api.locations.router import router as locations_router
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.metrics.router import router as metrics_router
 from aivee_api.push.router import router as push_router
@@ -100,6 +102,8 @@ def create_app(services: Services | None = None) -> FastAPI:
     install_handlers(app)
     for router in (
         auth_router,
+        locations_router,
+        invites_router,
         cameras_router,
         zones_router,
         rules_router,
