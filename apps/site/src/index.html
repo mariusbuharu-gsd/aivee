@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ro">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AiVee — ochii în plus ai personalului</title>
+    <meta
+      name="description"
+      content="AiVee anunță ospătarul pe telefon când un client așteaptă prea mult. Reguli scrise în română, fără recunoaștere facială, totul rulează local."
+    />
+    <meta name="theme-color" content="#14161B" />
+    <meta property="og:title" content="AiVee — ochii în plus ai personalului" />
+    <meta
+      property="og:description"
+      content="Camerele pe care le ai deja, configurate în română. Alertă pe telefon când un client așteaptă prea mult."
+    />
+    <link rel="icon" href="brand/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fredoka:wght@600&family=JetBrains+Mono:wght@500;700&display=swap"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#continut">Sari la conținut</a>
+
+    <header class="topbar">
+      <div class="wrap topbar__inner">
+        <a class="topbar__brand" href="#" aria-label="AiVee, începutul paginii">
+          <img src="brand/aivee-logo.svg" alt="AiVee" width="118" height="24" />
+        </a>
+        <nav aria-label="Secțiuni">
+          <ul class="topbar__nav">
+            <li><a href="#cum">Cum funcționează</a></li>
+            <li><a href="#scenarii">Scenarii</a></li>
+            <li><a href="#confidentialitate">Confidențialitate</a></li>
+            <li><a href="#arhitectura">Arhitectură</a></li>
+            <li><a href="#echipa">Echipa</a></li>
+          </ul>
+        </nav>
+        <a class="btn btn--ghost topbar__cta" href="https://github.com/mariusbuharu-gsd/aivee">GitHub</a>
+      </div>
+    </header>
+
+    <main id="continut">
+      <!-- Hero -->
+      <section class="hero" aria-labelledby="hero-titlu">
+        <div class="wrap hero__inner">
+          <div class="hero__text">
+            <p class="eyebrow">Astra Hack · Innovation Week Sibiu 2026</p>
+            <h1 id="hero-titlu">
+              Oamenii află prea târziu ce se întâmplă în fața camerelor.
+            </h1>
+            <p class="lead">
+              Pentru că nimeni nu are timp să se uite la ele. AiVee se uită în locul lor și
+              <strong>anunță ospătarul pe telefon când un client așteaptă prea mult.</strong>
+            </p>
+            <div class="hero__actions">
+              <a class="btn btn--primary" href="#cum">Cum funcționează</a>
+              <a class="btn btn--ghost" href="https://github.com/mariusbuharu-gsd/aivee">Codul pe GitHub</a>
+            </div>
+          </div>
+          <figure class="alert-card" aria-label="Exemplu de alertă AiVee">
+            <div class="alert-card__head">
+              <img src="brand/aivee-mark-white.svg" alt="" width="34" height="18" />
+              <span>AiveeAlerts</span>
+              <span class="alert-card__time num">acum</span>
+            </div>
+            <div class="alert-card__photo" aria-hidden="true">
+              <span class="blur-face blur-face--a"></span>
+              <span class="blur-face blur-face--b"></span>
+              <span class="zone-tag num">masa-2 · 1:04</span>
+            </div>
+            <figcaption>
+              <strong>Masa 2 așteaptă de <span class="num">1 min</span></strong>
+              <span>Nu a trecut nimeni de la personal. Fețele sunt blurate.</span>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- How it works -->
+      <section id="cum" class="section" aria-labelledby="cum-titlu">
+        <div class="wrap">
+          <h2 id="cum-titlu">Cum funcționează, în 3 pași</h2>
+          <ol class="steps">
+            <li class="step">
+              <span class="step__n" aria-hidden="true">1</span>
+              <h3>Desenezi masa</h3>
+              <p>
+                Pe o imagine de la camera pe care o ai deja, trasezi mesele și intrarea. Durează un
+                minut.
+              </p>
+            </li>
+            <li class="step">
+              <span class="step__n" aria-hidden="true">2</span>
+              <h3>Scrii regula în română</h3>
+              <p class="quote">„Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut.”</p>
+              <p>
+                AiVee îți arată ce a înțeles. Tu confirmi, modifici sau renunți. Nimic nu pornește
+                fără acordul tău.
+              </p>
+            </li>
+            <li class="step">
+              <span class="step__n" aria-hidden="true">3</span>
+              <h3>Primești alerta</h3>
+              <p>
+                Pe telefon, cu o poză în care fețele sunt blurate. Alerta se închide singură când
+                ospătarul ajunge la masă.
+              </p>
+            </li>
+          </ol>
+          <p class="note">
+            Personalul îl înveți din 2–3 poze cu uniforma și o propoziție („ospătarii poartă tricou
+            bordo”). AiVee observă și cum se mișcă: cine trece pe la multe mese e probabil angajat. Te
+            întreabă „Pare angajat — confirmi?” și învață din răspuns.
+          </p>
+        </div>
+      </section>
+
+      <!-- Scenarios -->
+      <section id="scenarii" class="section section--tint" aria-labelledby="scenarii-titlu">
+        <div class="wrap">
+          <h2 id="scenarii-titlu">Patru situații pe care nu le mai ratezi</h2>
+          <p class="section__lead">
+            Toate vin din același motor: cine e prezent, cine lipsește, câți sunt, ce gest fac și de
+            cât timp.
+          </p>
+          <ul class="cards">
+            <li class="card">
+              <span class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              </span>
+              <h3>Masă neservită</h3>
+              <p>Clienții stau la masă și niciun ospătar nu a trecut pe la ei de X minute.</p>
+              <p class="card__rule">„Dacă niciun chelner nu a trecut pe la clienții de la masă de cinci minute, trimite o alertă.”</p>
+            </li>
+            <li class="card">
+              <span class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M8 13V5a1.5 1.5 0 0 1 3 0v6m0-1V4a1.5 1.5 0 0 1 3 0v7m0-5a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-3l-2.5-4a1.5 1.5 0 0 1 2.5-1.7L8 13" /></svg>
+              </span>
+              <h3>Clientul ridică mâna</h3>
+              <p>Un client face semn ospătarului sau cere nota. Alerta pleacă imediat.</p>
+              <p class="card__rule">„Dacă cineva ridică mâna la masă, cheamă ospătarul.”</p>
+            </li>
+            <li class="card">
+              <span class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="6" cy="8" r="2.5" /><circle cx="12" cy="8" r="2.5" /><circle cx="18" cy="8" r="2.5" /><path d="M2.5 19a3.5 3.5 0 0 1 7 0M8.5 19a3.5 3.5 0 0 1 7 0M14.5 19a3.5 3.5 0 0 1 7 0" /></svg>
+              </span>
+              <h3>Coadă la intrare</h3>
+              <p>Câțiva oameni așteaptă la ușă și nu e nimeni de la personal să-i conducă la masă.</p>
+              <p class="card__rule">„Anunță-mă dacă sunt cel puțin 4 persoane la intrare și nu e nimeni de la personal acolo.”</p>
+            </li>
+            <li class="card">
+              <span class="card__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M5 10h10v4a5 5 0 0 1-10 0z" /><path d="M15 11h1.5a2 2 0 0 1 0 4H15" /><path d="M3 21h18" /></svg>
+              </span>
+              <h3>Masă nedebarasată</h3>
+              <p>Clienții au plecat, dar paharele și farfuriile au rămas pe masă.</p>
+              <p class="card__rule">„Anunță dacă o masă nu a fost debarasată la 5 minute după ce au plecat clienții.”</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Privacy -->
+      <section id="confidentialitate" class="section" aria-labelledby="conf-titlu">
+        <div class="wrap">
+          <h2 id="conf-titlu">Recunoaște rolul, nu persoana</h2>
+          <ul class="facts">
+            <li>
+              <h3>Fețe blurate pe dispozitiv</h3>
+              <p>Orice poză e blurată înainte să plece de lângă cameră. Alerta arată situația, nu oamenii.</p>
+            </li>
+            <li>
+              <h3>Fără recunoaștere facială</h3>
+              <p>
+                AiVee știe doar dacă cineva e client sau angajat, după uniformă și comportament. Dacă
+                îi ceri să recunoască pe cineva anume, refuză.
+              </p>
+            </li>
+            <li>
+              <h3>Totul rămâne în local</h3>
+              <p>
+                Imaginile sunt analizate pe un calculator din restaurant. Video-ul nu pleacă nicăieri;
+                pleacă doar alerta.
+              </p>
+            </li>
+            <li>
+              <h3>Decizia e a ta</h3>
+              <p>Regula e o ciornă până o confirmi. Un angajat e angajat doar după ce confirmi tu.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Architecture -->
+      <section id="arhitectura" class="section" aria-labelledby="arh-titlu">
+        <div class="wrap">
+          <h2 id="arh-titlu">Arhitectură</h2>
+          <p class="section__lead">
+            Partea grea rulează pe procesor, lângă cameră. Restul sunt servicii mici care comunică prin
+            MQTT.
+          </p>
+          <figure class="arch" aria-labelledby="arh-legenda">
+            <ol class="arch__flow">
+              <li class="arch__node">
+                <strong>Cameră</strong>
+                <span>camera existentă, RTSP / MJPEG</span>
+              </li>
+              <li class="arch__node arch__node--accent">
+                <strong>Edge</strong>
+                <span>YOLO11n INT8 (OpenVINO) + ByteTrack, poză corporală, rol, motor de situații, blur</span>
+              </li>
+              <li class="arch__node">
+                <strong>MQTT</strong>
+                <span>Mosquitto: ACL per dispozitiv, LWT, stare reținută, abonamente partajate</span>
+              </li>
+              <li class="arch__node">
+                <strong>Ingest ×2</strong>
+                <span>scalare pe orizontală, mesajele duplicate sunt ignorate</span>
+              </li>
+              <li class="arch__node">
+                <strong>Postgres + pgvector</strong>
+                <span>sursa de adevăr: reguli, zone, alerte, profiluri de personal</span>
+              </li>
+              <li class="arch__node arch__node--split">
+                <strong>Telegram · Dashboard</strong>
+                <span>alertă pe telefon; reguli, zone și alerte live în browser</span>
+              </li>
+            </ol>
+            <figcaption id="arh-legenda">
+              Fluxul unei alerte. API-ul (FastAPI) traduce cererea în română într-o regulă cu Claude și
+              o trimite înapoi la edge prin MQTT.
+            </figcaption>
+          </figure>
+
+          <dl class="stats">
+            <div>
+              <dt>~20 FPS</dt>
+              <dd>detecție pe un i7-1355U, fără GPU</dd>
+            </div>
+            <div>
+              <dt>~12 FPS</dt>
+              <dd>cu detecția gesturilor (poză corporală)</dd>
+            </div>
+            <div>
+              <dt>20 / 20</dt>
+              <dd>cereri în română traduse corect în reguli</dd>
+            </div>
+            <div>
+              <dt>2,4 s</dt>
+              <dd>timp median de la cerere la regulă</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- Community impact -->
+      <section id="impact" class="section section--tint" aria-labelledby="impact-titlu">
+        <div class="wrap">
+          <h2 id="impact-titlu">Pentru HoReCa din Sibiu</h2>
+          <ul class="facts">
+            <li>
+              <h3>Restaurante mici</h3>
+              <p>
+                Doi-trei ospătari nu pot fi peste tot. AiVee le spune unde e nevoie de ei acum, ca
+                niciun client să nu plece nemulțumit.
+              </p>
+            </li>
+            <li>
+              <h3>Terase</h3>
+              <p>
+                Mesele de afară sunt departe de bar și ușor de uitat. O cameră pe terasă le aduce în
+                atenția personalului.
+              </p>
+            </li>
+            <li>
+              <h3>Evenimente</h3>
+              <p>
+                La festivaluri și evenimente, cozile și mesele nedebarasate apar repede. Alertele vin
+                înainte să le observe clienții.
+              </p>
+            </li>
+          </ul>
+          <p class="note">
+            Folosește camerele care există deja și un calculator obișnuit. Fără hardware special, fără
+            procesare în cloud, fără programare: regulile se scriu în română.
+          </p>
+        </div>
+      </section>
+
+      <!-- Demo -->
+      <section id="demo" class="section" aria-labelledby="demo-titlu">
+        <div class="wrap">
+          <h2 id="demo-titlu">Demo</h2>
+          <!-- TODO(team): replace with the recorded demo video (embed or <video>). -->
+          <div class="video-placeholder" role="img" aria-label="Locul videoclipului demo">
+            <span class="video-placeholder__play" aria-hidden="true"></span>
+            <p>Videoclipul demo apare aici după code freeze.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Team -->
+      <section id="echipa" class="section section--tint" aria-labelledby="echipa-titlu">
+        <div class="wrap">
+          <h2 id="echipa-titlu">Echipa</h2>
+          <!-- TODO(team): add photos and confirm roles. -->
+          <ul class="team">
+            <li class="member">
+              <span class="member__avatar" aria-hidden="true">MB</span>
+              <h3>Marius Buharu</h3>
+              <p>Rol: de completat</p>
+            </li>
+            <li class="member">
+              <span class="member__avatar" aria-hidden="true">VD</span>
+              <h3>Vasi Dancu</h3>
+              <p>Rol: de completat</p>
+            </li>
+            <li class="member">
+              <span class="member__avatar" aria-hidden="true">RN</span>
+              <h3>Radu Nedela</h3>
+              <p>Rol: de completat</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap footer__inner">
+        <img src="brand/aivee-logo-white.svg" alt="AiVee" width="98" height="20" />
+        <p>Astra Hack · Innovation Week Sibiu 2026 · Licență MIT</p>
+        <a href="https://github.com/mariusbuharu-gsd/aivee">github.com/mariusbuharu-gsd/aivee</a>
+      </div>
+    </footer>
+  </body>
+</html>

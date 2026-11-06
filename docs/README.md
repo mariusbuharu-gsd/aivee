@@ -9,6 +9,8 @@ Every new session (human or tool) reads this page first, then the handbook for i
 | **Decisions already taken** (don't reopen without a reason) | [decisions.md](decisions.md) |
 | Dashboard, PWA, presentation site, design | [handbook/frontend.md](handbook/frontend.md) |
 | Edge, MQTT, API, ingest, Postgres | [handbook/backend.md](handbook/backend.md) |
+| Architecture diagrams, alert and rule flows, scalability | [architecture.md](architecture.md) |
+| Architecture decision records | [ADR 1 edge CPU inference](adr/0001-edge-first-cpu-inference.md) · [ADR 2 MQTT](adr/0002-mqtt-acl-lwt-retained-shared.md) · [ADR 3 Postgres + pgvector](adr/0003-postgres-pgvector.md) · [ADR 4 contracts](adr/0004-contracts-single-source-of-truth.md) · [ADR 5 staff without faces](adr/0005-staff-by-appearance-and-behaviour.md) · [ADR 6 request → rule](adr/0006-llm-request-to-rule.md) |
 | Ideas and open questions (not scheduled) | [backlog/ideas.md](backlog/ideas.md) |
 | Logo, mark, icon, favicon | [brand/](brand/) |
 | Session rules (TDD, commits, no AI attribution) | [../CLAUDE.md](../CLAUDE.md) |
