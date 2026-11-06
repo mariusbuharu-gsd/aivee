@@ -59,7 +59,8 @@ def map_results(
             tracks.append(TrackObs(track_id=int(tid), bbox=bbox, confidence=float(conf)))
         else:
             objects.append(ObjectObs(label=label, bbox=bbox, confidence=float(conf)))
-    return Frame(ts=ts, tracks=tuple(tracks), objects=tuple(objects))
+    aspect = width / height if height else None
+    return Frame(ts=ts, tracks=tuple(tracks), objects=tuple(objects), aspect=aspect)
 
 
 def class_ids_for(names: Mapping[int, str], wanted: Sequence[str]) -> list[int]:

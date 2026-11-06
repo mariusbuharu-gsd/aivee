@@ -224,6 +224,54 @@ def test_raised_hand_counts_only_inside_table_zones() -> None:
     assert rec.states() == [("opened", "calls", "t2")]
 
 
+def standing_keypoints() -> list[Keypoint]:
+    kps: list[Keypoint] = [(0.5, 0.5, 0.0)] * 17
+    kps[11], kps[13], kps[15] = (0.5, 0.5, 0.9), (0.5, 0.65, 0.9), (0.5, 0.8, 0.9)
+    return kps
+
+
+class StandingPose:
+    def __init__(self) -> None:
+        self.calls: list[list[int]] = []
+
+    def estimate(self, image: Image, tracks: Sequence[TrackObs]) -> Mapping[int, list[Keypoint]]:
+        self.calls.append([t.track_id for t in tracks])
+        return {t.track_id: standing_keypoints() for t in tracks}
+
+
+def one_profile() -> StaffProfiles:
+    return StaffProfiles(
+        device="edge-01", profiles=[StaffProfile(id="p", name="Ospătar", centroid=[1.0, 0.0])]
+    )
+
+
+def test_pose_runs_for_everyone_while_appearance_is_scored() -> None:
+    at_door = TrackObs(track_id=2, bbox=at(ENTRANCE))
+    frames = [Frame(ts=0.0, tracks=(at_door,))]
+    pose = StandingPose()
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        pose=pose,
+        embedder=CountingEmbedder(),
+        profiles=one_profile,
+    )
+    result = p.step()
+    assert result is not None and result.verified
+    assert pose.calls == [[2]]
+    assert result.frame.tracks[0].standing is True
+
+
+def test_stance_falls_back_to_the_box_shape_without_pose() -> None:
+    tall = TrackObs(track_id=1, bbox=(0.4, 0.2, 0.45, 0.6))  # 0.05 x 0.4 on 16:9 → 4.5
+    squat = TrackObs(track_id=2, bbox=(0.6, 0.4, 0.75, 0.6))  # 0.15 x 0.2 on 16:9 → 0.75
+    frames = [Frame(ts=0.0, tracks=(tall, squat), aspect=16 / 9)]
+    result = pipeline(frames, Config([], ZONES), Recorder()).step()
+    assert result is not None
+    assert [t.standing for t in result.frame.tracks] == [True, False]
+
+
 def test_metrics_are_published_every_interval() -> None:
     frames = [Frame(ts=i / 10, tracks=(TrackObs(1, at(T1)),)) for i in range(0, 111)]
     rec = Recorder()

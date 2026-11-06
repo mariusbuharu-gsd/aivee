@@ -1,6 +1,7 @@
 """The edge application loop: one `step` per frame, every stage behind a port.
 
-source.read → detector.detect → (pose → raised hand, table zones only) → trajectory →
+source.read → detector.detect → (pose → raised hand at tables; stance from pose or box
+shape) → trajectory + stance ratio →
 behaviour features → (appearance vs staff profiles) → roles → situation engine →
 publish alerts (with snapshot on open), staff suggestions (with a person crop), live
 detections (<= 5 Hz) and periodic metrics. Owner commands (confirm/reject staff) are
@@ -39,6 +40,7 @@ from aivee_edge.domain.ports import (
 )
 from aivee_edge.domain.pose import Keypoint, is_raised_hand
 from aivee_edge.domain.role import RoleClassifier
+from aivee_edge.domain.stance import is_standing
 from aivee_edge.metrics import MetricsMeter, cpu_percent
 
 log = logging.getLogger("aivee_edge.pipeline")
@@ -240,8 +242,9 @@ class EdgePipeline:
         self.apply_commands()
 
         frame = self._detector.detect(image, ts)
-        frame, posed = self._raised_hands(image, frame)
-        appearance, embedded = self._appearance_scores(image, frame)
+        centroids = self._centroids()
+        frame, posed = self._poses(image, frame, everyone=bool(centroids))
+        appearance, embedded = self._appearance_scores(image, frame, centroids)
 
         self.buffer.observe(frame)
         features: dict[int, BehaviourFeatures] = {
@@ -308,14 +311,20 @@ class EdgePipeline:
         p = foot_point(track.bbox)
         return any(point_in_polygon(p, poly) for poly in self._tables.values())
 
-    def _raised_hands(self, image: Image, frame: Frame) -> tuple[Frame, bool]:
-        """Raised hand counts only for people at a table; pose runs only if someone is."""
+    def _poses(self, image: Image, frame: Frame, *, everyone: bool) -> tuple[Frame, bool]:
+        """Raised hands (table zones only) and per-frame stance.
+
+        Pose runs for people at a table (raised hand), and for everyone while appearance
+        scoring is active, because the standing signal only counts next to appearance.
+        Without keypoints the stance falls back to the box shape.
+        """
         seated = [t for t in frame.tracks if self._in_table(t)]
         at_table = {t.track_id for t in seated}
+        targets = list(frame.tracks) if everyone else seated
         keypoints: Mapping[int, Sequence[Keypoint]] = {}
         posed = False
-        if self._pose is not None and seated:
-            keypoints = self._pose.estimate(image, seated)
+        if self._pose is not None and targets:
+            keypoints = self._pose.estimate(image, targets)
             posed = True
         tracks = tuple(
             replace(
@@ -323,17 +332,23 @@ class EdgePipeline:
                 raised_hand=t.track_id in at_table
                 and t.track_id in keypoints
                 and is_raised_hand(keypoints[t.track_id]),
+                standing=is_standing(keypoints.get(t.track_id), t.bbox, frame.aspect),
             )
             for t in frame.tracks
         )
         return replace(frame, tracks=tracks), posed
 
+    def _centroids(self) -> list[list[float]]:
+        """Staff profile centroids when appearance scoring is possible, else []."""
+        if self._embedder is None or self._profiles is None:
+            return []
+        profiles = self._profiles()
+        return [list(p.centroid) for p in profiles.profiles] if profiles else []
+
     def _appearance_scores(
-        self, image: Image, frame: Frame
+        self, image: Image, frame: Frame, centroids: Sequence[Sequence[float]]
     ) -> tuple[dict[int, float | None], bool]:
         """Appearance score per track, re-embedding each track at most every interval."""
-        profiles = self._profiles() if self._profiles is not None else None
-        centroids = [p.centroid for p in profiles.profiles] if profiles else []
         if self._embedder is None or not centroids:
             return {}, False
         embedded = False
