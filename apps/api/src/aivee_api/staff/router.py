@@ -13,7 +13,7 @@ from aivee_api.auth.principal import Principal
 from aivee_api.auth.scope import authorize_at, authorize_camera, suggestion_location
 from aivee_api.db.repositories import CameraRepository, SuggestionRepository
 from aivee_api.deps import Services, ServicesDep, SessionDep
-from aivee_api.errors import Invalid, NotFound, Unavailable
+from aivee_api.errors import Invalid, NotFound, TooLarge, Unavailable
 from aivee_api.events.schemas import SuggestionOut
 from aivee_api.staff.capture import CAPTURE_TTL_S, SAMPLE_INTERVAL_S, sample_frames
 from aivee_api.staff.enrol import Upload
@@ -36,6 +36,8 @@ NO_FRAMES_RO = (
 )
 capture_sleep = asyncio.sleep
 """How the capture waits between samples (tests swap it for a fake clock)."""
+MAX_PHONE_FRAMES = 30
+MAX_PHONE_FRAME_BYTES = 2 * 1024 * 1024
 CAPTURE_GONE_RO = "Captura a expirat sau nu există. Începe din nou."
 
 
@@ -160,10 +162,40 @@ async def capture(body: CaptureIn, svc: ServicesDep, p: CurrentUser) -> CaptureO
     async with svc.sessions() as s:
         crops, thumbs = await _service(s, svc).capture_crops(jpegs)
     token = svc.captures.put(p.user_id, body.camera_id, loc, crops)
+    return _capture_out(token, body.camera_id, len(jpegs), thumbs)
+
+
+@router.post("/capture/frames")
+async def capture_from_frames(
+    svc: ServicesDep,
+    access: EnrolAccess,
+    frames: Annotated[list[UploadFile], File(description="JPEGs taken by the phone")],
+) -> CaptureOut:
+    """The same capture from JPEGs a phone took itself (one every ~1.5 s for ~20 s), so one
+    phone does it all without streaming. Confirm with `/capture/{token}/confirm`."""
+    if len(frames) > MAX_PHONE_FRAMES:
+        raise Invalid(f"Prea multe imagini (cel mult {MAX_PHONE_FRAMES}).")
+    if any((f.content_type or "") != "image/jpeg" for f in frames):
+        raise Invalid("Imaginile trebuie să fie JPEG.")
+    jpegs = []
+    for f in frames:
+        data = await f.read(MAX_PHONE_FRAME_BYTES + 1)
+        if len(data) > MAX_PHONE_FRAME_BYTES:
+            raise TooLarge("O imagine e prea mare (max 2 MB).")
+        jpegs.append(data)
+    if svc.enroller is None:
+        raise Unavailable(NO_ENROLLER)
+    async with svc.sessions() as s:
+        crops, thumbs = await _service(s, svc).capture_crops(jpegs)
+    token = svc.captures.put(access.principal.user_id, "", access.location_id, crops)
+    return _capture_out(token, "", len(jpegs), thumbs)
+
+
+def _capture_out(token: str, camera_id: str, frames: int, thumbs: list[bytes]) -> CaptureOut:
     return CaptureOut(
         token=token,
-        camera_id=body.camera_id,
-        frames=len(jpegs),
+        camera_id=camera_id,
+        frames=frames,
         candidates=[
             CaptureCandidate(
                 index=i, thumbnail="data:image/jpeg;base64," + base64.b64encode(t).decode()
