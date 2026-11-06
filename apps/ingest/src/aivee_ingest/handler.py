@@ -99,7 +99,7 @@ class IngestHandler:
                 log.exception("notifier failed for event %s", event.event_id)
         elif event.state == "arrived" and view is not None:
             try:
-                await self._notifier.send_text(arrival_ro(view))
+                await self._notifier.send_text(arrival_ro(view), view.event_id)
             except Exception:
                 log.exception("notifier failed for event %s", event.event_id)
 

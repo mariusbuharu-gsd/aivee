@@ -29,7 +29,7 @@ class RecordingNotifier:
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         self.calls.append((event, snapshot))
 
-    async def send_text(self, text: str) -> None:
+    async def send_text(self, text: str, tag: str | None = None) -> None:
         self.texts.append(text)
 
 

@@ -18,8 +18,9 @@ class Notifier(Protocol):
         """Tell the staff about a newly opened event. `snapshot` is a blurred JPEG."""
         ...
 
-    async def send_text(self, text: str) -> None:
-        """A follow-up message, e.g. "Ana a ajuns la Masa 4 după 2 min 10 s"."""
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        """A follow-up message, e.g. "Ana a ajuns la Masa 4 după 2 min 10 s". `tag` is the
+        alert's id (Web Push uses it to replace the alert's notification)."""
         ...
 
 
@@ -46,5 +47,5 @@ class LogNotifier:
             snapshot.name if snapshot else "none",
         )
 
-    async def send_text(self, text: str) -> None:
-        log.info("ALERT %s", text)
+    async def send_text(self, text: str, tag: str | None = None) -> None:
+        log.info("ALERT %s (alert: %s)", text, tag)

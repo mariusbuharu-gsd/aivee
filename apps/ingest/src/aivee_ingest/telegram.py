@@ -37,7 +37,7 @@ class TelegramNotifier:
             )
         self._check(resp)
 
-    async def send_text(self, text: str) -> None:
+    async def send_text(self, text: str, tag: str | None = None) -> None:
         resp = await self._client.post(
             f"{self._base}/sendMessage",
             json={"chat_id": self._chat_id, "text": with_prefix(self._prefix, text)},
