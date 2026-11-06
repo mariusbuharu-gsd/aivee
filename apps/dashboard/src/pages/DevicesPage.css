@@ -1,0 +1,76 @@
+/* Dispozitive: health, source and the offline checklist live on each camera card. */
+.device-card .side-head {
+  margin-bottom: -6px;
+}
+.device-sub {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+}
+.device-card > .btn {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.device-health {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.device-health > div {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.device-health dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.device-health dd {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.device-source {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.device-offline {
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.device-offline-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.device-offline ol {
+  margin: 0;
+  padding-left: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+.device-offline p {
+  margin: 0;
+}
+.device-offline .btn {
+  align-self: flex-start;
+}
+
+.device-system {
+  margin: var(--gap) 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
