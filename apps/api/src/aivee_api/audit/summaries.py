@@ -14,6 +14,7 @@ TEMPLATES: dict[str, str] = {
     "auth.login_failed": "Autentificare eșuată pentru {target}",
     "auth.logout": "{actor} s-a deconectat",
     "user.invited": "{actor} l-a invitat pe {target} ca {role} la {location}",
+    "user.invite_revoked": "{actor} a anulat invitația pentru {target}",
     "user.joined": "{actor} s-a alăturat echipei ca {role} la {location}",
     "member.role_changed": "{actor} a schimbat rolul lui {target} din {from_role} în {to_role}",
     "member.removed": "{actor} i-a scos accesul lui {target} la {location}",

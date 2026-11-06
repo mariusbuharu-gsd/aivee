@@ -40,6 +40,11 @@ class Conflict(DomainError):
     code = "conflict"
 
 
+class Gone(DomainError):
+    status = 410
+    code = "gone"
+
+
 class Invalid(DomainError):
     status = 422
     code = "invalid"

@@ -1,19 +1,21 @@
 """Invites by link (D20): a manager or owner invites an email to a location with a role.
 
 The link carries an opaque token (only its sha256 is stored), is valid 7 days and works once.
+Pending invites (not accepted, not revoked, not expired) can be listed and revoked; a revoked
+link answers 410. Neither the token nor its hash ever leaves the API.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.accounts.models import Invite, Membership, Organization, User
 from aivee_api.audit.repository import Actor, AuditRepository, Target
-from aivee_api.auth.deps import CurrentUser, set_session_cookie
+from aivee_api.auth.deps import Access, CurrentUser, require, set_session_cookie
 from aivee_api.auth.passwords import hash_password
 from aivee_api.auth.permissions import USERS_MANAGE, MemberRole, can_assign
 from aivee_api.auth.principal import FORBIDDEN, Principal, load_principal
@@ -30,11 +32,14 @@ from aivee_api.auth.service import (
 from aivee_api.auth.tokens import hash_token, new_token
 from aivee_api.db.models import Site
 from aivee_api.deps import ServicesDep, SessionDep
-from aivee_api.errors import Conflict, Forbidden, NotFound
+from aivee_api.errors import Conflict, Forbidden, Gone, NotFound
 from aivee_api.settings import ApiSettings
 
 NO_INVITE = "Invitația nu există sau a expirat."
 EMAIL_TAKEN = "Există deja un cont cu acest email."
+REVOKED = "Invitația a fost anulată."
+NOT_FOUND = "Invitația nu există."
+ALREADY_ACCEPTED = "Invitația a fost deja acceptată și nu mai poate fi anulată."
 
 
 class InviteIn(BaseModel):
@@ -53,6 +58,23 @@ class InviteInfo(BaseModel):
     location_name: str
     role: Literal["manager", "staff"]
     email: str
+
+
+class InviteCreator(BaseModel):
+    id: str
+    name: str
+
+
+class PendingInvite(BaseModel):
+    id: str
+    email: str
+    role: Literal["manager", "staff"]
+    location_id: str
+    created_by: InviteCreator | None = Field(
+        description="Who sent it; null when that account was deleted"
+    )
+    created_at: datetime
+    expires_at: datetime
 
 
 class AcceptIn(BaseModel):
@@ -108,9 +130,72 @@ class InviteService:
         invite = await self._s.scalar(stmt.with_for_update() if lock else stmt)
         if invite is None or invite.accepted_at is not None:
             raise NotFound(NO_INVITE)
+        if invite.revoked_at is not None:
+            raise Gone(REVOKED)
         if invite.expires_at <= datetime.now(UTC):
             raise NotFound(NO_INVITE)
         return invite
+
+    async def pending(self, access: Access) -> list[PendingInvite]:
+        """Newest first; a manager sees only the roles they may grant (staff)."""
+        roles = [r for r in ("manager", "staff") if can_assign(access.role, r)]
+        rows = await self._s.execute(
+            select(Invite, User.name)
+            .outerjoin(User, User.id == Invite.invited_by)
+            .where(
+                Invite.org_id == access.principal.org_id,
+                Invite.location_id == access.location_id,
+                Invite.role.in_(roles),
+                Invite.accepted_at.is_(None),
+                Invite.revoked_at.is_(None),
+                Invite.expires_at > datetime.now(UTC),
+            )
+            .order_by(Invite.created_at.desc(), Invite.id.desc())
+        )
+        return [
+            PendingInvite(
+                id=inv.id,
+                email=inv.email,
+                role=inv.role,  # type: ignore[arg-type]
+                location_id=inv.location_id,
+                created_by=InviteCreator(id=inv.invited_by, name=name or "")
+                if inv.invited_by
+                else None,
+                created_at=inv.created_at,
+                expires_at=inv.expires_at,
+            )
+            for inv, name in rows
+        ]
+
+    async def revoke(self, p: Principal, invite_id: str) -> None:
+        """Idempotent: revoking a revoked invite changes (and audits) nothing. Another
+        organization's or location's invite does not exist for the caller (404)."""
+        invite = await self._s.scalar(
+            select(Invite).where(Invite.id == invite_id).with_for_update()
+        )
+        if invite is None or invite.org_id != p.org_id or p.role_at(invite.location_id) is None:
+            raise NotFound(NOT_FOUND)
+        actor_role = p.authorize(USERS_MANAGE, invite.location_id)
+        if not can_assign(actor_role, invite.role):  # type: ignore[arg-type]
+            raise Forbidden(FORBIDDEN)
+        if invite.revoked_at is not None:
+            return
+        if invite.accepted_at is not None:
+            raise Conflict(ALREADY_ACCEPTED)
+        invite.revoked_at = datetime.now(UTC)
+        await self._audit.append(
+            "user.invite_revoked",
+            p.actor,
+            org_id=p.org_id,
+            location_id=invite.location_id,
+            target=Target("email", invite.email[:128], invite.email),
+            before={
+                "email": invite.email,
+                "role": invite.role,
+                "expires_at": invite.expires_at.isoformat(),
+            },
+        )
+        await self._s.commit()
 
     async def info(self, token: str) -> InviteInfo:
         invite = await self._valid(token)
@@ -167,6 +252,21 @@ async def create_invite(
     data: InviteIn, s: SessionDep, svc: ServicesDep, p: CurrentUser
 ) -> InviteOut:
     return await InviteService(s, svc.settings).create(p, data)
+
+
+@router.get("")
+async def list_invites(
+    s: SessionDep,
+    svc: ServicesDep,
+    access: Annotated[Access, Depends(require(USERS_MANAGE))],
+) -> list[PendingInvite]:
+    """Pending invites of `?location_id=` (default: the caller's first location)."""
+    return await InviteService(s, svc.settings).pending(access)
+
+
+@router.delete("/{invite_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_invite(invite_id: str, s: SessionDep, svc: ServicesDep, p: CurrentUser) -> None:
+    await InviteService(s, svc.settings).revoke(p, invite_id)
 
 
 @router.get("/{token}")
