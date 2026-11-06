@@ -87,11 +87,12 @@ def test_build_notifier_adds_web_push_only_with_vapid_keys() -> None:
 
 
 async def _seed(sessions: Any, *endpoints: str) -> None:
-    """cam1 on edge-01 at location `demo`; the endpoints belong to a staff member of `demo`.
-    An outsider (member of `elsewhere`) is also subscribed and must never get demo's alerts."""
+    """cam1 on edge-01 at location `demo`, EVENT stored (ingest stores it before notifying);
+    the endpoints belong to a staff member of `demo`. An outsider (member of `elsewhere`) is
+    also subscribed and must never get demo's alerts."""
     from aivee_api.accounts.models import Membership, Organization, User
     from aivee_api.db.models import Site
-    from aivee_api.db.repositories import DeviceRepository
+    from aivee_api.db.repositories import DeviceRepository, EventRepository
 
     async with sessions() as s:
         s.add(Organization(id="org", name="Org"))
@@ -116,6 +117,8 @@ async def _seed(sessions: Any, *endpoints: str) -> None:
             ),
             "edge-01",
         )
+        for event in (EVENT, EVENT.model_copy(update={"event_id": "e-z9", "zone_id": "z9"})):
+            await EventRepository(s).insert_if_new(event, "edge-01")
         repo = PushSubscriptionRepository(s)
         for endpoint in endpoints:
             await repo.upsert(Subscription(endpoint, "k", "a"), user_id="u-ana")
@@ -139,7 +142,9 @@ async def test_web_push_sends_summary_and_zone_name_and_opens_alerts(sessions: A
 async def test_web_push_falls_back_to_zone_id_for_unknown_zone(sessions: Any) -> None:
     await _seed(sessions, "https://p/1")
     sender = FakeSender()
-    await WebPushNotifier(sessions, sender).notify(EVENT.model_copy(update={"zone_id": "z9"}), None)
+    await WebPushNotifier(sessions, sender).notify(
+        EVENT.model_copy(update={"event_id": "e-z9", "zone_id": "z9"}), None
+    )
     assert sender.sent[0][1]["title"] == "Alertă AiVee · z9"
 
 
@@ -177,6 +182,6 @@ async def test_web_push_for_a_camera_without_location_sends_nothing(sessions: An
     await _seed(sessions, "https://p/1")
     sender = FakeSender()
     await WebPushNotifier(sessions, sender).notify(
-        EVENT.model_copy(update={"camera_id": "x"}), None
+        EVENT.model_copy(update={"event_id": "e-x", "camera_id": "x"}), None
     )
     assert sender.sent == []
