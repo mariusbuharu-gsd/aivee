@@ -13,6 +13,8 @@ pattern write aivee/+/%u/events
 pattern write aivee/+/%u/metrics
 pattern write aivee/+/%u/suggestions
 pattern write aivee/+/%u/snapshots/#
+pattern write aivee/+/%u/detections
 pattern read aivee/+/%u/rules
 pattern read aivee/+/%u/profiles
 pattern read aivee/+/%u/config
+pattern read aivee/+/%u/commands

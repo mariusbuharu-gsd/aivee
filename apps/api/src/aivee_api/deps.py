@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aivee_api.edge.live import LiveDetections
 from aivee_api.edge.sync import EdgeCommands, EdgeSync
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.rules.translator import RuleTranslator
@@ -23,6 +24,7 @@ class Services:
     commands: EdgeCommands
     enroller: Enroller | None = None
     metrics: MetricsCache = field(default_factory=MetricsCache)
+    live: LiveDetections = field(default_factory=LiveDetections)
 
 
 def get_services(request: Request) -> Services:

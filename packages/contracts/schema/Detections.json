@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "DetectedObject": {
+      "properties": {
+        "label": {
+          "description": "COCO class name",
+          "title": "Label",
+          "type": "string"
+        },
+        "bbox": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Bbox",
+          "type": "array"
+        }
+      },
+      "required": [
+        "label",
+        "bbox"
+      ],
+      "title": "DetectedObject",
+      "type": "object"
+    },
+    "DetectedTrack": {
+      "properties": {
+        "track_id": {
+          "title": "Track Id",
+          "type": "integer"
+        },
+        "bbox": {
+          "maxItems": 4,
+          "minItems": 4,
+          "prefixItems": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Bbox",
+          "type": "array"
+        },
+        "role": {
+          "enum": [
+            "guest",
+            "staff"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "staff_score": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Staff Score",
+          "type": "number"
+        },
+        "raised_hand": {
+          "default": false,
+          "title": "Raised Hand",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "track_id",
+        "bbox",
+        "role",
+        "staff_score"
+      ],
+      "title": "DetectedTrack",
+      "type": "object"
+    }
+  },
+  "description": "What one camera sees right now, for the live overlay. Edge → `detections`, QoS 0,\nnot retained, at most 5 per second.",
+  "properties": {
+    "camera_id": {
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "tracks": {
+      "items": {
+        "$ref": "#/$defs/DetectedTrack"
+      },
+      "title": "Tracks",
+      "type": "array"
+    },
+    "objects": {
+      "items": {
+        "$ref": "#/$defs/DetectedObject"
+      },
+      "title": "Objects",
+      "type": "array"
+    }
+  },
+  "required": [
+    "camera_id",
+    "ts"
+  ],
+  "title": "Detections",
+  "type": "object"
+}

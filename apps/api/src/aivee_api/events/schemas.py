@@ -1,7 +1,8 @@
 from typing import Literal
 
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, StaffSuggestion
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from aivee_api.db.models import EventRow, SuggestionRow
 
@@ -51,3 +52,35 @@ class AlertMessage(BaseModel):
 class SuggestionMessage(BaseModel):
     type: Literal["suggestion"] = "suggestion"
     data: SuggestionOut
+
+
+class LiveDetection(BaseModel):
+    """One person as the dashboard draws it (apps/dashboard/src/api/client.ts `Detection`)."""
+
+    track_id: int
+    role: Literal["guest", "staff"]
+    box: tuple[float, float, float, float] = Field(description="Normalised [x, y, width, height]")
+    staff_score: float
+    raised_hand: bool
+
+
+class DetectionsMessage(BaseModel):
+    type: Literal["detections"] = "detections"
+    camera_id: str
+    data: list[LiveDetection]
+
+    @classmethod
+    def from_detections(cls, d: Detections) -> "DetectionsMessage":
+        return cls(
+            camera_id=d.camera_id,
+            data=[
+                LiveDetection(
+                    track_id=t.track_id,
+                    role=t.role,
+                    box=(t.bbox[0], t.bbox[1], t.bbox[2] - t.bbox[0], t.bbox[3] - t.bbox[1]),
+                    staff_score=t.staff_score,
+                    raised_hand=t.raised_hand,
+                )
+                for t in d.tracks
+            ],
+        )

@@ -41,7 +41,15 @@ class Topics:
     def config(self) -> str:  # api → edge, retained, QoS 1 (DeviceConfig: cameras + zones)
         return self._t("config")
 
-    def snapshot(self, event_id: str) -> str:  # edge → QoS 1, JPEG bytes
+    @property
+    def commands(self) -> str:  # api → edge, QoS 1, not retained (EdgeCommand)
+        return self._t("commands")
+
+    @property
+    def detections(self) -> str:  # edge → QoS 0, not retained, <= 5 Hz (Detections)
+        return self._t("detections")
+
+    def snapshot(self, event_id: str) -> str:  # edge → QoS 1, JPEG bytes (event or suggestion id)
         return self._t(f"snapshots/{event_id}")
 
     @staticmethod

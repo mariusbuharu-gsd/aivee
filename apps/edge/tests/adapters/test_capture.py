@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from aivee_edge.adapters.capture import Cv2Source, FileSource
+from aivee_edge.adapters.capture import Cv2Source, FileSource, rotate
 
 
 @pytest.fixture
@@ -68,6 +68,47 @@ def test_cv2_source_drops_frames_by_wall_clock(clip: Path) -> None:
     second = source.read()
     assert first is not None and second is not None
     assert second[0] - first[0] >= 0.2 - 1e-9
+
+
+def _marked() -> np.ndarray:
+    """2x3 image whose top-left pixel is white, so every rotation is tellable apart."""
+    image = np.zeros((2, 3, 3), dtype=np.uint8)
+    image[0, 0] = 255
+    return image
+
+
+@pytest.mark.parametrize(
+    ("degrees", "shape", "white"),
+    [
+        (0, (2, 3, 3), (0, 0)),
+        (90, (3, 2, 3), (0, 1)),
+        (180, (2, 3, 3), (1, 2)),
+        (270, (3, 2, 3), (2, 0)),
+    ],
+)
+def test_rotate_turns_the_image_clockwise(
+    degrees: int, shape: tuple[int, ...], white: tuple[int, int]
+) -> None:
+    out = rotate(_marked(), degrees)
+    assert out.shape == shape
+    assert tuple(int(v) for v in np.argwhere(out[:, :, 0] == 255)[0]) == white
+
+
+def test_rotate_rejects_other_angles() -> None:
+    with pytest.raises(ValueError):
+        rotate(_marked(), 45)
+
+
+def test_file_source_applies_rotation_before_returning_frames(clip: Path) -> None:
+    [(_, image)] = drain(FileSource(clip, target_fps=30, rotate=90), limit=1)
+    assert image.shape == (64, 48, 3)
+
+
+def test_cv2_source_applies_rotation(clip: Path) -> None:
+    source = Cv2Source(str(clip), target_fps=0, max_reconnects=0, rotate=270)
+    item = source.read()
+    assert item is not None and item[1].shape == (64, 48, 3)
+    source.close()
 
 
 def test_cv2_source_gives_up_after_max_reconnects(tmp_path: Path) -> None:
