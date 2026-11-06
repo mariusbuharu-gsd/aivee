@@ -5,6 +5,15 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "aivee-contracts",
     "paho-mqtt>=2.1",
+    "numpy>=1.26",
+    "opencv-python-headless>=4.10",
+    "ultralytics>=8.3",
+    "openvino>=2024.4",
+    "nncf>=2.14",
+    "lap>=0.5.12",
+    "open-clip-torch>=2.29",
+    "torch>=2.4",
+    "torchvision>=0.19",
 ]
 
 [build-system]
@@ -14,5 +23,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/aivee_edge"]
 
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.uv.sources]
 aivee-contracts = { workspace = true }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

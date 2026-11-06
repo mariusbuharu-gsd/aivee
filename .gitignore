@@ -18,3 +18,4 @@ data/
 recordings/
 snapshots/
 .claude/worktrees/
+models/
