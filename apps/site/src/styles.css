@@ -199,7 +199,8 @@ a {
 .topbar__brand {
   padding: 8px 0; /* clear space around the logo */
 }
-.topbar__brand img {
+.topbar__brand img,
+.topbar__brand .eyes {
   height: 24px;
   width: auto;
 }
@@ -629,7 +630,8 @@ nav {
   align-items: center;
   gap: 12px 28px;
 }
-.footer__inner img {
+.footer__inner img,
+.footer__inner .eyes {
   height: 24px;
   width: auto;
   margin: 8px 0; /* clear space around the logo */
