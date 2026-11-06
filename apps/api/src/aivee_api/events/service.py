@@ -20,8 +20,14 @@ from aivee_api.events.schemas import (
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+# The dashboard pairs raw events as opened/closed; `arrived` reaches it only through the
+# folded AlertView (aivee_api.alerts), so the raw feed keeps its original two states.
+LEGACY_STATES = ("opened", "closed")
+
+
 async def recent_events(session: AsyncSession, limit: int) -> list[EventOut]:
-    return [event_out(r) for r in await EventRepository(session).recent(limit)]
+    rows = await EventRepository(session).recent(limit, states=LEGACY_STATES)
+    return [event_out(r) for r in rows]
 
 
 def snapshot_file(snapshot_dir: Path, event_id: str) -> Path:
@@ -52,7 +58,8 @@ class LiveFeed:
         async with self._sessions() as s:
             for e in await EventRepository(s).after(self._last_event):
                 self._last_event = e.id
-                out.append(AlertMessage(data=event_out(e)))
+                if e.state in LEGACY_STATES:
+                    out.append(AlertMessage(data=event_out(e)))
             for r in await SuggestionRepository(s).after(self._last_suggestion):
                 self._last_suggestion = r.id
                 if r.status == "pending":

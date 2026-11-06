@@ -114,6 +114,7 @@ class EdgePipeline:
         snapshots: SnapshotMaker | None = None,
         commands: CommandSource | None = None,
         grace_s: float = 1.5,
+        arrive_s: float | None = 5.0,
         embed_interval_s: float = 2.0,
         forget_after_s: float = 5.0,
         metrics_interval_s: float = 5.0,
@@ -144,7 +145,13 @@ class EdgePipeline:
         self._tables: dict[str, list[tuple[float, float]]] = {}
         self._staff_zones: dict[str, list[tuple[float, float]]] = {}
         self.engine = SituationEngine(
-            [], [], id_factory, camera_id, to_datetime=to_datetime, grace_s=grace_s
+            [],
+            [],
+            id_factory,
+            camera_id,
+            to_datetime=to_datetime,
+            grace_s=grace_s,
+            arrive_s=arrive_s,
         )
         self.buffer = TrajectoryBuffer()
         self.classifier = RoleClassifier(camera_id, id_factory)

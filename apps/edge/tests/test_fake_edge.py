@@ -23,6 +23,11 @@ def load_fake_edge() -> ModuleType:
 fake_edge = load_fake_edge()
 
 
+def _lifecycle(name: str) -> list[str]:
+    """Only the unattended scenario has a waiter who comes and stays (→ arrived)."""
+    return ["opened", "arrived", "closed"] if name == "unattended" else ["opened", "closed"]
+
+
 @pytest.mark.parametrize(
     ("name", "zone"),
     [
@@ -40,12 +45,12 @@ def test_scenario_opens_then_closes_its_alert(name: str, zone: str) -> None:
     )
     states = [(e.state, e.rule_id, e.zone_id) for e in rec.alerts]
     [rule_id] = scenario.expects
-    assert states == [("opened", rule_id, zone), ("closed", rule_id, zone)], states
+    assert states == [(s, rule_id, zone) for s in _lifecycle(name)], states
 
 
 @pytest.mark.parametrize(
     ("name", "opens_at", "closes_at"),
-    [("unattended", 60, 90), ("hand", 5, 10), ("queue", 10, 30), ("uncleared", 75, 85)],
+    [("unattended", 60, 95), ("hand", 5, 10), ("queue", 10, 30), ("uncleared", 75, 85)],
 )
 def test_scenario_timing_on_simulated_clock(name: str, opens_at: float, closes_at: float) -> None:
     """Same run, but with the engine clock on simulated time to check when things happen."""
@@ -64,7 +69,7 @@ def test_scenario_timing_on_simulated_clock(name: str, opens_at: float, closes_a
         cpu=lambda: 0.0,
     )
     pipeline.run()
-    opened, closed = (e.at.timestamp() for e in rec.alerts)
+    opened, closed = (e.at.timestamp() for e in (rec.alerts[0], rec.alerts[-1]))
     assert opens_at <= opened <= opens_at + 2
     assert closes_at <= closed <= closes_at + 2
 
@@ -122,8 +127,7 @@ def _run_on(camera: Any, name: str) -> list[tuple[str, str, str, str]]:
 def test_scenarios_run_on_the_retained_zones(name: str, zone: str) -> None:
     [rule_id] = fake_edge.SCENARIOS[name].expects
     assert _run_on(_retained_camera(), name) == [
-        ("opened", rule_id, "cam-sala", zone),
-        ("closed", rule_id, "cam-sala", zone),
+        (s, rule_id, "cam-sala", zone) for s in _lifecycle(name)
     ]
 
 
@@ -132,8 +136,7 @@ def test_fewer_retained_tables_wrap_around(name: str) -> None:
     """With one table every table scenario happens there (the waiter still stays away)."""
     [rule_id] = fake_edge.SCENARIOS[name].expects
     assert _run_on(_retained_camera(tables=1), name) == [
-        ("opened", rule_id, "cam-sala", "z-table-1"),
-        ("closed", rule_id, "cam-sala", "z-table-1"),
+        (s, rule_id, "cam-sala", "z-table-1") for s in _lifecycle(name)
     ]
 
 
@@ -177,3 +180,21 @@ def test_scripted_boxes_stay_normalised_near_the_edges() -> None:
     tracks, _ = fake_edge.SCENARIOS["unattended"].script(0.0, layout)
     for t in tracks:
         assert all(0 <= c <= 1 for c in t.bbox), t.bbox
+
+
+def test_unattended_waiter_arrives_after_staying_five_seconds() -> None:
+    from aivee_edge.pipeline import EdgePipeline
+
+    rec = fake_edge.Recorder()
+    EdgePipeline(
+        fake_edge.ScenarioSource(fake_edge.SCENARIOS["unattended"], speed=0),
+        fake_edge.EchoDetector(),
+        rec,
+        fake_edge.FallbackConfig(None, "cam-01", force_demo=True),
+        device="edge-01",
+        camera_id="cam-01",
+        pose=fake_edge.ScriptedPose(),
+        cpu=lambda: 0.0,
+    ).run()
+    arrived = next(e for e in rec.alerts if e.state == "arrived")
+    assert 95 <= arrived.at.timestamp() <= 96  # the waiter reaches Masa 1 at 90
