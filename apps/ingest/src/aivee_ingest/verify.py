@@ -75,8 +75,13 @@ class VerificationStore(Protocol):
 INSTRUCTIONS = """\
 You check a restaurant monitoring alert against camera images. Faces are blurred on purpose;
 never try to identify anyone. Answer the Romanian question that follows the images:
-- yes: true only if the images clearly show what the question asks; false if they do not,
-  or if you cannot tell.
+- The system already measured durations and timing ("de 1 minut", "după 2 min") from the
+  video; one image cannot show time, so never reject because of time. Judge only whether the
+  scene in the image is consistent with the rule (e.g. a guest is at the table and no member
+  of staff is attending them).
+- yes: true if the images show a scene consistent with the rule; false if they clearly show
+  otherwise (e.g. nobody at the table, staff already serving, the object still there) or
+  show nothing relevant.
 - summary_ro: one short Romanian sentence that starts with the zone name, describing what
   you see, e.g. "Masa 1: a dispărut paharul de vin" or "Masa 2: clienții așteaptă".
 - object_ro: the Romanian name of the object concerned, e.g. "pahar de vin"; "" if none.
@@ -95,7 +100,10 @@ def question_ro(
             "Răspunde da/nu, descrie schimbarea într-o propoziție în română și dă numele "
             "obiectului în română."
         )
-    return f"{rule} Se vede asta în imagine? Răspunde da/nu și descrie scurt în română."
+    return (
+        f"{rule} Durata a fost deja măsurată de sistem. Ce se vede în imagine se potrivește "
+        "cu situația din regulă? Răspunde da/nu și descrie scurt în română."
+    )
 
 
 class VerificationAnswer(BaseModel):
