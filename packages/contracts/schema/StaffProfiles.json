@@ -1,0 +1,56 @@
+{
+  "$defs": {
+    "StaffProfile": {
+      "description": "Appearance centroid of a staff role, retained on `profiles`.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description_ro": {
+          "default": "",
+          "title": "Description Ro",
+          "type": "string"
+        },
+        "centroid": {
+          "description": "L2-normalised image embedding",
+          "items": {
+            "type": "number"
+          },
+          "title": "Centroid",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "centroid"
+      ],
+      "title": "StaffProfile",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "device": {
+      "title": "Device",
+      "type": "string"
+    },
+    "profiles": {
+      "items": {
+        "$ref": "#/$defs/StaffProfile"
+      },
+      "title": "Profiles",
+      "type": "array"
+    }
+  },
+  "required": [
+    "device",
+    "profiles"
+  ],
+  "title": "StaffProfiles",
+  "type": "object"
+}

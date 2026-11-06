@@ -1,0 +1,55 @@
+{
+  "description": "Published by the edge when a rule's situation starts or stops holding.",
+  "properties": {
+    "event_id": {
+      "description": "UUID; idempotency key for ingest",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "rule_id": {
+      "title": "Rule Id",
+      "type": "string"
+    },
+    "camera_id": {
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "zone_id": {
+      "title": "Zone Id",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "opened",
+        "closed"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+    },
+    "summary_ro": {
+      "title": "Summary Ro",
+      "type": "string"
+    },
+    "snapshot": {
+      "default": false,
+      "title": "Snapshot",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "event_id",
+    "rule_id",
+    "camera_id",
+    "zone_id",
+    "state",
+    "at",
+    "summary_ro"
+  ],
+  "title": "AlertEvent",
+  "type": "object"
+}

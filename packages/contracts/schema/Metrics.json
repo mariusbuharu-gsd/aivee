@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "device": {
+      "title": "Device",
+      "type": "string"
+    },
+    "fps": {
+      "title": "Fps",
+      "type": "number"
+    },
+    "verified_ratio": {
+      "description": "Share of frames sent to the heavy model",
+      "title": "Verified Ratio",
+      "type": "number"
+    },
+    "cpu_percent": {
+      "title": "Cpu Percent",
+      "type": "number"
+    }
+  },
+  "required": [
+    "device",
+    "fps",
+    "verified_ratio",
+    "cpu_percent"
+  ],
+  "title": "Metrics",
+  "type": "object"
+}

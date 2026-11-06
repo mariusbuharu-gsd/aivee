@@ -1,0 +1,36 @@
+{
+  "description": "The edge thinks a tracked person is staff and asks the owner to confirm.",
+  "properties": {
+    "suggestion_id": {
+      "title": "Suggestion Id",
+      "type": "string"
+    },
+    "camera_id": {
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "track_id": {
+      "title": "Track Id",
+      "type": "integer"
+    },
+    "staff_score": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Staff Score",
+      "type": "number"
+    },
+    "reason_ro": {
+      "title": "Reason Ro",
+      "type": "string"
+    }
+  },
+  "required": [
+    "suggestion_id",
+    "camera_id",
+    "track_id",
+    "staff_score",
+    "reason_ro"
+  ],
+  "title": "StaffSuggestion",
+  "type": "object"
+}

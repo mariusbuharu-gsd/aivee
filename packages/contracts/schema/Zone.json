@@ -1,0 +1,44 @@
+{
+  "description": "A named area drawn on a camera image, e.g. a table or the entrance.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "tag": {
+      "description": "Zone kind used by rules: \"table\", \"entrance\", \"staff\"…",
+      "title": "Tag",
+      "type": "string"
+    },
+    "polygon": {
+      "items": {
+        "maxItems": 2,
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "number"
+          }
+        ],
+        "type": "array"
+      },
+      "minItems": 3,
+      "title": "Polygon",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "tag",
+    "polygon"
+  ],
+  "title": "Zone",
+  "type": "object"
+}

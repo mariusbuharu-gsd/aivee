@@ -1,0 +1,155 @@
+{
+  "$defs": {
+    "Action": {
+      "properties": {
+        "type": {
+          "enum": [
+            "telegram",
+            "push",
+            "webhook"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "Condition": {
+      "description": "One fact about a zone that must hold for a rule to fire.\n\n- present: someone with `role` has been in the zone for at least `min_duration_s`\n- absent: nobody with `role` has been in the zone for at least `min_duration_s`\n  (counted from when guests sat down, so \"nobody came since they arrived\")\n- count: at least `min_count` people with `role` are in the zone\n- pose: someone with `role` in the zone shows `pose`\n- objects_unattended: `objects` are in the zone and no person has been there\n  for at least `min_duration_s`",
+      "properties": {
+        "kind": {
+          "enum": [
+            "present",
+            "absent",
+            "count",
+            "pose",
+            "objects_unattended"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "role": {
+          "default": "any",
+          "enum": [
+            "guest",
+            "staff",
+            "any"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "min_duration_s": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Min Duration S",
+          "type": "integer"
+        },
+        "min_count": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Min Count",
+          "type": "integer"
+        },
+        "pose": {
+          "anyOf": [
+            {
+              "const": "raised_hand",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pose"
+        },
+        "objects": {
+          "description": "COCO class names",
+          "items": {
+            "type": "string"
+          },
+          "title": "Objects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Condition",
+      "type": "object"
+    }
+  },
+  "description": "A situation to watch for, evaluated once per zone carrying `zone_tag`.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "camera_id": {
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "prompt_ro": {
+      "description": "The owner's original request, in Romanian",
+      "title": "Prompt Ro",
+      "type": "string"
+    },
+    "zone_tag": {
+      "title": "Zone Tag",
+      "type": "string"
+    },
+    "all_of": {
+      "items": {
+        "$ref": "#/$defs/Condition"
+      },
+      "minItems": 1,
+      "title": "All Of",
+      "type": "array"
+    },
+    "action": {
+      "$ref": "#/$defs/Action"
+    },
+    "cooldown_s": {
+      "default": 300,
+      "minimum": 0,
+      "title": "Cooldown S",
+      "type": "integer"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "camera_id",
+    "name",
+    "prompt_ro",
+    "zone_tag",
+    "all_of",
+    "action"
+  ],
+  "title": "Rule",
+  "type": "object"
+}

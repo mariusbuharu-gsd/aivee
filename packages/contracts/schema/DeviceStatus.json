@@ -1,0 +1,35 @@
+{
+  "description": "Retained on `status`; the broker publishes `offline` as the device's last will.",
+  "properties": {
+    "device": {
+      "title": "Device",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "online",
+        "offline"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "version": {
+      "default": "0.1.0",
+      "title": "Version",
+      "type": "string"
+    },
+    "cameras": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Cameras",
+      "type": "array"
+    }
+  },
+  "required": [
+    "device",
+    "state"
+  ],
+  "title": "DeviceStatus",
+  "type": "object"
+}
