@@ -10,10 +10,19 @@
 
 > **People learn too late what happens in front of their cameras, because nobody has time to watch them.**
 
-AiVee is the staff's extra pair of eyes for restaurants, terraces and events. Point an existing
-camera at the room, draw the tables, write a rule in Romanian, and AiVee alerts the waiters on
-their phone when a guest waits too long. It tells staff from guests by uniform and behaviour,
-never by face, and runs on a CPU on site.
+AiVee is the staff's extra pair of eyes for restaurants, terraces and events. **No hardware to buy:
+plug in the cameras you already have**, draw the tables, write a rule in Romanian, and AiVee alerts the
+waiters on their phone when a guest waits too long. It tells staff from guests by uniform and behaviour,
+never by face.
+
+- **Cloud (standard).** Cameras stream to one shared AiVee cloud with servers in the EU. Video is
+  analysed and discarded, never stored.
+- **Edge (option).** The same pipeline runs on the customer's own PC or on our edge box, for maximum
+  privacy or offline use: video never leaves the location. It runs on a plain laptop CPU
+  ([measured](#measured-performance)).
+
+Decision: [D25](docs/decisions.md), [ADR 0011](docs/adr/0011-cloud-or-edge-analysis.md). In the demo the
+laptop plays both roles: it is the "cloud" server, and it shows edge mode on its own CPU.
 
 Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 
@@ -27,7 +36,7 @@ Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 | **Four events** | unattended table · guest raises a hand · queue at the entrance · table not cleared. All four come from one situation engine (present / absent / count / pose / objects + duration). |
 | **Rules in Romanian** | "Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut" → a typed `Rule` draft the owner confirms, edits or discards. Vague or out-of-scope requests get a question back. |
 | **Staff by appearance + behaviour** | CLIP embedding of uniform photos plus movement (tables visited, distance per minute). Suggested staff are confirmed with one tap: "Pare angajat — confirmi?". |
-| **Privacy by design** | No face recognition, faces blurred on the device, video never leaves the site. |
+| **Privacy by design** | No face recognition, faces blurred in every snapshot. Cloud: video analysed and discarded, never stored, EU servers. Edge: video never leaves the location. See [Privacy](#privacy-by-design). |
 | **Alert lifecycle with service times** | opened → acknowledged ("Merg eu" on the phone) → arrived (the edge sees staff in the zone for ≥ 5 s) → closed. Each alert shows wait, reaction and travel time; Metrici shows the median and p90. |
 | **Alerts on the phone** | Telegram message with a blurred snapshot, plus a second one when staff arrive. Installable PWA with Web Push: the notification opens the alert. |
 | **Live detection overlay** | Live video with a box per person, light blue for staff and white for guests, streamed from the edge at up to 5 Hz. |
@@ -40,7 +49,7 @@ Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 ```mermaid
 flowchart LR
     cam["Camera<br/>RTSP / MJPEG"] --> edge
-    subgraph site["On site"]
+    subgraph site["One machine (edge mode, as built)"]
         edge["Edge (CPU)<br/>YOLO11n INT8 OpenVINO + ByteTrack<br/>pose · role · situation engine<br/>arrival · face blur"]
         mq[("Mosquitto<br/>ACL · LWT · retained")]
         ing["ingest ×2<br/>shared subscription"]
@@ -62,6 +71,10 @@ flowchart LR
     wp --> dash
 ```
 
+The diagram shows the pipeline as built today, running on one machine (edge mode). In cloud mode the same
+pipeline runs in our cloud, fed by the cameras or a small connector on site; that is in progress on
+`feature/cloud-mode` (see [ADR 0011](docs/adr/0011-cloud-or-edge-analysis.md)).
+
 More: [docs/architecture.md](docs/architecture.md) (context and containers, tenancy, auth and permissions,
 audit, alert lifecycle and request → rule sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
 
@@ -75,6 +88,7 @@ audit, alert lifecycle and request → rule sequences, MQTT topics, scalability)
 8. [Roles per location with a fixed permission matrix](docs/adr/0008-roles-per-location-fixed-matrix.md)
 9. [Append-only audit log, enforced in the database](docs/adr/0009-append-only-audit-log-in-db.md)
 10. ["Arrived" detected on the edge, not self-reported](docs/adr/0010-arrival-detected-on-edge.md)
+11. [Cloud or edge analysis, per customer](docs/adr/0011-cloud-or-edge-analysis.md) (partly supersedes ADR 1)
 
 ## Tech stack
 
@@ -156,16 +170,28 @@ gitleaks scan of the full history.
 
 ## Privacy by design
 
+Two modes, two honest claims:
+
+| Cloud (standard) | Edge (option) |
+|---|---|
+| Video is analysed and discarded, never stored. | Video never leaves the location. |
+| Servers in the EU. | Analysis runs on the customer's PC or our edge box. |
+| What is kept: alerts, metrics, audit history and blurred snapshots. | What leaves: alerts, metrics and blurred snapshots, over MQTT. |
+
+In both modes:
+
+- **Faces blurred in every snapshot**, before it is stored or sent (Telegram, push, dashboard).
 - **Role, not identity.** AiVee decides only "guest" or "staff", from uniform and movement. No face
   recognition (GDPR art. 9 biometrics, EU AI Act); requests to recognise a person are refused.
-- **Faces blurred on the device** before a snapshot leaves the edge.
-- **Video stays on site.** Only alerts, metrics and blurred snapshots travel over MQTT; the rule request
-  sends text only.
+- **The rule request sends text only** to the Claude API, never images.
 - **Least access.** Staff see only their location's alerts; the history records who did what and cannot be edited.
 - **Human in the loop.** Rules are drafts until the owner confirms them; suggested staff are confirmed
   or rejected explicitly.
 
 ## Measured performance
+
+Measured per camera stream, on a laptop CPU with no GPU: the pipeline is cheap to run, which is what makes
+edge mode on an ordinary PC possible. Cloud cost per stream is not measured yet, so we quote none.
 
 | What | Number | Setup |
 |---|---|---|
@@ -185,6 +211,13 @@ Marius Buharu · Vasi Dancu · Radu Nedela
 
 <!-- TODO(team): add roles. -->
 
-## License
+## Licensing
 
-[MIT](LICENSE)
+- **Our code is MIT** ([LICENSE](LICENSE)), and stays open (decision [D26](docs/decisions.md)).
+- **The detector is not.** The edge depends on [Ultralytics YOLO](https://github.com/ultralytics/ultralytics)
+  (`ultralytics` 8.4.203 in `uv.lock`), licensed **AGPL-3.0**.
+- **What that means.** AGPL-3.0 also covers software used over a network. When we run the pipeline in our
+  cloud, or distribute it on an edge box or a customer's PC, the complete source of what runs, including our
+  changes, must be available to its users under AGPL-3.0. The alternative is an Ultralytics Enterprise
+  licence. Anyone who redistributes AiVee with Ultralytics inherits the same obligation; AiVee's own files
+  remain usable under MIT.
