@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../api/client';
-import { createFrameSender, fitWidth, isCloudCamera, sentFps } from './sender';
+import { FRAME, createFrameSender, isCloudCamera, isPortrait, letterbox, sentFps } from './sender';
 
 const blob = () => new Blob(['x'], { type: 'image/jpeg' });
 
@@ -104,11 +104,35 @@ describe('sentFps', () => {
   });
 });
 
-describe('fitWidth', () => {
-  it('downscales to at most 640 px wide and keeps the aspect ratio', () => {
-    expect(fitWidth(1280, 720)).toEqual({ width: 640, height: 360 });
-    expect(fitWidth(720, 1280)).toEqual({ width: 640, height: 1138 });
-    expect(fitWidth(480, 640)).toEqual({ width: 480, height: 640 });
+describe('letterbox', () => {
+  it('fills the 640x360 frame with a 16:9 landscape video', () => {
+    expect(letterbox(1280, 720)).toEqual({ x: 0, y: 0, width: 640, height: 360 });
+    expect(letterbox(1920, 1080)).toEqual({ x: 0, y: 0, width: 640, height: 360 });
+  });
+
+  it('fits a portrait phone video whole, centered between black side bars', () => {
+    // 720x1280 → 202.5x360, centered: nothing is cropped
+    expect(letterbox(720, 1280)).toEqual({ x: 218.75, y: 0, width: 202.5, height: 360 });
+  });
+
+  it('puts bars above and below a video wider than 16:9', () => {
+    expect(letterbox(1280, 480)).toEqual({ x: 0, y: 60, width: 640, height: 240 });
+  });
+
+  it('keeps a 4:3 video whole with side bars', () => {
+    expect(letterbox(640, 480)).toEqual({ x: 80, y: 0, width: 480, height: 360 });
+  });
+
+  it('always outputs the fixed frame size', () => {
+    expect(FRAME).toEqual({ width: 640, height: 360 });
+  });
+});
+
+describe('isPortrait', () => {
+  it('is a video taller than wide', () => {
+    expect(isPortrait(720, 1280)).toBe(true);
+    expect(isPortrait(1280, 720)).toBe(false);
+    expect(isPortrait(0, 0)).toBe(false);
   });
 });
 
