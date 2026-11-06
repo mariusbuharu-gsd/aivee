@@ -21,7 +21,7 @@ const missing = [];
 for (const page of readdirSync(dist).filter((f) => f.endsWith(".html"))) {
   const html = readFileSync(join(dist, page), "utf8");
   for (const [, ref] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
-    if (/^(https?:|mailto:|#|data:)/.test(ref)) continue;
+    if (/^(https?:|mailto:|tel:|#|data:)/.test(ref)) continue;
     const path = join(dist, ref.split(/[?#]/)[0]);
     if (!existsSync(path)) missing.push(`${page}: ${ref}`);
   }
