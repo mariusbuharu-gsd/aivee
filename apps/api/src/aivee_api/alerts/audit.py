@@ -89,6 +89,11 @@ def arrival_ro(view: AlertView) -> str:
     return f"{who} a ajuns la {view.zone_name}{after}"
 
 
+def going_ro(view: AlertView) -> str:
+    """ "Ana merge la Masa 4": who took the alert, for the other phones."""
+    return f"{view.acknowledged_by or 'Cineva'} merge la {view.zone_name}"
+
+
 def realert_ro(view: AlertView, now: datetime) -> str:
     """ "Masa 4: Ana a confirmat acum 2 min, încă nu a ajuns nimeni" (whole minutes)."""
     who = view.acknowledged_by or "Cineva"
