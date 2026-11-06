@@ -1,4 +1,4 @@
-.PHONY: dev test test-all lint fmt up down schema keys telegram-id vapid api eval
+.PHONY: dev test test-all lint fmt up down schema keys telegram-id vapid api eval e2e
 dev:
 	uv sync --all-packages
 test:
@@ -13,6 +13,8 @@ up:
 	docker compose up -d
 down:
 	docker compose down
+e2e:
+	cd apps/dashboard && npm run e2e
 schema:
 	uv run python -m aivee_contracts.export
 keys:

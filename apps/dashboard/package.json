@@ -10,7 +10,9 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "test": "vitest",
-    "contracts": "node scripts/gen-contracts.mjs"
+    "contracts": "node scripts/gen-contracts.mjs",
+    "e2e": "playwright test",
+    "e2e:real": "E2E_REAL=1 playwright test"
   },
   "dependencies": {
     "react": "^19.3.1",
@@ -19,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.58.2",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
