@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_api.db.repositories import (
     CameraRepository,
+    DeviceRepository,
     RuleRepository,
     StaffRepository,
     camera_config,
@@ -28,6 +29,10 @@ QOS_STATE = 1
 
 
 class EdgeSync:
+    """Every device of the site gets its own retained documents. `device` is the API's
+    default device (DEVICE env); cameras may belong to others, so a publish covers the
+    default device plus every device of the site known to the DB."""
+
     def __init__(
         self,
         sessions: async_sessionmaker[AsyncSession],
@@ -41,17 +46,24 @@ class EdgeSync:
         self.device = device
         self.topics = Topics(site=site, device=device)
 
-    async def rule_set(self) -> RuleSet:
+    async def devices(self) -> list[str]:
         async with self._sessions() as s:
-            rules = await RuleRepository(s).for_device(self.device)
-        return RuleSet(device=self.device, rules=rules)
+            known = await DeviceRepository(s).ids_for_site(self.site)
+        return [self.device, *sorted(set(known) - {self.device})]
 
-    async def device_config(self) -> DeviceConfig:
+    async def rule_set(self, device: str | None = None) -> RuleSet:
+        device = device or self.device
         async with self._sessions() as s:
-            rows = await CameraRepository(s).list_all(device_id=self.device)
-        return DeviceConfig(device=self.device, cameras=[camera_config(r) for r in rows])
+            rules = await RuleRepository(s).for_device(device)
+        return RuleSet(device=device, rules=rules)
 
-    async def staff_profiles(self) -> StaffProfiles:
+    async def device_config(self, device: str | None = None) -> DeviceConfig:
+        device = device or self.device
+        async with self._sessions() as s:
+            rows = await CameraRepository(s).list_all(device_id=device)
+        return DeviceConfig(device=device, cameras=[camera_config(r) for r in rows])
+
+    async def staff_profiles(self, device: str | None = None) -> StaffProfiles:
         async with self._sessions() as s:
             rows = await StaffRepository(s).profiles()
         profiles = [
@@ -64,17 +76,35 @@ class EdgeSync:
             for r in rows
             if r.centroid is not None
         ]
-        return StaffProfiles(device=self.device, profiles=profiles)
+        return StaffProfiles(device=device or self.device, profiles=profiles)
+
+    def _topics(self, device: str) -> Topics:
+        return Topics(site=self.site, device=device)
 
     async def publish_rules(self) -> bool:
-        return await self._send(self.topics.rules, (await self.rule_set()).model_dump_json())
+        sent = [
+            await self._send(self._topics(d).rules, (await self.rule_set(d)).model_dump_json())
+            for d in await self.devices()
+        ]
+        return all(sent)
 
     async def publish_config(self) -> bool:
-        return await self._send(self.topics.config, (await self.device_config()).model_dump_json())
+        sent = [
+            await self._send(
+                self._topics(d).config, (await self.device_config(d)).model_dump_json()
+            )
+            for d in await self.devices()
+        ]
+        return all(sent)
 
     async def publish_profiles(self) -> bool:
-        payload = (await self.staff_profiles()).model_dump_json()
-        return await self._send(self.topics.profiles, payload)
+        sent = [
+            await self._send(
+                self._topics(d).profiles, (await self.staff_profiles(d)).model_dump_json()
+            )
+            for d in await self.devices()
+        ]
+        return all(sent)
 
     async def publish_all(self) -> None:
         await self.publish_config()

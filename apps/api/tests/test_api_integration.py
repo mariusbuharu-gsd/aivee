@@ -101,6 +101,76 @@ async def test_camera_and_zones_publish_the_full_device_config(
     assert [z["id"] for z in (await api.get("/api/cameras/cam1/zones")).json()] == ["t1", "e1"]
 
 
+async def test_creating_an_existing_camera_is_409_and_keeps_it(api: httpx.AsyncClient) -> None:
+    await _camera(api)
+    r = await api.post("/api/cameras", json={"id": "cam1", "name": "Alta", "source": "rtsp://y"})
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "conflict" and "cam1" in detail["message_ro"]
+    camera = (await api.get("/api/cameras/cam1")).json()
+    assert (camera["name"], camera["source"], len(camera["zones"])) == ("Sala", "rtsp://x", 1)
+
+
+async def test_camera_create_takes_an_optional_device(
+    api: httpx.AsyncClient, publisher: RecordingPublisher
+) -> None:
+    r = await api.post(
+        "/api/cameras",
+        json={"id": "cam2", "name": "Terasa", "source": "rtsp://t", "device": "edge-02"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["device"] == "edge-02"
+    other = DeviceConfig.model_validate(
+        _retained(publisher, Topics(site="test", device="edge-02").config)
+    )
+    assert [c.id for c in other.cameras] == ["cam2"]
+    await _camera(api)  # no device: the API's DEVICE
+    assert (await api.get("/api/cameras/cam1")).json()["device"] == "edge-01"
+    default = DeviceConfig.model_validate(_retained(publisher, TOPICS.config))
+    assert [c.id for c in default.cameras] == ["cam1"]
+
+
+@pytest.mark.parametrize("method", ["PUT", "PATCH"])
+async def test_updating_a_camera_keeps_its_zones(
+    api: httpx.AsyncClient, publisher: RecordingPublisher, method: str
+) -> None:
+    await _camera(api, [TABLE, DOOR])
+    r = await api.request(
+        method, "/api/cameras/cam1", json={"name": "Sala mare", "source": "rtsp://nou"}
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["name"], body["source"], body["device"]) == ("Sala mare", "rtsp://nou", "edge-01")
+    assert [z["id"] for z in body["zones"]] == ["t1", "e1"]
+    [camera] = DeviceConfig.model_validate(_retained(publisher, TOPICS.config)).cameras
+    assert (camera.name, [z.id for z in camera.zones]) == ("Sala mare", ["t1", "e1"])
+
+
+async def test_moving_a_camera_republishes_both_devices(
+    api: httpx.AsyncClient, publisher: RecordingPublisher
+) -> None:
+    await _camera(api)
+    rule = (await api.post("/api/rules", json=_rule_body())).json()
+    r = await api.patch("/api/cameras/cam1", json={"device": "edge-02"})
+    assert r.status_code == 200 and r.json()["device"] == "edge-02"
+
+    other = Topics(site="test", device="edge-02")
+    assert DeviceConfig.model_validate(_retained(publisher, TOPICS.config)).cameras == []
+    assert RuleSet.model_validate(_retained(publisher, TOPICS.rules)).rules == []
+    moved = DeviceConfig.model_validate(_retained(publisher, other.config))
+    assert [c.id for c in moved.cameras] == ["cam1"]
+    rules = RuleSet.model_validate(_retained(publisher, other.rules))
+    assert (rules.device, [r.id for r in rules.rules]) == ("edge-02", [rule["id"]])
+
+
+async def test_camera_update_errors(api: httpx.AsyncClient) -> None:
+    r = await api.patch("/api/cameras/nope", json={"name": "X"})
+    assert r.status_code == 404 and r.json()["detail"]["message_ro"]
+    await _camera(api)
+    assert (await api.patch("/api/cameras/cam1", json={"name": ""})).status_code == 422
+    assert (await api.patch("/api/cameras/cam1", json={"device": "a/b"})).status_code == 422
+
+
 async def test_zone_errors(api: httpx.AsyncClient) -> None:
     assert (await api.put("/api/cameras/nope/zones", json=[TABLE])).status_code == 404
     await _camera(api)
