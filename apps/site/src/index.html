@@ -34,6 +34,7 @@
     <script type="module" src="nav.js"></script>
     <script type="module" src="story.js"></script>
     <script type="module" src="rules.js"></script>
+    <script type="module" src="privacy.js"></script>
     <script type="module" src="contact.js"></script>
     <script type="module" src="form.js"></script>
   </head>
@@ -254,21 +255,46 @@
       <section id="confidentialitate" class="section" aria-labelledby="conf-titlu">
         <div class="wrap">
           <p class="eyebrow">Confidențialitate</p>
-          <h2 id="conf-titlu">Recunoaște rolul, nu persoana</h2>
-          <p class="lead">Alegi unde se analizează imaginile. Îți spunem exact ce promite fiecare variantă.</p>
-          <div class="modes">
-            <article class="mode" aria-labelledby="mod-cloud">
-              <p class="mode__tag">Standard</p>
-              <h3 id="mod-cloud">Cloud</h3>
-              <p class="mode__claim">Video-ul e analizat și aruncat, nu e salvat niciodată. Servere în UE.</p>
-              <p>Nu instalezi nimic în afară de camere. Păstrăm doar alertele, statisticile, istoricul și pozele blurate.</p>
-            </article>
-            <article class="mode" aria-labelledby="mod-edge">
-              <p class="mode__tag">Opțional</p>
-              <h3 id="mod-edge">Edge</h3>
-              <p class="mode__claim">Video-ul nu pleacă din locație.</p>
-              <p>Analiza rulează în local, pe calculatorul tău sau pe cutia noastră edge. Pleacă doar alerta, cu poza blurată.</p>
-            </article>
+          <h2 id="conf-titlu">Unde ajunge o imagine. Și unde nu.</h2>
+          <p class="lead">AiVee recunoaște rolul, nu persoana. Alegi unde se analizează imaginile; îți spunem exact ce promite fiecare variantă.</p>
+          <!-- One frame travels camera → analysis → blur → bin (privacy.js). The switch moves the
+               restaurant fence: in Edge the analysis sits inside it. Without JS both promises show. -->
+          <div class="priv">
+            <div class="priv__copy">
+              <div class="priv__switch" role="group" aria-label="Unde se face analiza" hidden>
+                <button type="button" data-mode="cloud" aria-pressed="true">Cloud <small>standard</small></button>
+                <button type="button" data-mode="edge" aria-pressed="false">Edge <small>opțional</small></button>
+              </div>
+              <div class="priv__mode" data-mode="cloud" aria-labelledby="mod-cloud">
+                <p class="mode__tag">Standard</p>
+                <h3 id="mod-cloud">Cloud</h3>
+                <p class="priv__claim">Video-ul e analizat și aruncat, nu e salvat niciodată. Servere în UE.</p>
+                <p>Nu instalezi nimic în afară de camere. Păstrăm doar alertele, statisticile, istoricul și pozele blurate.</p>
+              </div>
+              <div class="priv__mode" data-mode="edge" aria-labelledby="mod-edge">
+                <p class="mode__tag">Opțional</p>
+                <h3 id="mod-edge">Edge</h3>
+                <p class="priv__claim">Video-ul nu pleacă din locație.</p>
+                <p>Analiza rulează în local, pe calculatorul tău sau pe cutia noastră edge. Pleacă doar alerta, cu poza blurată.</p>
+              </div>
+            </div>
+            <figure class="priv__fig">
+              <div class="route" data-mode="cloud">
+                <div class="route__fence" aria-hidden="true"><span>Restaurantul tău</span></div>
+                <span class="route__cloud" aria-hidden="true">Cloud AiVee · UE</span>
+                <ol class="route__steps">
+                  <li class="st"><span class="st__ic"><svg viewBox="0 0 34 34" aria-hidden="true"><rect x="4" y="10" width="20" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2.4" /><path d="M24 15l6-3.5v11L24 19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" /><circle class="st__dot" cx="10" cy="17" r="2.5" /></svg></span><b>Camera</b><small>cea pe care o ai deja</small></li>
+                  <li class="st"><span class="st__ic"><svg viewBox="4.5 25.5 91 49" aria-hidden="true"><circle cx="29" cy="50" r="19" fill="none" stroke="currentColor" stroke-width="8" /><circle class="st__dot" cx="29" cy="50" r="8" /><circle cx="71" cy="50" r="19" fill="none" stroke="currentColor" stroke-width="8" /><circle class="st__dot" cx="71" cy="50" r="8" /></svg></span><b>Analiză</b><small class="route__where">în cloud, servere în UE</small></li>
+                  <li class="st"><span class="st__ic"><svg viewBox="0 0 34 34" aria-hidden="true"><circle class="st__face" cx="17" cy="14" r="7" /><path d="M6 30c1.5-6 6-9 11-9s9.5 3 11 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg></span><b>Blur</b><small>fețele, în orice poză</small></li>
+                  <li class="st st--bin"><span class="st__ic"><svg viewBox="0 0 34 34" aria-hidden="true"><path d="M8 11h18M14 11V8h6v3M10 11l1.5 16h11L24 11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg></span><b>Aruncat</b><small>video-ul nu e salvat</small></li>
+                </ol>
+                <span class="route__frame" aria-hidden="true"></span>
+              </div>
+              <figcaption class="keep">
+                <span class="keep__ph" aria-hidden="true"></span>
+                <span>Rămâne doar alerta: „Masa 4 așteaptă de 6 min”<small>cu poza blurată, ora și cine a mers</small></span>
+              </figcaption>
+            </figure>
           </div>
           <ul class="points">
             <li>
