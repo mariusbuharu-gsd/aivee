@@ -76,6 +76,15 @@ function dive(gsap, ScrollTrigger) {
     .from($$(".det", room), { scale: 1.25, opacity: 0, duration: 0.2, stagger: 0.04 }, 0.75)
     .from($(".room__cap", room), { opacity: 0, y: 12, duration: 0.15 }, 0.9);
 
+  // The nav steps out of the way for the dive and returns over the hero and once the story starts.
+  const nav = $(".snav");
+  const diving = (on) => {
+    if (!nav || nav.classList.contains("is-diving") === on) return;
+    nav.classList.toggle("is-diving", on);
+    nav.inert = on;
+    if (on) nav.classList.remove("is-open");
+  };
+
   ScrollTrigger.create({
     trigger: hero,
     start: "top top",
@@ -84,7 +93,13 @@ function dive(gsap, ScrollTrigger) {
     scrub: 0.5,
     animation: tl,
     invalidateOnRefresh: true,
+    // At scroll 0 the trigger already counts as entered, so "diving" also needs a little progress.
+    onEnter: (s) => diving(s.progress > 0.002),
+    onEnterBack: () => diving(true),
+    onLeave: () => diving(false),
+    onLeaveBack: () => diving(false),
     onUpdate: (s) => {
+      diving(s.isActive && s.progress > 0.002 && s.progress < 0.998);
       eyes.toggleAttribute("data-eyes-frozen", s.progress > 0.005);
       const alert = s.progress > 0.85;
       z4.classList.toggle("is-alert", alert);

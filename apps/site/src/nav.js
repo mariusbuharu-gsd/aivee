@@ -1,5 +1,5 @@
-// Top nav: solid once the hero is behind, hides while scrolling down and returns on the way up,
-// highlights the current chapter, shows reading progress and opens the menu on narrow screens.
+// Top nav: always fixed and visible (story.js hides it only during the eyes → story dive), solid
+// once the hero is behind; highlights the current chapter, shows reading progress and opens the menu on narrow screens.
 // Anchor clicks scroll through Lenis when story.js started it, otherwise natively.
 
 const nav = document.querySelector(".snav");
@@ -8,22 +8,14 @@ if (nav) {
   const bar = nav.querySelector(".snav__bar");
   const links = [...nav.querySelectorAll(".snav__links a")];
   const menu = nav.querySelector(".snav__menu");
-  let lastY = scrollY;
-
   const onScroll = () => {
     const y = scrollY;
     const max = document.documentElement.scrollHeight - innerHeight;
     if (bar) bar.style.transform = `scaleX(${max > 0 ? Math.min(1, y / max) : 0})`;
     nav.classList.toggle("is-solid", y > innerHeight * 0.6);
-    if (!reduce && !nav.classList.contains("is-open")) {
-      if (y > lastY + 2 && y > 240) nav.classList.add("is-hidden");
-      else if (y < lastY - 2) nav.classList.remove("is-hidden");
-    }
-    lastY = y;
   };
   addEventListener("scroll", onScroll, { passive: true });
   onScroll();
-  nav.addEventListener("focusin", () => nav.classList.remove("is-hidden"));
 
   const close = () => {
     nav.classList.remove("is-open");
