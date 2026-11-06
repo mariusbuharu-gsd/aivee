@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import FileResponse
 
 from aivee_api.alerts.audit import AuditWriter, get_audit_writer
 from aivee_api.audit.record import record
@@ -9,10 +10,11 @@ from aivee_api.auth.deps import Access, CurrentUser, require
 from aivee_api.auth.permissions import ALERTS_VIEW, DEVICES_MANAGE
 from aivee_api.auth.principal import Principal
 from aivee_api.auth.scope import authorize_at, authorize_camera, camera_ids_at, device_location
+from aivee_api.cameras.frame import latest_frame
 from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.cameras.service import CameraService
 from aivee_api.deps import ServicesDep, SessionDep
-from aivee_api.errors import Invalid
+from aivee_api.errors import Invalid, NotFound
 from aivee_api.videos.kind import is_upload_camera, is_upload_device
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
@@ -65,6 +67,27 @@ async def create_camera(
 async def get_camera(camera_id: str, s: SessionDep, svc: ServicesDep, p: CurrentUser) -> CameraOut:
     await authorize_camera(s, p, ALERTS_VIEW, camera_id)
     return await CameraService(s, svc.sync).get(camera_id)
+
+
+FRAME_AT_HEADER = "X-Frame-At"
+NO_FRAME_RO = "Nu există încă o imagine de la această cameră."
+
+
+@router.get("/{camera_id}/frame", response_class=FileResponse)
+async def get_camera_frame(
+    camera_id: str, s: SessionDep, svc: ServicesDep, p: CurrentUser
+) -> FileResponse:
+    """The newest face-blurred still of the camera (alerts.view), its time in `X-Frame-At`
+    (ISO 8601). 404 until the camera has sent one. See `aivee_api.cameras.frame`."""
+    await authorize_camera(s, p, ALERTS_VIEW, camera_id)
+    frame = await latest_frame(s, svc.settings.snapshot_dir, camera_id)
+    if frame is None:
+        raise NotFound(NO_FRAME_RO)
+    return FileResponse(
+        frame.path,
+        media_type="image/jpeg",
+        headers={FRAME_AT_HEADER: frame.at.isoformat(), "Cache-Control": "no-store"},
+    )
 
 
 @router.put("/{camera_id}")

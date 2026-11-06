@@ -204,6 +204,18 @@ async def test_snapshots_follow_the_event_location(
         await c.aclose()
 
 
+async def test_camera_frame_follows_the_camera_location(
+    world: None, client_factory: Any, login: Any, settings: Any
+) -> None:
+    (settings.snapshot_dir / "ev-test.jpg").write_bytes(JPEG)
+    (settings.snapshot_dir / "ev-far.jpg").write_bytes(JPEG)
+    staff = await _client(client_factory, login, "staff@t.ro")
+    r = await staff.get("/api/cameras/cam1/frame")
+    assert r.status_code == 200 and r.content == JPEG
+    assert (await staff.get("/api/cameras/camfar/frame")).status_code == 404
+    await staff.aclose()
+
+
 async def test_config_changes_are_audited_with_before_and_after(
     world: None, client_factory: Any, login: Any, sessions: Any
 ) -> None:
