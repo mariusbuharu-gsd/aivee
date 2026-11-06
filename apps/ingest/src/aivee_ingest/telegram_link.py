@@ -4,7 +4,8 @@ The dashboard opens `t.me/<bot>?startgroup=<code>`; Telegram adds the bot to the
 and posts `/start@<bot> <code>` there (`/start <code>` in a private chat). The poller resolves
 the code (`aivee_api.locations.telegram.consume_link`), which saves the chat on the location,
 and replies in that chat. `my_chat_member` updates carry no payload, so the code always comes
-from the message.
+from the message. `callback_query` updates (the alert's "Preiau ✋" button) go to
+`telegram_ack.AlertCallbacks`.
 
 Exactly one process may call getUpdates for a bot token: a second caller (or a webhook) gets
 HTTP 409. Every ingest replica runs this loop, but only the one holding the Postgres advisory
@@ -25,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
 from aivee_ingest.telegram import API
+from aivee_ingest.telegram_ack import AlertCallbacks
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +50,9 @@ HELLO = (
 REPLIES = {"linked": LINKED, "expired": EXPIRED, "used": USED, "unknown": UNKNOWN}
 
 Update = dict[str, Any]
+
+ALLOWED_UPDATES = ["message", "my_chat_member", "callback_query"]
+"""Sent on every getUpdates: Telegram remembers the last list, so be explicit."""
 
 
 class PollConflict(Exception):
@@ -97,7 +102,7 @@ class HttpBotApi:
         return body.get("result")
 
     async def get_updates(self, offset: int | None, timeout_s: int) -> list[Update]:
-        payload: dict[str, Any] = {"timeout": timeout_s}
+        payload: dict[str, Any] = {"timeout": timeout_s, "allowed_updates": ALLOWED_UPDATES}
         if offset is not None:
             payload["offset"] = offset
         result = await self._call("getUpdates", payload)
@@ -105,6 +110,12 @@ class HttpBotApi:
 
     async def send_message(self, chat_id: str, text: str) -> None:
         await self._call("sendMessage", {"chat_id": chat_id, "text": text})
+
+    async def answer_callback(self, query_id: str, text: str) -> None:
+        await self._call("answerCallbackQuery", {"callback_query_id": query_id, "text": text})
+
+    async def edit_message(self, method: str, payload: dict[str, Any]) -> None:
+        await self._call(method, payload)
 
     async def username(self) -> str | None:
         if self._username is None:
@@ -186,11 +197,19 @@ def _chat_title(chat: dict[str, Any]) -> str | None:
 class TelegramLinkBot:
     """Handles one update: `/start <code>` links the chat to the code's location."""
 
-    def __init__(self, api: BotApi, store: LinkStore) -> None:
+    def __init__(
+        self, api: BotApi, store: LinkStore, callbacks: AlertCallbacks | None = None
+    ) -> None:
         self._api = api
         self._store = store
+        self._callbacks = callbacks
 
     async def handle(self, update: Update) -> None:
+        query = update.get("callback_query")
+        if isinstance(query, dict):
+            if self._callbacks is not None:
+                await self._callbacks.handle(query)
+            return
         message = update.get("message")
         if not isinstance(message, dict):
             return  # my_chat_member and the rest carry no start payload

@@ -207,7 +207,11 @@ async def test_http_get_updates_sends_offset_and_timeout() -> None:
     api, seen = _http(200, {"ok": True, "result": [{"update_id": 5}]})
     assert await api.get_updates(5, 25) == [{"update_id": 5}]
     assert seen[0].url.path == "/botSECRET/getUpdates"
-    assert json.loads(seen[0].content) == {"offset": 5, "timeout": 25}
+    assert json.loads(seen[0].content) == {
+        "offset": 5,
+        "timeout": 25,
+        "allowed_updates": ["message", "my_chat_member", "callback_query"],
+    }
 
 
 async def test_http_409_is_a_conflict_without_the_token() -> None:

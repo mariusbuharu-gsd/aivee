@@ -287,7 +287,12 @@ class AlertRepository:
                 EventRow.acknowledged_at.is_(None),
                 EventRow.closed_at.is_(None),
             )
-            .values(acknowledged_at=at, acknowledged_by_id=user.id, acknowledged_by_name=user.name)
+            # An empty id: someone without an AiVee account (the Telegram "Preiau" button).
+            .values(
+                acknowledged_at=at,
+                acknowledged_by_id=user.id or None,
+                acknowledged_by_name=user.name,
+            )
             .returning(EventRow.id)
         )
         return result.first() is not None
