@@ -1,0 +1,93 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../App';
+import { ApiContext } from '../api/context';
+import { MockApi } from '../api/mock';
+import { MOCK_PASSWORD } from '../api/mockAccounts';
+import { AuthProvider } from '../auth/AuthProvider';
+import { Toaster } from '../ui/Toaster';
+
+function renderApp(path = '/dispozitive', email = 'manager@aivee.demo') {
+  const api = new MockApi({ latencyMs: 0, autoplay: false });
+  api.accounts.login(email, MOCK_PASSWORD);
+  render(
+    <ApiContext.Provider value={api}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Toaster>
+            <App />
+          </Toaster>
+        </MemoryRouter>
+      </AuthProvider>
+    </ApiContext.Provider>,
+  );
+  return api;
+}
+
+beforeEach(() => localStorage.clear());
+afterEach(() => vi.restoreAllMocks());
+
+describe('DevicesPage', () => {
+  it('puts health on the card and drops the separate system table', async () => {
+    renderApp();
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    expect(within(sala).getByText('FPS')).toBeInTheDocument();
+    expect(within(sala).getByText('CPU')).toBeInTheDocument();
+    expect(within(sala).getByText('rtsp://192.168.1.20/…')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sistem' })).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('shows the full source only while editing, masked everywhere else', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(
+      await screen.findByRole(
+        'button',
+        { name: 'Acțiuni pentru camera Sala principală' },
+        { timeout: 5000 },
+      ),
+    );
+    await user.click(screen.getByRole('menuitem', { name: 'Editează camera' }));
+    const dialog = screen.getByRole('dialog', { name: /Editezi „Sala principală”/ });
+    const source = within(dialog).getByLabelText('Adresa sursei');
+    expect(source).toHaveValue('rtsp://192.168.1.20:554/stream1');
+    await user.clear(source);
+    await user.type(source, 'rtsp://admin:hunter2@192.168.1.20:554/stream1');
+    await user.click(within(dialog).getByRole('button', { name: 'Salvează' }));
+
+    const sala = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Sala principală' },
+      { timeout: 5000 },
+    );
+    expect(await within(sala).findByText('rtsp://••••@192.168.1.20/…')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('hunter2');
+  });
+
+  it('lists what to check on an offline device and asks again on retry', async () => {
+    const user = userEvent.setup();
+    const api = renderApp();
+    const terrace = await screen.findByRole(
+      'listitem',
+      { name: 'Camera Terasă' },
+      { timeout: 5000 },
+    );
+    const steps = within(terrace).getByRole('list');
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(3);
+    expect(within(terrace).queryByText('FPS')).toBeNull();
+
+    const list = vi.spyOn(api, 'listCameras');
+    await user.click(
+      within(terrace).getByRole('button', { name: 'Am verificat, încearcă din nou' }),
+    );
+    expect(list).toHaveBeenCalled();
+    expect(await screen.findByText(/tot nu răspunde/)).toBeInTheDocument();
+  });
+});

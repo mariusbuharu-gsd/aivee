@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { CameraView } from '../api/client';
+import type { CameraPatch, CameraView, DashboardMetrics } from '../api/client';
 import { useApi } from '../api/context';
 import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
 import { Icon } from '../components/Icon';
-import { MetricsStrip } from '../components/MetricsStrip';
+import type { Metrics } from '../contracts';
+import { maskSource } from '../devices/maskSource';
 import { useLiveData } from '../state/context';
-import { Banner } from '../ui/Banner';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
 import { EmptyState, Skeleton } from '../ui/controls';
 import { useToast } from '../ui/toast';
+import './DevicesPage.css';
 
 /** "1 zonă se șterge" / "3 zone se șterg" / "nicio zonă". */
 function willGo(n: number, one: string, many: string, none: string): string {
@@ -27,7 +28,7 @@ export function DevicesPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
-  const [renaming, setRenaming] = useState<CameraView | null>(null);
+  const [editing, setEditing] = useState<CameraView | null>(null);
   // Prefill the edge default only while it is free; otherwise suggest the next id.
   const taken = new Set(cameras.map((c) => c.id));
   let next = DEFAULT_CAMERA_ID;
@@ -59,78 +60,18 @@ export function DevicesPage() {
       )}
       <ul className="cards">
         {cameras.map((c) => (
-          <li key={c.id} className="card">
-            <div className="side-head">
-              <h2 className="h3">{c.name}</h2>
-              <div className="rule-tools">
-                <span className={`pill ${c.online ? 'pill-live' : 'pill-off'}`}>
-                  {c.online ? 'online' : 'offline'}
-                </span>
-                <Menu
-                  label={`Acțiuni pentru camera ${c.name}`}
-                  items={[
-                    { label: 'Redenumește', onSelect: () => setRenaming(c) },
-                    { label: 'Editează zonele', onSelect: () => navigate(zonesPath(c.id)) },
-                    { label: 'Scoate camera…', danger: true, onSelect: () => setRemoving(c) },
-                  ]}
-                />
-              </div>
-            </div>
-            {!c.online && (
-              <Banner tone="warn" title="Dispozitivul nu răspunde.">
-                Verifică dacă {c.device} e pornit și legat la rețea. Alertele de la această cameră
-                nu vin până revine.
-              </Banner>
-            )}
-            <dl className="kv">
-              <dt>Dispozitiv</dt>
-              <dd className="mono">{c.device}</dd>
-              <dt>Sursă</dt>
-              <dd className="mono">{c.source}</dd>
-              <dt>Zone</dt>
-              <dd>{(c.zones ?? []).map((z) => z.name).join(', ') || '—'}</dd>
-            </dl>
-            <Link to={zonesPath(c.id)} className="btn">
-              Editează zonele
-            </Link>
-          </li>
+          <CameraCard
+            key={c.id}
+            camera={c}
+            health={metrics?.devices.find((d) => d.device === c.device) ?? null}
+            onEdit={() => setEditing(c)}
+            onZones={() => navigate(zonesPath(c.id))}
+            onRemove={() => setRemoving(c)}
+          />
         ))}
       </ul>
 
-      {metrics && metrics.devices.length > 0 && (
-        <section aria-labelledby="system-h" className="rule-groups">
-          <h2 id="system-h">Sistem</h2>
-          <MetricsStrip metrics={metrics} />
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Dispozitiv</th>
-                  <th scope="col">FPS</th>
-                  <th scope="col">Cadre verificate</th>
-                  <th scope="col">CPU</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.devices.map((d) => (
-                  <tr key={d.device}>
-                    <th scope="row" className="mono">
-                      {d.device}
-                    </th>
-                    <td className="mono">{d.fps.toFixed(1)}</td>
-                    <td className="mono">{(d.verified_ratio * 100).toFixed(1)}%</td>
-                    <td className="mono">{Math.round(d.cpu_percent)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="muted small">
-            Cadre verificate = procentul de cadre trimise modelului greu. Restul trec doar prin
-            detecția rapidă.
-          </p>
-        </section>
-      )}
+      {metrics && metrics.devices.length > 0 && <SystemLine metrics={metrics} />}
 
       {adding && (
         <Dialog title="Adaugă o cameră" icon="devices" onClose={() => setAdding(false)}>
@@ -175,37 +116,176 @@ export function DevicesPage() {
           </ul>
         </ConfirmDialog>
       )}
-      {renaming && <RenameCamera camera={renaming} onClose={() => setRenaming(null)} />}
+      {editing && <EditCamera camera={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function RenameCamera({ camera, onClose }: { camera: CameraView; onClose: () => void }) {
+function CameraCard({
+  camera: c,
+  health,
+  onEdit,
+  onZones,
+  onRemove,
+}: {
+  camera: CameraView;
+  /** This camera's device in the metrics poll; null when it reports nothing. */
+  health: Metrics | null;
+  onEdit: () => void;
+  onZones: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <li className="card device-card" aria-label={`Camera ${c.name}`}>
+      <div className="side-head">
+        <h2 className="h3">{c.name}</h2>
+        <div className="rule-tools">
+          <span className={`pill ${c.online ? 'pill-live' : 'pill-off'}`}>
+            {c.online ? 'online' : 'offline'}
+          </span>
+          <Menu
+            label={`Acțiuni pentru camera ${c.name}`}
+            items={[
+              { label: 'Editează camera', onSelect: onEdit },
+              { label: 'Editează zonele', onSelect: onZones },
+              { label: 'Scoate camera…', danger: true, onSelect: onRemove },
+            ]}
+          />
+        </div>
+      </div>
+      <p className="device-sub mono">{c.device}</p>
+      {c.online ? (
+        <dl className="device-health">
+          <div>
+            <dt>FPS</dt>
+            <dd className="mono">{health ? health.fps.toFixed(1) : '—'}</dd>
+          </div>
+          <div>
+            <dt>CPU</dt>
+            <dd className="mono">{health ? `${Math.round(health.cpu_percent)}%` : '—'}</dd>
+          </div>
+          <div>
+            <dt>Zone</dt>
+            <dd className="mono">{c.zones?.length ?? 0}</dd>
+          </div>
+        </dl>
+      ) : (
+        <OfflineChecklist camera={c} />
+      )}
+      <p className="device-source mono" title="Adresa completă apare la „Editează camera”">
+        <span className="visually-hidden">Sursă: </span>
+        {maskSource(c.source)}
+      </p>
+      <Link to={zonesPath(c.id)} className="btn">
+        Editează zonele
+      </Link>
+    </li>
+  );
+}
+
+/** What to check, in order, when a device stops answering; the button asks the API again. */
+function OfflineChecklist({ camera }: { camera: CameraView }) {
+  const api = useApi();
+  const toast = useToast();
+  const { addCamera } = useLiveData();
+  const [checking, setChecking] = useState(false);
+
+  async function retry() {
+    setChecking(true);
+    try {
+      const fresh = (await api.listCameras()).find((x) => x.id === camera.id);
+      if (fresh) addCamera(fresh);
+      if (fresh?.online) {
+        toast({ title: `Camera „${camera.name}” e din nou online` });
+      } else {
+        toast({
+          title: `${camera.device} tot nu răspunde`,
+          text: 'Mai verifică o dată pașii, apoi încearcă din nou.',
+        });
+      }
+    } catch (e) {
+      toast({
+        title: 'Nu am putut verifica dispozitivul',
+        text: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <div className="device-offline">
+      <h3 className="device-offline-title">Ce verifici, în ordine</h3>
+      <ol>
+        <li>
+          Calculatorul <span className="mono">{camera.device}</span> e pornit? Lumina de pe carcasă
+          e aprinsă.
+        </li>
+        <li>Cablul de rețea e în priză la ambele capete.</li>
+        <li>Camera are curent (LED-ul din față).</li>
+      </ol>
+      <p className="muted small">Alertele de la această cameră nu vin până revine.</p>
+      <button type="button" className="btn btn-sm" onClick={() => void retry()} disabled={checking}>
+        {checking ? 'Se verifică…' : 'Am verificat, încearcă din nou'}
+      </button>
+    </div>
+  );
+}
+
+/** Alert latency and verified frames: one quiet line under the cards for whoever looks. */
+function SystemLine({ metrics }: { metrics: DashboardMetrics }) {
+  const ratios = metrics.devices.map((d) => d.verified_ratio);
+  const verified = (ratios.reduce((a, b) => a + b, 0) / ratios.length) * 100;
+  return (
+    <p className="device-system">
+      {metrics.alert_latency_ms != null && (
+        <>
+          Latență alertă{' '}
+          <span className="mono">{(metrics.alert_latency_ms / 1000).toFixed(1)} s</span>
+          {' · '}
+        </>
+      )}
+      cadre verificate <span className="mono">{verified.toFixed(1)}%</span> (trimise modelului greu;
+      restul trec doar prin detecția rapidă)
+    </p>
+  );
+}
+
+/** Name and source; the only place the full source address (with any password) is shown. */
+function EditCamera({ camera, onClose }: { camera: CameraView; onClose: () => void }) {
   const api = useApi();
   const toast = useToast();
   const { addCamera } = useLiveData();
   const [name, setName] = useState(camera.name);
+  const [source, setSource] = useState(camera.source);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    const v = name.trim();
-    if (!v) return setError('Camera are nevoie de un nume.');
-    if (v === camera.name) return onClose();
+    const n = name.trim();
+    const src = source.trim();
+    if (!n) return setError('Camera are nevoie de un nume.');
+    if (!src) return setError('Scrie adresa RTSP din aplicația camerei.');
+    const patch: CameraPatch = {};
+    if (n !== camera.name) patch.name = n;
+    if (src !== camera.source) patch.source = src;
+    if (!patch.name && !patch.source) return onClose();
     setBusy(true);
     try {
-      addCamera(await api.updateCamera(camera.id, { name: v }));
-      toast({ title: `Camera se numește acum „${v}”` });
+      addCamera(await api.updateCamera(camera.id, patch));
+      toast({
+        title: patch.name ? `Camera se numește acum „${n}”` : `Camera „${n}” a fost salvată`,
+      });
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nu am putut redenumi camera.');
+      setError(e instanceof Error ? e.message : 'Nu am putut salva camera.');
       setBusy(false);
     }
   }
 
   return (
     <Dialog
-      title={`Redenumești „${camera.name}”`}
+      title={`Editezi „${camera.name}”`}
       icon="edit"
       onClose={() => !busy && onClose()}
       actions={
@@ -224,20 +304,38 @@ function RenameCamera({ camera, onClose }: { camera: CameraView; onClose: () => 
         </>
       }
     >
-      <label className="field">
-        <span>Nume nou</span>
-        <input
-          className="input"
-          value={name}
-          data-autofocus
-          aria-invalid={error ? true : undefined}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void save();
-          }}
-        />
-        {error && <small className="field-error">{error}</small>}
-      </label>
+      <div className="stack-form">
+        <label className="field">
+          <span>Nume</span>
+          <input
+            className="input"
+            value={name}
+            data-autofocus
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void save();
+            }}
+          />
+        </label>
+        <label className="field">
+          <span>Adresa sursei</span>
+          <input
+            className="input mono"
+            value={source}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => setSource(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void save();
+            }}
+          />
+        </label>
+        {error && (
+          <small className="field-error" role="alert">
+            {error}
+          </small>
+        )}
+      </div>
     </Dialog>
   );
 }

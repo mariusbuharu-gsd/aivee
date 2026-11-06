@@ -92,9 +92,15 @@ export function AddCameraForm({
           value={source}
           onChange={(e) => setSource(e.target.value)}
           placeholder="rtsp://192.168.1.20:554/stream1"
+          autoComplete="off"
+          spellCheck={false}
           {...err('source')}
         />
-        {msg('source')}
+        {msg('source') || (
+          <small className="muted small">
+            Cu utilizator și parolă, dacă are. În listă le ascundem.
+          </small>
+        )}
       </div>
       <details className="tech" open={!!(fields.id || fields.device)}>
         <summary>Avansat: id cameră și dispozitiv</summary>
