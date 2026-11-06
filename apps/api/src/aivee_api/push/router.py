@@ -5,11 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
+from aivee_api.auth.deps import CurrentUser
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Unavailable
 from aivee_api.push.repository import PushSubscriptionRepository
 from aivee_api.push.sender import PushMessage, PushReport, PushSender, Subscription, WebPushSender
-from aivee_api.push.service import push_to_all
+from aivee_api.push.service import push_to_user
 from aivee_api.push.settings import VapidSettings
 
 router = APIRouter(prefix="/api/push", tags=["push"])
@@ -75,30 +76,37 @@ async def public_key(vapid: VapidDep) -> PublicKeyOut:
 
 
 @router.post("/subscribe", status_code=201)
-async def subscribe(body: SubscriptionIn, request: Request, s: SessionDep) -> dict[str, bool]:
+async def subscribe(
+    body: SubscriptionIn, request: Request, p: CurrentUser, s: SessionDep
+) -> dict[str, bool]:
+    """The subscription belongs to the logged-in user: alerts reach it only for their
+    locations."""
     sub = Subscription(body.endpoint, body.keys.p256dh, body.keys.auth)
-    await PushSubscriptionRepository(s).upsert(sub, request.headers.get("user-agent", ""))
+    await PushSubscriptionRepository(s).upsert(
+        sub, request.headers.get("user-agent", ""), user_id=p.user_id
+    )
     await s.commit()
     return {"subscribed": True}
 
 
 @router.delete("/subscribe", status_code=204)
-async def unsubscribe(body: UnsubscribeIn, s: SessionDep) -> Response:
-    """Idempotent: unknown endpoints are fine (the browser may already have dropped it)."""
-    await PushSubscriptionRepository(s).delete(body.endpoint)
+async def unsubscribe(body: UnsubscribeIn, p: CurrentUser, s: SessionDep) -> Response:
+    """Idempotent: unknown endpoints are fine (the browser may already have dropped it).
+    Only the caller's own subscription is removed."""
+    await PushSubscriptionRepository(s).delete(body.endpoint, user_id=p.user_id)
     await s.commit()
     return Response(status_code=204)
 
 
 @router.post("/test")
 async def send_test(
-    svc: ServicesDep, sender: Annotated[PushSender, Depends(get_sender)]
+    p: CurrentUser, svc: ServicesDep, sender: Annotated[PushSender, Depends(get_sender)]
 ) -> PushReport:
-    """Send a test notification to every subscribed phone (demo and setup check)."""
+    """Send a test notification to the caller's own subscribed devices (setup check)."""
     message = PushMessage(
         title="AiVee",
         body="Test reușit: aici primești alertele AiVee.",
         url="/alerte",
         tag="aivee-test",
     )
-    return await push_to_all(svc.sessions, sender, message)
+    return await push_to_user(svc.sessions, sender, message, p.user_id)

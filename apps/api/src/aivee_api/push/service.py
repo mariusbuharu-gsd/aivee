@@ -1,7 +1,12 @@
-"""Send one Web Push message to every stored subscription; drop the ones that are gone."""
+"""Send one Web Push message to a set of subscriptions; drop the ones that are gone.
+
+Alerts go to `push_to_location` (members and owners of the alert's location), the test
+push to `push_to_user`; `push_to_all` is kept for tooling.
+"""
 
 import asyncio
 import logging
+from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -16,6 +21,37 @@ async def push_to_all(
 ) -> PushReport:
     async with sessions() as s:
         subs = await PushSubscriptionRepository(s).all()
+    return await push_to(sessions, sender, message, subs)
+
+
+async def push_to_location(
+    sessions: async_sessionmaker[AsyncSession],
+    sender: PushSender,
+    message: PushMessage,
+    location_id: str,
+) -> PushReport:
+    async with sessions() as s:
+        subs = await PushSubscriptionRepository(s).for_location(location_id)
+    return await push_to(sessions, sender, message, subs)
+
+
+async def push_to_user(
+    sessions: async_sessionmaker[AsyncSession],
+    sender: PushSender,
+    message: PushMessage,
+    user_id: str,
+) -> PushReport:
+    async with sessions() as s:
+        subs = await PushSubscriptionRepository(s).for_user(user_id)
+    return await push_to(sessions, sender, message, subs)
+
+
+async def push_to(
+    sessions: async_sessionmaker[AsyncSession],
+    sender: PushSender,
+    message: PushMessage,
+    subs: Sequence[Subscription],
+) -> PushReport:
     if not subs:
         return PushReport()
     payload = message.payload()

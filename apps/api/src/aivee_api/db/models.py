@@ -171,3 +171,7 @@ class PushSubscriptionRow(Base):
     auth: Mapped[str] = mapped_column(Text)
     user_agent: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = _now()
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    """The logged-in user who subscribed (0003_auth_tenancy); alerts go to members only."""
