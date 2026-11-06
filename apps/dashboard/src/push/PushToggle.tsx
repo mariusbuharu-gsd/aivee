@@ -81,7 +81,7 @@ export function PushToggle({ service }: { service?: PushService }) {
   const canToggle = state === 'on' || state === 'off';
 
   return (
-    <section className="card push-card" aria-labelledby="push-h">
+    <section id="notificari" className="card push-card" aria-labelledby="push-h">
       <div className="push-head">
         <h3 id="push-h">Notificări pe telefon</h3>
         {status && <span className={`pill ${status.pill}`}>{status.label}</span>}

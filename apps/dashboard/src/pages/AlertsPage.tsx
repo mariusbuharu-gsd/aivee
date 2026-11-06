@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router';
 import type { AlertItem } from '../alerts/fold';
 import { AlertFeed } from '../components/AlertFeed';
 import { PushToggle } from '../push/PushToggle';
@@ -58,6 +59,18 @@ export function AlertsPage() {
   const { alerts, cameras, suggestions, dropSuggestion, cases, ack } = useLiveData();
   const { can } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
+  const { hash } = useLocation();
+  // Deep links from the setup checklist (#notificari, #poze-personal) land on the right card.
+  useEffect(() => {
+    if (!hash) return;
+    try {
+      document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView?.({
+        block: 'center',
+      });
+    } catch {
+      /* a malformed hash just stays at the top */
+    }
+  }, [hash]);
   const open = alerts.filter((a) => a.closed_at === null);
   const closed = alerts.filter((a) => a.closed_at !== null);
   const feed = (items: AlertItem[], empty = true) => (

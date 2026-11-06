@@ -26,6 +26,7 @@ import {
   type CameraPatch,
   type NewCamera,
   type SavedZones,
+  type StaffProfile,
   type RulePatch,
   type RegisterInput,
   type Role,
@@ -365,6 +366,7 @@ export class MockApi implements ApiClient {
   private alerts: AlertView[] = seedAlerts();
   private suggestions: StaffSuggestion[] = [];
   private videos = seedVideos();
+  private staffProfiles: StaffProfile[] = [];
   private resolved = new Set<string>();
   private alertSubs = new Set<(e: AlertView) => void>();
   private suggestionSubs = new Set<(s: StaffSuggestion) => void>();
@@ -578,7 +580,22 @@ export class MockApi implements ApiClient {
 
   async uploadStaffPhoto(file: File) {
     if (!file.type.startsWith('image/')) throw new Error('Fișierul trebuie să fie o imagine');
+    const profile = this.staffProfiles[0];
+    if (profile) profile.examples += 1;
+    else
+      this.staffProfiles.push({
+        id: 'uniforma',
+        name: 'Uniformă',
+        description_ro: '',
+        examples: 1,
+        has_centroid: true,
+      });
     await this.delay(null);
+  }
+
+  /** Empty until a photo is uploaded, so the setup checklist shows "Poze cu uniforma" to do. */
+  listStaffProfiles() {
+    return this.delay(this.staffProfiles);
   }
 
   getMetrics(): Promise<DashboardMetrics> {

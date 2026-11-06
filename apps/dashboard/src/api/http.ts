@@ -26,6 +26,7 @@ import {
   type NewCamera,
   type PendingInvite,
   type SavedZones,
+  type StaffProfile,
   type RulePatch,
   type RuleDraft,
   type Unsubscribe,
@@ -217,6 +218,10 @@ export class HttpApi implements ApiClient {
     const body = new FormData();
     body.append('photo', file);
     await this.request<unknown>('/api/staff/photos', { method: 'POST', body });
+  }
+
+  listStaffProfiles() {
+    return this.request<StaffProfile[]>('/api/staff/profiles');
   }
 
   getMetrics() {

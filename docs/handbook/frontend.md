@@ -32,10 +32,10 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 
 | Route | Page | Permission | Purpose |
 |---|---|---|---|
-| `/` | Live | `alerts.view` | camera tiles, live video with detection boxes (staff light blue, guests white), alert feed, staff suggestions |
+| `/` | Live | `alerts.view` | camera tiles, live video with detection boxes (staff light blue, guests white), alert feed, staff suggestions; "Configurare" checklist for owners and managers (8 steps from cameras, zones, rules, staff profiles, push/Telegram; `src/setup/checklist.ts`), "Ascunde" remembered per user on the device |
 | `/alerte` | Alerte | `alerts.view` | alerts with "Merg eu" and the timeline Deschisă → Preluată → Ajuns → Închisă with reaction / travel / wait; AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare, Reacție, Drum: median and p90), FPS, CPU, verified frames |
-| `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică |
+| `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text |
 | `/dispozitive` | Dispozitive | `devices.manage` | edge devices online/offline, "Adaugă cameră" |
 | `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` |
 | `/video` | Analiză video | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
