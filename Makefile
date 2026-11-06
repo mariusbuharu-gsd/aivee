@@ -1,4 +1,4 @@
-.PHONY: dev test test-all lint fmt up down schema
+.PHONY: dev test test-all lint fmt up down schema keys telegram-id
 dev:
 	uv sync --all-packages
 test:
@@ -15,3 +15,7 @@ down:
 	docker compose down
 schema:
 	uv run python -m aivee_contracts.export
+keys:
+	./tools/setup-keys.sh
+telegram-id:
+	uv run python tools/telegram_chat_id.py
