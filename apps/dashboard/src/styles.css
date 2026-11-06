@@ -940,3 +940,50 @@ details summary {
     width: 72px;
   }
 }
+
+/* ---------- Real API additions ---------- */
+.snapshot-img {
+  overflow: hidden;
+  padding: 0;
+}
+.snapshot-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* In the editor the frame must not be cropped: zone coordinates are relative to the full frame. */
+.editor .player video {
+  object-fit: fill;
+}
+.editor-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+.field-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+.add-camera {
+  max-width: 560px;
+}
+.draft-editor {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+label.btn {
+  cursor: pointer;
+}
+label.btn:focus-within {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}

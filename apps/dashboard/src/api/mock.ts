@@ -9,7 +9,17 @@ import type {
   StaffSuggestion,
   Zone,
 } from '../contracts';
-import type { ApiClient, CameraView, DashboardMetrics, Detection, Unsubscribe } from './client';
+import {
+  ApiError,
+  type AlertView,
+  type ApiClient,
+  type CameraView,
+  type DashboardMetrics,
+  type Detection,
+  type NewCamera,
+  type RuleDraft,
+  type Unsubscribe,
+} from './client';
 
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const wait = (ms: number) =>
@@ -186,6 +196,20 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
   };
 }
 
+/** Stand-in for the translator's `explanation_ro`: what the rule watches, in one sentence. */
+function mockExplanation(rule: Rule): string {
+  const c = rule.all_of[0];
+  if (c.kind === 'pose') return 'Vă anunț când un client ridică mâna la o masă.';
+  if (c.kind === 'count') {
+    return `Vă anunț când la intrare sunt cel puțin ${c.min_count ?? 1} clienți și nu e nimeni de la personal.`;
+  }
+  if (c.kind === 'objects_unattended') {
+    return 'Vă anunț când pe o masă rămân vase și nu se apropie nimeni să le strângă.';
+  }
+  const min = Math.round((c.min_duration_s ?? 0) / 60);
+  return `Vă anunț când la o masă stau clienți de ${min} min și nu a venit nimeni de la personal.`;
+}
+
 interface Step {
   at: number;
   run: (api: MockApi) => void;
@@ -221,7 +245,7 @@ export class MockApi implements ApiClient {
   private alerts = seedAlerts();
   private suggestions: StaffSuggestion[] = [];
   private resolved = new Set<string>();
-  private alertSubs = new Set<(e: AlertEvent) => void>();
+  private alertSubs = new Set<(e: AlertView) => void>();
   private suggestionSubs = new Set<(s: StaffSuggestion) => void>();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private readonly latency: number;
@@ -302,19 +326,42 @@ export class MockApi implements ApiClient {
     return this.delay(this.rules);
   }
 
-  async createRuleFromText(text: string, cameraId: string) {
-    if (text.trim() === '') throw new Error('Cererea este goală');
+  async draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft> {
+    if (text.trim().length < 3) throw new ApiError('Cererea este prea scurtă.', 'invalid', 422);
+    const cam = this.cameras.find((c) => c.id === cameraId);
+    if (!cam) throw new ApiError(`Camera ${cameraId} nu există.`, 'not_found', 404);
     await wait(this.latency * 2);
     const rule = mockRuleFromText(text, cameraId);
-    this.rules.push(rule);
-    return this.delay(rule);
+    if (!(cam.zones ?? []).some((z) => z.tag === rule.zone_tag)) {
+      throw new ApiError(
+        `Camera nu are nicio zonă de tip „${rule.zone_tag}”. Desenați-o mai întâi.`,
+        'clarify',
+        422,
+      );
+    }
+    return this.delay({ rule, explanation_ro: mockExplanation(rule) });
+  }
+
+  async createRule(rule: Rule) {
+    if (!this.cameras.some((c) => c.id === rule.camera_id)) {
+      throw new ApiError(`Camera ${rule.camera_id} nu există.`, 'not_found', 404);
+    }
+    const saved = structuredClone(rule);
+    this.rules = [...this.rules.filter((r) => r.id !== saved.id), saved];
+    return this.delay(saved);
+  }
+
+  async createCamera(camera: NewCamera): Promise<CameraView> {
+    const view: CameraView = { ...camera, zones: [], online: false };
+    this.cameras = [...this.cameras.filter((c) => c.id !== camera.id), view];
+    return this.delay(view);
   }
 
   listAlerts() {
     return this.delay(this.alerts);
   }
 
-  subscribeAlerts(cb: (event: AlertEvent) => void): Unsubscribe {
+  subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe {
     this.alertSubs.add(cb);
     return () => this.alertSubs.delete(cb);
   }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { CameraView, DashboardMetrics } from '../api/client';
+import type { AlertView, CameraView, DashboardMetrics } from '../api/client';
 import { useApi } from '../api/context';
-import type { AlertEvent, Rule, StaffSuggestion, Zone } from '../contracts';
+import type { Rule, StaffSuggestion, Zone } from '../contracts';
 import { foldAlerts } from '../alerts/fold';
 import { LiveDataContext, type LiveData } from './context';
 
@@ -12,7 +12,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const [cameras, setCameras] = useState<CameraView[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
-  const [events, setEvents] = useState<AlertEvent[]>([]);
+  const [events, setEvents] = useState<AlertView[]>([]);
   const [suggestions, setSuggestions] = useState<StaffSuggestion[]>([]);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +59,14 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       setCameras((prev) => prev.map((c) => (c.id === cameraId ? { ...c, zones } : c))),
     [],
   );
-  const addRule = useCallback((r: Rule) => setRules((prev) => [...prev, r]), []);
+  const addRule = useCallback(
+    (r: Rule) => setRules((prev) => [...prev.filter((x) => x.id !== r.id), r]),
+    [],
+  );
+  const addCamera = useCallback(
+    (c: CameraView) => setCameras((prev) => [...prev.filter((x) => x.id !== c.id), c]),
+    [],
+  );
   const dropSuggestion = useCallback(
     (id: string) => setSuggestions((prev) => prev.filter((s) => s.suggestion_id !== id)),
     [],
@@ -79,6 +86,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       loading,
       setZones,
       addRule,
+      addCamera,
       dropSuggestion,
     }),
     [
@@ -92,6 +100,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       loading,
       setZones,
       addRule,
+      addCamera,
       dropSuggestion,
     ],
   );

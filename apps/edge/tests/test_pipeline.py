@@ -3,13 +3,15 @@
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import count
 
+from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfile, StaffProfiles, StaffSuggestion
 from aivee_contracts.geometry import CameraConfig, Zone
 from aivee_contracts.rules import Action, Condition, Rule
-from aivee_edge.domain.observation import BBox, Frame, TrackObs
+from aivee_edge.domain.observation import BBox, Frame, ObjectObs, TrackObs
 from aivee_edge.domain.ports import Image
 from aivee_edge.domain.pose import Keypoint
-from aivee_edge.pipeline import EdgePipeline
+from aivee_edge.pipeline import EdgePipeline, StepResult
 
 CAM = "cam-01"
 
@@ -88,16 +90,22 @@ class Recorder:
     def __init__(self) -> None:
         self.alerts: list[tuple[AlertEvent, bytes | None]] = []
         self.suggestions: list[StaffSuggestion] = []
+        self.suggestions_with_snapshots: list[tuple[StaffSuggestion, bytes | None]] = []
         self.metrics: list[Metrics] = []
+        self.detections: list[Detections] = []
 
     def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
         self.alerts.append((event, snapshot_jpeg))
 
-    def publish_suggestion(self, suggestion: StaffSuggestion) -> None:
+    def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
         self.suggestions.append(suggestion)
+        self.suggestions_with_snapshots.append((suggestion, snapshot_jpeg))
 
     def publish_metrics(self, metrics: Metrics) -> None:
         self.metrics.append(metrics)
+
+    def publish_detections(self, detections: Detections) -> None:
+        self.detections.append(detections)
 
     def states(self) -> list[tuple[str, str, str]]:
         return [(e.state, e.rule_id, e.zone_id) for e, _ in self.alerts]
@@ -282,8 +290,35 @@ def test_appearance_runs_only_with_profiles_and_at_most_every_interval() -> None
 
 
 class FakeSnapshots:
+    def __init__(self) -> None:
+        self.crops: list[BBox] = []
+
     def make(self, image: Image) -> bytes | None:
         return b"jpeg"
+
+    def crop(self, image: Image, bbox: BBox) -> bytes | None:
+        self.crops.append(bbox)
+        return b"crop"
+
+
+def test_suggestion_carries_the_face_blurred_person_crop() -> None:
+    frames = []
+    for ts in range(0, 60):
+        frames.append(Frame(ts=float(ts), tracks=(TrackObs(7, box_at(*walker_position(ts))),)))
+    rec, snaps = Recorder(), FakeSnapshots()
+    p = pipeline(frames, Config([], ZONES), rec, snapshots=snaps)
+    p.run()
+    assert [(s.track_id, snap) for s, snap in rec.suggestions_with_snapshots] == [(7, b"crop")]
+    assert len(snaps.crops) == 1  # only when a suggestion is made, not every frame
+
+
+def test_suggestion_without_snapshots_has_none() -> None:
+    frames = [
+        Frame(ts=float(t), tracks=(TrackObs(7, box_at(*walker_position(t))),)) for t in range(60)
+    ]
+    rec = Recorder()
+    pipeline(frames, Config([], ZONES), rec).run()
+    assert [snap for _, snap in rec.suggestions_with_snapshots] == [None]
 
 
 def test_snapshot_only_for_opened_alerts() -> None:
@@ -300,3 +335,94 @@ def test_snapshot_only_for_opened_alerts() -> None:
     p = pipeline(frames, Config([CALLS], ZONES), rec, pose=OnceRaising(), snapshots=FakeSnapshots())
     p.run()
     assert [(e.state, snap) for e, snap in rec.alerts] == [("opened", b"jpeg"), ("closed", None)]
+
+
+# -- owner commands ------------------------------------------------------------------
+
+
+class FakeCommands:
+    def __init__(self) -> None:
+        self.pending: list[EdgeCommand] = []
+
+    def take_commands(self) -> list[EdgeCommand]:
+        out, self.pending = self.pending, []
+        return out
+
+
+def command(kind: str, track_id: int, *, camera_id: str = CAM, command_id: str = "") -> EdgeCommand:
+    return EdgeCommand.model_validate(
+        {
+            "command_id": command_id or f"{kind}-{track_id}",
+            "kind": kind,
+            "camera_id": camera_id,
+            "track_id": track_id,
+            "suggestion_id": "s1",
+            "at": "2026-11-06T12:00:00Z",
+        }
+    )
+
+
+def roles(result: object) -> dict[int, tuple[str, float]]:
+    assert isinstance(result, StepResult)
+    return {t.track_id: (t.role, t.staff_score) for t in result.frame.tracks}
+
+
+def test_owner_confirm_and_reject_override_the_role() -> None:
+    frames = [Frame(ts=float(t), tracks=(TrackObs(1, at(T1)),)) for t in range(4)]
+    commands = FakeCommands()
+    p = pipeline(frames, Config([], ZONES), Recorder(), commands=commands)
+
+    assert roles(p.step()) == {1: ("guest", 0.0)}
+    commands.pending = [command("confirm_staff", 1)]
+    assert roles(p.step()) == {1: ("staff", 1.0)}
+    commands.pending = [command("reject_staff", 1)]
+    assert roles(p.step()) == {1: ("guest", 0.0)}
+
+
+def test_commands_for_other_cameras_unknown_tracks_or_seen_twice_are_ignored() -> None:
+    frames = [Frame(ts=float(t), tracks=(TrackObs(1, at(T1)),)) for t in range(4)]
+    frames.append(Frame(ts=4.0, tracks=(TrackObs(1, at(T1)), TrackObs(42, at(T2)))))
+    commands = FakeCommands()
+    p = pipeline(frames, Config([], ZONES), Recorder(), commands=commands)
+    p.step()
+    commands.pending = [
+        command("confirm_staff", 1, camera_id="cam-99"),
+        command("confirm_staff", 42),  # not tracked (yet): dropped, not remembered
+    ]
+    assert roles(p.step()) == {1: ("guest", 0.0)}
+
+    commands.pending = [command("confirm_staff", 1, command_id="c1")]
+    p.step()
+    commands.pending = [command("reject_staff", 1, command_id="c1")]  # redelivered id
+    assert roles(p.step()) == {1: ("staff", 1.0)}
+    assert roles(p.step())[42][0] == "guest"
+
+
+# -- live detections -----------------------------------------------------------------
+
+
+def test_detections_are_published_at_most_five_times_a_second() -> None:
+    frames = [Frame(ts=i / 10, tracks=(TrackObs(1, at(T1)),)) for i in range(20)]  # 10 fps, 2 s
+    rec = Recorder()
+    pipeline(frames, Config([], ZONES), rec).run()
+    stamps = [d.ts.timestamp() for d in rec.detections]
+    assert stamps == [0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8]
+
+
+def test_detections_carry_roles_hands_and_objects_with_clamped_boxes() -> None:
+    hand = TrackObs(1, at(T2))
+    edge_of_frame = TrackObs(2, (-0.01, 0.5, 0.1, 1.0004))
+    cup = ObjectObs("cup", (0.1, 0.1, 0.12, 0.13), confidence=0.9)
+    frames = [Frame(ts=0.0, tracks=(hand, edge_of_frame), objects=(cup,))]
+    commands = FakeCommands()
+    rec = Recorder()
+    p = pipeline(frames, Config([], ZONES), rec, pose=RaisingPose(), commands=commands)
+    p.run()
+
+    [d] = rec.detections
+    assert d.camera_id == CAM
+    by_id = {t.track_id: t for t in d.tracks}
+    assert by_id[1].raised_hand is True and by_id[1].role == "guest"
+    assert by_id[1].bbox == hand.bbox
+    assert by_id[2].bbox == (0.0, 0.5, 0.1, 1.0)
+    assert [(o.label, o.bbox) for o in d.objects] == [("cup", cup.bbox)]

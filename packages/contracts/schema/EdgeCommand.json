@@ -1,0 +1,45 @@
+{
+  "description": "Sent by the API on `commands` (QoS 1, not retained): the owner decided a suggestion.",
+  "properties": {
+    "command_id": {
+      "description": "UUID; lets the edge drop a redelivered command",
+      "title": "Command Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "confirm_staff",
+        "reject_staff"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "camera_id": {
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "track_id": {
+      "title": "Track Id",
+      "type": "integer"
+    },
+    "suggestion_id": {
+      "title": "Suggestion Id",
+      "type": "string"
+    },
+    "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "command_id",
+    "kind",
+    "camera_id",
+    "track_id",
+    "suggestion_id",
+    "at"
+  ],
+  "title": "EdgeCommand",
+  "type": "object"
+}

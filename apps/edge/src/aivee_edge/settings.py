@@ -1,12 +1,14 @@
 """Edge configuration from the environment (and `.env` when run from the repo root)."""
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROTATIONS = (0, 90, 180, 270)
 
 
 class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_EDGE_USER, MQTT_EDGE_PASSWORD, SITE, DEVICE,
-    CAMERA_ID, SOURCE, TARGET_FPS, DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL."""
+    CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL."""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
@@ -24,6 +26,8 @@ class EdgeSettings(BaseSettings):
     """Camera URL (RTSP/HTTP), a webcam index ("0") or a video file path."""
     target_fps: float = 10.0
     loop_file: bool = False
+    rotate: int = 0
+    """Clockwise rotation applied at capture: 0, 90, 180 or 270 (90 for a sideways phone)."""
 
     detector_model: str = "models/yolo11n_int8_openvino_model"
     pose_model: str = "models/yolo11n-pose_int8_openvino_model"
@@ -35,6 +39,13 @@ class EdgeSettings(BaseSettings):
 
     grace_s: float = 1.5
     metrics_interval_s: float = 5.0
+
+    @field_validator("rotate")
+    @classmethod
+    def _right_angle(cls, degrees: int) -> int:
+        if degrees not in ROTATIONS:
+            raise ValueError(f"ROTATE must be one of {ROTATIONS}")
+        return degrees
 
     @model_validator(mode="after")
     def _device_from_user(self) -> "EdgeSettings":

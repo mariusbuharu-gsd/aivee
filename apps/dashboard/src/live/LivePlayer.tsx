@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { startWhep, webRtcSupported, whepUrl } from './whep';
 
-type Status = 'connecting' | 'playing' | 'placeholder';
+export type PlayerStatus = 'connecting' | 'playing' | 'placeholder';
+type Status = PlayerStatus;
 
 /**
  * Live camera video over WebRTC (MediaMTX WHEP). Falls back to a placeholder grid when
@@ -11,14 +12,24 @@ export function LivePlayer({
   cameraId,
   enabled = true,
   label,
+  onStatus,
+  onFrameSize,
 }: {
   cameraId: string;
   enabled?: boolean;
   label: string;
+  /** Called whenever the shown status changes (e.g. to offer a fallback background). */
+  onStatus?: (status: PlayerStatus) => void;
+  /** Natural size of the video, once known. */
+  onFrameSize?: (width: number, height: number) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canTry = enabled && webRtcSupported();
   const [status, setStatus] = useState<Status>(canTry ? 'connecting' : 'placeholder');
+  const onStatusRef = useRef(onStatus);
+  useEffect(() => {
+    onStatusRef.current = onStatus;
+  });
 
   useEffect(() => {
     if (!canTry) return;
@@ -46,11 +57,21 @@ export function LivePlayer({
   }, [cameraId, canTry]);
 
   const shown: Status = canTry ? status : 'placeholder';
+  useEffect(() => onStatusRef.current?.(shown), [shown]);
 
   return (
     <div className="player" data-status={shown}>
       {shown !== 'placeholder' && (
-        <video ref={videoRef} autoPlay muted playsInline aria-label={label} />
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          aria-label={label}
+          onLoadedMetadata={(e) =>
+            onFrameSize?.(e.currentTarget.videoWidth, e.currentTarget.videoHeight)
+          }
+        />
       )}
       {shown !== 'playing' && (
         <div className="player-placeholder" role="img" aria-label={`${label}: imagine simulată`}>

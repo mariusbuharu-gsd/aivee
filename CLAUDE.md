@@ -4,6 +4,7 @@ AiVee alerts restaurant staff when a guest waits too long. Rules are written in 
 staff are recognised by appearance and behaviour (never by face); everything runs on the edge.
 
 ## Read first
+- `docs/README.md` — map of the docs, decisions log, frontend/backend handbooks, worktree setup
 - `docs/plans/2026-11-06-aivee-design.md` — what and why
 - `docs/plans/2026-11-06-aivee-implementation.md` — tasks, owners, milestones
 
@@ -29,3 +30,6 @@ staff are recognised by appearance and behaviour (never by face); everything run
 - **No AI attribution**: no `Co-Authored-By`, no session links, no mention of Claude or any model,
   in commits or PR descriptions.
 - Small commits; one PR per task; squash merge after green CI.
+- Branches: `feature/<slug>`, `fix/<slug>`, `docs/<slug>` from `develop`; PRs target `develop`.
+- `develop` → `main` only through a release PR at a milestone (M1, M2, freeze). `main` is always demo-ready.
+- Never push directly to `develop` or `main`.

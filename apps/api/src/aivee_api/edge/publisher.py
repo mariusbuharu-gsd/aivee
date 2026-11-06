@@ -1,7 +1,8 @@
 """Everything the API sends to an edge device goes through the `EdgePublisher` port.
 
-The edge only ever receives complete, retained documents (RuleSet, DeviceConfig,
-StaffProfiles), so a device that reconnects gets the current state from the broker.
+State goes out as complete, retained documents (RuleSet, DeviceConfig, StaffProfiles), so a
+device that reconnects gets the current state from the broker; owner decisions go out as
+non-retained `EdgeCommand`s. The link also reads metrics and live detections back.
 """
 
 import asyncio
@@ -11,14 +12,21 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import aiomqtt
+from aivee_contracts.detections import Detections
 from aivee_contracts.events import Metrics
 from aivee_contracts.topics import Topics
 from pydantic import ValidationError
 
+from aivee_api.edge.live import LiveDetections
+from aivee_api.events.schemas import DetectionsMessage
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.settings import ApiSettings
 
 log = logging.getLogger(__name__)
+
+
+def _raw(payload: object) -> bytes:
+    return bytes(payload) if isinstance(payload, bytes | bytearray) else str(payload).encode()
 
 
 class PublisherUnavailable(RuntimeError):
@@ -63,9 +71,11 @@ class MqttEdgeLink:
         metrics: MetricsCache,
         on_connect: Callable[[], Awaitable[None]] | None = None,
         max_backoff_s: float = 30.0,
+        live: LiveDetections | None = None,
     ) -> None:
         self._settings = settings
         self._metrics = metrics
+        self._live = live
         self.on_connect = on_connect
         self._max_backoff_s = max_backoff_s
         self._client: aiomqtt.Client | None = None
@@ -94,6 +104,8 @@ class MqttEdgeLink:
                     protocol=aiomqtt.ProtocolVersion.V5,
                 ) as client:
                     await client.subscribe(Topics.any_device("metrics"), qos=0)
+                    if self._live is not None:
+                        await client.subscribe(Topics.any_device("detections"), qos=0)
                     self._client = client
                     self.connected.set()
                     backoff = 1.0
@@ -104,7 +116,7 @@ class MqttEdgeLink:
                         except Exception:
                             log.exception("re-publishing edge state failed")
                     async for message in client.messages:
-                        self._on_metrics(str(message.topic), message.payload)
+                        self._on_message(str(message.topic), message.payload)
             except aiomqtt.MqttError as e:
                 log.warning("MQTT connection lost (%s); reconnecting in %.0fs", e, backoff)
             finally:
@@ -113,11 +125,28 @@ class MqttEdgeLink:
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, self._max_backoff_s)
 
+    def _on_message(self, topic: str, payload: object) -> None:
+        leaf = topic.rsplit("/", 1)[-1]
+        if leaf == "detections":
+            self._on_detections(topic, payload)
+        else:
+            self._on_metrics(topic, payload)
+
+    def _on_detections(self, topic: str, payload: object) -> None:
+        if self._live is None:
+            return
+        try:
+            detections = Detections.model_validate_json(_raw(payload))
+        except ValidationError:
+            log.warning("invalid detections on %s", topic)
+            return
+        self._live.publish(DetectionsMessage.from_detections(detections))
+
     def _on_metrics(self, topic: str, payload: object) -> None:
         parts = topic.split("/")
         if len(parts) != 4:
             return
-        raw = payload if isinstance(payload, bytes | bytearray) else str(payload).encode()
+        raw = _raw(payload)
         try:
             metrics = Metrics.model_validate_json(raw)
         except ValidationError:

@@ -286,9 +286,9 @@ async def test_confirm_and_reject_suggestions(
     assert (await api.post("/api/staff/suggestions/nope/confirm")).status_code == 404
     commands = services.commands
     assert isinstance(commands, LoggingEdgeCommands)
-    assert [(d.suggestion_id, d.confirmed) for d in commands.decisions] == [
-        (keep, True),
-        (drop, False),
+    assert [(d.suggestion_id, d.confirmed, d.device_id) for d in commands.decisions] == [
+        (keep, True, "edge-01"),
+        (drop, False, "edge-01"),
     ]
     assert publisher.last(TOPICS.profiles) is None  # no snapshot → nothing learned
 

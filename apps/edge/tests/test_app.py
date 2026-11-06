@@ -23,6 +23,45 @@ def test_cli_overrides_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.device == "edge-07"  # device id follows the MQTT user (ACL)
 
 
+def test_rotate_flag_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert parse([]).rotate == 0
+    assert parse(["--rotate", "90"]).rotate == 90
+    monkeypatch.setenv("ROTATE", "270")
+    assert parse([]).rotate == 270
+    with pytest.raises(SystemExit):
+        parse(["--rotate", "45"])
+
+
+def test_rotate_setting_accepts_only_right_angles() -> None:
+    with pytest.raises(ValueError):
+        EdgeSettings(rotate=45, _env_file=None)  # type: ignore[call-arg]
+
+
+def test_build_vision_passes_rotation_to_the_capture_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class Capture:
+        @staticmethod
+        def Cv2Source(source: str, fps: float, *, rotate: int) -> object:
+            seen["rotate"] = rotate
+            return object()
+
+    class Yolo:
+        @staticmethod
+        def YoloDetector(model: str) -> object:
+            return object()
+
+    modules = {"capture": Capture, "yolo": Yolo}
+    monkeypatch.setattr(app, "_adapter", lambda name: modules[name])
+    settings = EdgeSettings(
+        source="http://phone/video", rotate=90, pose_model="", blur=False, _env_file=None
+    )  # type: ignore[call-arg]
+    app.build_vision(settings)
+    assert seen == {"rotate": 90}
+
+
 def test_missing_vision_adapter_gives_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
     real = importlib.import_module
 
@@ -71,3 +110,33 @@ def test_snapshot_failure_does_not_block_the_alert() -> None:
             return image
 
     assert app.BlurredJpeg(Ok(), lambda img: b"jpeg").make(np.zeros((2, 2, 3))) == b"jpeg"
+
+
+def test_crop_blurs_the_whole_frame_then_cuts_the_padded_person_box() -> None:
+    blurred: list[tuple[int, ...]] = []
+    encoded: list[tuple[int, ...]] = []
+
+    class Ok:
+        def blur(self, image: Any) -> Any:
+            blurred.append(image.shape)
+            return image
+
+    def encode(img: Any) -> bytes:
+        encoded.append(img.shape)
+        return b"crop"
+
+    snaps = app.BlurredJpeg(Ok(), encode)
+    image = np.zeros((100, 200, 3), dtype=np.uint8)
+    assert snaps.crop(image, (0.25, 0.2, 0.75, 0.8)) == b"crop"
+    assert blurred == [(100, 200, 3)]  # faces are found with the full frame as context
+    assert encoded == [(72, 120, 3)]  # 10% padding on every side
+    assert snaps.crop(image, (0.5, 0.5, 0.5, 0.5)) is None  # empty box
+
+
+def test_crop_failure_gives_none() -> None:
+    class Broken:
+        def blur(self, image: Any) -> Any:
+            raise RuntimeError("yunet")
+
+    snaps = app.BlurredJpeg(Broken(), lambda img: b"x")
+    assert snaps.crop(np.zeros((10, 10, 3)), (0, 0, 1, 1)) is None

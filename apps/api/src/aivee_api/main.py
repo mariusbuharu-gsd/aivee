@@ -18,8 +18,9 @@ from aivee_api.cameras.router import router as cameras_router
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.deps import Services
 from aivee_api.devices.router import router as devices_router
+from aivee_api.edge.live import LiveDetections
 from aivee_api.edge.publisher import MqttEdgeLink, RecordingPublisher
-from aivee_api.edge.sync import EdgeSync, LoggingEdgeCommands
+from aivee_api.edge.sync import EdgeCommands, EdgeSync, LoggingEdgeCommands, MqttEdgeCommands
 from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
 from aivee_api.metrics.cache import MetricsCache
@@ -40,14 +41,18 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
     engine = make_engine()
     sessions = make_session_factory(engine)
     metrics = MetricsCache()
+    live = LiveDetections()
     task: asyncio.Task[None] | None = None
+    commands: EdgeCommands
     if settings.mqtt_enabled:
-        link = MqttEdgeLink(settings, metrics)
+        link = MqttEdgeLink(settings, metrics, live=live)
         sync = EdgeSync(sessions, link, settings.site, settings.device)
         link.on_connect = sync.publish_all  # the broker gets the full state on every connect
+        commands = MqttEdgeCommands(link, settings.site, settings.device)
         task = asyncio.create_task(link.run())
     else:
         sync = EdgeSync(sessions, RecordingPublisher(), settings.site, settings.device)
+        commands = LoggingEdgeCommands()
     settings.snapshot_dir.mkdir(parents=True, exist_ok=True)
     try:
         yield Services(
@@ -55,9 +60,10 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
             sessions=sessions,
             sync=sync,
             translator=ClaudeRuleTranslator(model=settings.claude_model),
-            commands=LoggingEdgeCommands(),
+            commands=commands,
             enroller=build_enroller(settings.yolo_weights),
             metrics=metrics,
+            live=live,
         )
     finally:
         if task is not None:

@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 from aivee_api.db.repositories import DeviceRepository
-from aivee_contracts.events import AlertEvent
+from aivee_contracts.events import AlertEvent, StaffSuggestion
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_ingest.config import IngestSettings
 from aivee_ingest.handler import IngestHandler
@@ -118,6 +118,31 @@ async def test_event_with_snapshot_is_stored_once_and_notified(
             text("SELECT snapshot_path FROM events WHERE event_id = :id"), {"id": event.event_id}
         )
     assert path == f"{event.event_id}.jpg"
+
+
+async def test_suggestion_crop_is_stored_like_an_event_snapshot(
+    broker: Any, sessions: async_sessionmaker[AsyncSession], site: str, tmp_path: Path
+) -> None:
+    """The API learns a confirmed suggestion from SNAPSHOT_DIR/<suggestion_id>.jpg."""
+    suggestion = StaffSuggestion(
+        suggestion_id=str(uuid.uuid4()),
+        camera_id="cam1",
+        track_id=7,
+        staff_score=0.8,
+        reason_ro="vizitează 3 mese",
+    )
+    async with _workers(broker, sessions, tmp_path, 1):
+        edge = await _edge(broker, site)
+        edge.publish_suggestion(suggestion, b"\xff\xd8person")
+
+        async def stored() -> bool:
+            n = await _count(sessions, "SELECT count(*) FROM suggestions")
+            return n == 1 and (tmp_path / f"{suggestion.suggestion_id}.jpg").is_file()
+
+        await _until(stored)
+        await asyncio.to_thread(edge.stop)
+
+    assert (tmp_path / f"{suggestion.suggestion_id}.jpg").read_bytes() == b"\xff\xd8person"
 
 
 async def test_last_will_marks_device_offline(

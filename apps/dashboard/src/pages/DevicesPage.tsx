@@ -1,13 +1,30 @@
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
 import { useLiveData } from '../state/context';
 
 export function DevicesPage() {
-  const { cameras } = useLiveData();
+  const { cameras, loading, addCamera } = useLiveData();
+  const navigate = useNavigate();
+  // Prefill the edge default only while it is free; otherwise suggest the next id.
+  const taken = new Set(cameras.map((c) => c.id));
+  let next = DEFAULT_CAMERA_ID;
+  for (let n = 2; taken.has(next); n++) next = `cam-${String(n).padStart(2, '0')}`;
   return (
     <div className="page">
       <header className="page-head">
         <h1>Dispozitive</h1>
       </header>
+      {!loading && cameras.length === 0 && (
+        <p className="muted">Nicio cameră încă. Adaug-o pe prima, apoi desenează mesele.</p>
+      )}
+      <AddCameraForm
+        key={next}
+        defaultId={next}
+        onCreated={(c) => {
+          addCamera(c);
+          navigate(`/camere/${encodeURIComponent(c.id)}/zone`);
+        }}
+      />
       <ul className="cards">
         {cameras.map((c) => (
           <li key={c.id} className="card">

@@ -1,12 +1,12 @@
 import { createContext, useContext } from 'react';
-import type { CameraView, DashboardMetrics } from '../api/client';
+import type { AlertView, CameraView, DashboardMetrics } from '../api/client';
 import type { AlertItem } from '../alerts/fold';
-import type { AlertEvent, Rule, StaffSuggestion, Zone } from '../contracts';
+import type { Rule, StaffSuggestion, Zone } from '../contracts';
 
 export interface LiveData {
   cameras: CameraView[];
   rules: Rule[];
-  events: AlertEvent[];
+  events: AlertView[];
   /** `events` folded into opened/closed alerts, newest first. */
   alerts: AlertItem[];
   suggestions: StaffSuggestion[];
@@ -15,6 +15,7 @@ export interface LiveData {
   loading: boolean;
   setZones: (cameraId: string, zones: Zone[]) => void;
   addRule: (rule: Rule) => void;
+  addCamera: (camera: CameraView) => void;
   dropSuggestion: (id: string) => void;
 }
 
