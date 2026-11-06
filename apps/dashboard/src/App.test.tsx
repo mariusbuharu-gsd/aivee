@@ -4,24 +4,42 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import { App } from './App';
 import { ApiContext } from './api/context';
+import { AuthProvider } from './auth/AuthProvider';
+import { saveSession } from './auth/session';
 import { MockApi } from './api/mock';
 import { LiveDataProvider } from './state/LiveData';
 
 function renderApp(path = '/') {
   const api = new MockApi({ latencyMs: 0, autoplay: false });
+  saveSession({
+    name: 'Ana',
+    email: 'ana@restaurant.ro',
+    venue: 'Bistro Ana',
+    venueType: 'restaurant',
+  });
   render(
     <ApiContext.Provider value={api}>
-      <MemoryRouter initialEntries={[path]}>
-        <LiveDataProvider>
-          <App />
-        </LiveDataProvider>
-      </MemoryRouter>
+      <AuthProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <LiveDataProvider>
+            <App />
+          </LiveDataProvider>
+        </MemoryRouter>
+      </AuthProvider>
     </ApiContext.Provider>,
   );
   return api;
 }
 
 describe('App with the mock API', () => {
+  it('shows the venue in the sidebar and signs out to the login page', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    expect(await screen.findByText('Bistro Ana')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Ieși din cont' }));
+    expect(screen.getByRole('heading', { name: 'Intră în cont' })).toBeVisible();
+  });
+
   it('shows cameras, the offline device and recent alerts on the live page', async () => {
     renderApp();
     expect(await screen.findByRole('article', { name: 'Camera Sala principală' })).toBeVisible();

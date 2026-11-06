@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router';
 import { useApi } from '../api/context';
 import { OfflineBanner } from '../pwa/OfflineBanner';
+import { useAuth } from '../auth/context';
 import { useLiveData } from '../state/context';
 import { Icon, Logo, type IconName } from './Icon';
 
@@ -14,6 +15,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
 
 export function Layout() {
   const api = useApi();
+  const { session, signOut } = useAuth();
   const { error, suggestions, alerts } = useLiveData();
   const openCount = alerts.filter((a) => a.closed_at === null).length;
   return (
@@ -43,9 +45,20 @@ export function Layout() {
             ))}
           </ul>
         </nav>
-        <p className="sidebar-foot muted small mono">
-          {api.kind === 'mock' ? 'date demo (mock)' : 'conectat la API'}
-        </p>
+        <div className="sidebar-foot">
+          {session && (
+            <div className="account">
+              <span className="account-name">{session.venue || session.name}</span>
+              <span className="account-mail small muted">{session.email}</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={signOut}>
+                Ieși din cont
+              </button>
+            </div>
+          )}
+          <p className="muted small mono">
+            {api.kind === 'mock' ? 'date demo (mock)' : 'conectat la API'}
+          </p>
+        </div>
       </aside>
       <main id="main" className="main">
         <OfflineBanner />
