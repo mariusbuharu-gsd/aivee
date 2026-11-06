@@ -83,10 +83,13 @@ def get_audit_writer() -> AuditWriter:
 
 
 def arrival_ro(view: AlertView) -> str:
-    """ "Ana a ajuns la Masa 4 după 2 min 10 s" (the acknowledger, else "Un angajat")."""
-    who = view.acknowledged_by or "Un angajat"
+    """ "Un angajat a ajuns la Masa 4 după 2 min 10 s · preluată de Ana".
+
+    The camera recognises staff by clothes, never by face, so it cannot tell who came;
+    the acknowledger is named only as the one who took the alert."""
     after = f" după {duration_ro(view.wait_s)}" if view.wait_s is not None else ""
-    return f"{who} a ajuns la {view.zone_name}{after}"
+    taken = f" · preluată de {view.acknowledged_by}" if view.acknowledged_by else ""
+    return f"Un angajat a ajuns la {view.zone_name}{after}{taken}"
 
 
 def going_ro(view: AlertView) -> str:
