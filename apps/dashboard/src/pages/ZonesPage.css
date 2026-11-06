@@ -186,7 +186,7 @@
   width: 100%;
   min-height: var(--tap);
   display: grid;
-  grid-template-columns: 12px 1fr auto auto;
+  grid-template-columns: 12px 1fr;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
@@ -213,6 +213,46 @@
 }
 .swatch.zone-staff {
   background: var(--swatch-staff);
+}
+
+/* One plain panel: the zone form and the list are blocks in it, not cards inside a card. */
+.zone-panel {
+  gap: 18px;
+}
+.zone-panel-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.zone-panel h2 {
+  margin: 0 0 4px;
+}
+
+/* No live picture: one quiet line on the canvas, bottom-left. */
+.zone-source {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  background: rgba(20, 22, 27, 0.78);
+  color: var(--night-muted);
+  font-size: 0.8rem;
+  z-index: 2;
+}
+.zone-source-pick {
+  color: var(--night-text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.zone-source-pick:focus-within {
+  outline: 2px solid var(--night-text);
+  outline-offset: 2px;
 }
 
 /* Phones: the image is small, so the tools move under it instead of covering it. */

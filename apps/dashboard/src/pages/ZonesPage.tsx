@@ -39,6 +39,13 @@ function defaultName(zones: Zone[], tag: string): string {
   return tag === 'table' || n > 0 ? `${base} ${n + 1}` : base;
 }
 
+/** "1 zonă", "3 zone", "20 de zone". */
+function countZones(n: number): string {
+  if (n === 1) return '1 zonă';
+  const r = n % 100;
+  return n >= 20 && (r === 0 || r >= 20) ? `${n} de zone` : `${n} zone`;
+}
+
 export function ZonesPage() {
   const { cameraId = '' } = useParams();
   const { cameras, loading } = useLiveData();
@@ -197,9 +204,11 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
     setStill(URL.createObjectURL(file));
   }
 
+  // No live picture: one quiet line on the canvas offers a capture instead of a whole card.
+  const showSource = !!still || (live !== 'playing' && live !== 'connecting');
   const stillPicker = (
-    <label className="btn">
-      <Icon name="upload" /> {still ? 'Altă imagine' : 'Încarcă o imagine'}
+    <label className="zone-source-pick">
+      {still ? 'Schimbă' : 'Încarcă o captură'}
       <input
         type="file"
         accept="image/*"
@@ -335,6 +344,11 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                   </span>
                 );
               })}
+              {showSource && (
+                <p className="zone-source" role="status">
+                  {still ? 'Captură încărcată' : 'Imagine de probă'} · {stillPicker}
+                </p>
+              )}
             </div>
             <div className="zone-tools" role="toolbar" aria-label="Unelte de desen">
               {ZONE_TAGS.map((t) => (
@@ -394,40 +408,10 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
           </p>
         </section>
 
-        <aside className="side-col">
-          <div className="card">
-            <h2 className="h3">Fundal</h2>
-            {!still && live !== 'playing' && live !== 'connecting' ? (
-              <Banner tone="info" title="Fluxul live nu e disponibil.">
-                Încarcă o captură din cameră ca să desenezi mesele exact.
-              </Banner>
-            ) : (
-              <p className="muted small" role="status">
-                {still
-                  ? 'Desenezi pe imaginea încărcată (rămâne doar în acest browser).'
-                  : live === 'playing'
-                    ? 'Desenezi pe imaginea live a camerei.'
-                    : 'Se conectează la camera live…'}
-              </p>
-            )}
-            <div className="actions">
-              {stillPicker}
-              {still && (
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setStill(null);
-                    setFrame(null);
-                  }}
-                >
-                  Folosește imaginea live
-                </button>
-              )}
-            </div>
-          </div>
+        <aside className="side-col zone-panel">
           {draft && !redrawId && (
             <form
-              className="card"
+              className="zone-panel-block"
               onSubmit={(e) => {
                 e.preventDefault();
                 finishDraft();
@@ -441,7 +425,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
             </form>
           )}
           {draft && redrawId && (
-            <div className="card">
+            <div className="zone-panel-block">
               <h2 className="h3">Redesenezi „{current?.name}”</h2>
               <button className="btn btn-primary" onClick={finishDraft} disabled={!canFinish}>
                 Păstrează noul contur
@@ -449,7 +433,7 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
             </div>
           )}
           {!draft && current && (
-            <div className="card">
+            <div className="zone-panel-block">
               <h2 className="h3">Editează zona</h2>
               <ZoneFields
                 name={current.name}
@@ -468,7 +452,9 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
             </div>
           )}
           <section aria-labelledby="zones-h">
-            <h2 id="zones-h">Zone ({zones.length})</h2>
+            <h2 id="zones-h" className="h3">
+              {countZones(zones.length)}
+            </h2>
             {zones.length === 0 && (
               <p className="muted">Nicio zonă. Desenează masa sau intrarea pe imagine.</p>
             )}
@@ -483,10 +469,13 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                       setSelected(z.id);
                     }}
                   >
-                    <span className={`swatch zone-${z.tag}`} aria-hidden="true" />
+                    <span
+                      className={`swatch zone-${z.tag}`}
+                      role="img"
+                      aria-label={tagLabel(z.tag)}
+                      title={tagLabel(z.tag)}
+                    />
                     <span>{z.name}</span>
-                    <span className="muted small">{tagLabel(z.tag)}</span>
-                    <span className="muted small mono">{z.polygon.length} puncte</span>
                   </button>
                 </li>
               ))}

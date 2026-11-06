@@ -59,6 +59,25 @@ describe('ZonesPage', () => {
     expect(screen.queryByRole('heading', { name: 'Zonă nouă' })).toBeNull();
   });
 
+  it('offers a capture from one line on the image and lists zones by colour and name', async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const line = await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 });
+    expect(line).toHaveTextContent('Imagine de probă · Încarcă o captură');
+    expect(screen.queryByRole('heading', { name: 'Fundal' })).toBeNull();
+
+    const list = screen.getByRole('heading', { name: '3 zone' }).nextElementSibling as HTMLElement;
+    const row = within(list).getByRole('button', { name: /Masa 1/ });
+    expect(row).not.toHaveTextContent('puncte');
+    expect(within(row).getByRole('img', { name: 'Masă' })).toBeInTheDocument();
+
+    const file = new File(['x'], 'sala.png', { type: 'image/png' });
+    await user.upload(screen.getByLabelText('Încarcă o imagine din cameră'), file);
+    expect(await screen.findByText(/Captură încărcată/)).toHaveTextContent(
+      'Captură încărcată · Schimbă',
+    );
+  });
+
   it('says saved with a way out, and asks to save only after a change', async () => {
     const user = userEvent.setup();
     renderApp();
