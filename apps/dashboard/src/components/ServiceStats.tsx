@@ -12,9 +12,13 @@ const PERIODS = [
 ];
 
 const CELLS: { key: 'wait' | 'reaction' | 'travel'; label: string; hint: string }[] = [
-  { key: 'wait', label: 'Așteptare', hint: 'de la alertă până ajunge cineva la masă' },
-  { key: 'reaction', label: 'Reacție', hint: 'până apasă cineva „Merg eu”' },
-  { key: 'travel', label: 'Drum', hint: 'de la „Merg eu” până la masă' },
+  {
+    key: 'wait',
+    label: 'Așteptare',
+    hint: 'de la alertă până ajunge cineva (sau se închide alerta)',
+  },
+  { key: 'reaction', label: 'Reacție', hint: 'de la alertă până apasă cineva „Merg eu”' },
+  { key: 'travel', label: 'Drum', hint: 'de la „Merg eu” până ajunge cineva' },
 ];
 
 const fmt = (s: number | null) => (s === null ? '—' : duration(s));

@@ -172,7 +172,7 @@ describe('AlertFeed', () => {
     expect(within(rows[0] as HTMLElement).getByText('Deschisă')).toBeInTheDocument();
     expect(within(rows[0] as HTMLElement).getByText('Masa 2')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('Închisă')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('rezolvată în 1 min 30 s')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('a durat 1 min 30 s')).toBeInTheDocument();
     // Only the alert with a snapshot gets one; no grey placeholder for the other.
     const shots = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
     expect(shots).toHaveLength(1);

@@ -63,7 +63,7 @@ export function AlertFeed({
                   ? `deschisă de ${waited(a)}`
                   : a.closed_reason !== undefined
                     ? `închisă de sistem: ${CLOSED_BY_SYSTEM[a.closed_reason ?? ''] ?? 'fără motiv'}`
-                    : `rezolvată în ${waited(a)}`}
+                    : `a durat ${waited(a)}`}
                 {!open && lifecycle?.acknowledged_by ? ` · ${lifecycle.acknowledged_by}` : ''}
               </p>
               {lifecycle &&
@@ -154,6 +154,7 @@ export function Timeline({ c }: { c: AlertCase }) {
     {
       label: 'Ajuns',
       at: c.arrived_at,
+      note: c.realerted_at ? 'reamintire trimisă' : undefined,
       gap: c.travel_s !== null ? `drum ${duration(c.travel_s)}` : undefined,
     },
     {

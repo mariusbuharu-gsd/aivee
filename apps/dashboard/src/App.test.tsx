@@ -93,7 +93,7 @@ describe('App with the mock API', () => {
     );
     // Taken now by Ana (timeline), plus the seeded alert she took earlier (summary + timeline).
     expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(3);
-    expect(screen.getByText(/rezolvată în .* · Ana Dumitru/)).toBeInTheDocument();
+    expect(screen.getByText(/a durat .* · Ana Dumitru/)).toBeInTheDocument();
     // The seeded closed alert shows its full lifecycle with durations.
     expect(screen.getAllByText(/reacție 30 s/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/drum 1 min 18 s/).length).toBeGreaterThan(0);

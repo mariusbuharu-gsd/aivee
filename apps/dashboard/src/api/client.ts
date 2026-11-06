@@ -254,6 +254,8 @@ export interface AlertCase {
   /** Staff arrived without anyone acknowledging first ("fără preluare"). */
   unacknowledged_arrival: boolean;
   closed_at: string | null;
+  /** The shift was reminded: "Merg eu" was pressed 2 min earlier and nobody had arrived. */
+  realerted_at?: string | null;
   wait_s: number | null;
   reaction_s: number | null;
   travel_s: number | null;
