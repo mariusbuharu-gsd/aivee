@@ -37,7 +37,7 @@ and closes the alert on its own.
 | 2 | 0:20 | Write a rule in Romanian → "Ce am înțeles" → confirm | 0:35 |
 | 3 | 0:55 | Radu sits at Masa 1 → alert after 10 s → ⏰ reminder at +60 s | 1:10 |
 | 4 | 2:05 | Marius walks over → "✅ Rezolvat" (or Radu leaves → "👋 clientul a plecat") | 0:25 |
-| 5 | 2:30 | Guest raises a hand → alert | 0:20 |
+| 5 | 2:30 | Radu holds a lighter ≥ 5 s → „posibil foc” + Telegram | 0:20 |
 | 6 | 2:50 | Istoric shows everything | 0:25 |
 | 7 | 3:15 | Metrici: wait times | 0:25 |
 | — | 3:40 | Close: one sentence + team | 0:20 |
@@ -70,8 +70,7 @@ and closes the alert on its own.
 - **Presenter:** **Confirmă și salvează**. The rule appears in the list and is pushed to the camera's worker.
 - **Say:** "The model only proposes; the owner confirms. Ask it to recognise a person and it refuses."
 - **Fallback:** no internet / Claude error (Romanian error message) → say "creating rules needs the internet;
-  rules that already exist keep running", and show the two pre-created rules. Step 5 then has no hand rule:
-  skip it.
+  rules that already exist keep running", and show the two pre-created rules.
 
 ### 3. The guest waits → alert → reminder (0:55–2:05)
 
@@ -103,17 +102,19 @@ and closes the alert on its own.
   knows that too."
 - **Fallback:** no "a ajuns" → Marius is probably labelled guest: stand still, fully in the zone, 5 s more.
 
-### 5. The guest raises a hand (2:30–2:50)
+### 5. Fire in the picture (2:30–2:50)
 
-- **Marius:** step out of Masa 1. **Radu:** raise a hand clearly above the shoulder, 2–3 s.
-- **Expected:** alert **"Masa 1: un client cheamă"** within a few seconds, Telegram + push.
-- **Say:** "That is the rule we wrote two minutes ago, already running."
-- **Fallback:** pose only runs inside table zones: Radu must be fully in Masa 1. Still nothing → move on.
+- **Marius:** step out of Masa 1. **Radu:** hold the lit lighter in front of the camera, still, for **at least
+  5 s** (the „Foc în imagine” rule: threshold 0.8, minimum 5 s, trained against lamp glare).
+- **Expected within a few seconds:** an alert **„…: posibil foc”** („Verifică imediat locul.”) on Live and in
+  AiveeAlerts, with the blurred snapshot.
+- **Say:** "Not only guests: the same camera watches for what must never be missed."
+- **Fallback:** no alert → hold the flame closer and steadier, another 5 s; still nothing → move on.
 
 ### 6. Istoric (2:50–3:15)
 
 - **Presenter:** **Istoric**.
-- **Expected, newest first:** the hand rule created by the owner (with before/after), the alerts opened by the
+- **Expected, newest first:** the rule created by the owner in step 2 (with before/after), the alerts opened by the
   camera, arrived, closed, the login. Filter by kind **Alerte** to narrow it.
 - **Say:** "Append-only, enforced in Postgres: not even the app can rewrite it. Staff see only their own actions."
 
