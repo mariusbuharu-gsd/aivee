@@ -28,8 +28,6 @@ edge mode and the fallback.
 
 Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 
-## Features
-
 | | |
 |---|---|
 | **Situations** | unattended table · guest raises a hand · queue at the entrance · table not cleared · an object appears or goes missing. One situation engine (present / absent / count / pose / objects + duration). |
