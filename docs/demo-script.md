@@ -27,20 +27,20 @@ and closes the alert on its own.
   - „Foc în imagine” (cooldown 30 s).
 - The raised-hand rule is **not** created yet: it is the one written live in step 2.
 - Marius, in the purple hoodie, is enrolled as staff through `/angajat-nou`, so Live labels him „angajat”.
-- Ingest runs with `REMIND_S=30`: while nobody has arrived, a ⏰ reminder every 30 s.
+- Ingest runs with `REMIND_S=60`: while nobody has arrived, a ⏰ reminder every 60 s.
 
-## Timeline (total 4:00, 20 s spare)
+## Timeline (total 4:00)
 
 | # | Time | Step | Budget |
 |---|---|---|---|
 | 1 | 0:00 | Login → location → live camera with boxes | 0:20 |
 | 2 | 0:20 | Write a rule in Romanian → "Ce am înțeles" → confirm | 0:35 |
-| 3 | 0:55 | Radu sits at Masa 1 → alert after 10 s → ⏰ reminder at +30 s | 0:45 |
-| 4 | 1:40 | Marius walks over → "✅ Rezolvat" (or Radu leaves → "👋 clientul a plecat") | 0:25 |
-| 5 | 2:05 | Guest raises a hand → alert | 0:20 |
-| 6 | 2:25 | Istoric shows everything | 0:30 |
-| 7 | 2:55 | Metrici: wait times | 0:25 |
-| — | 3:20 | Close: one sentence + team | 0:20 |
+| 3 | 0:55 | Radu sits at Masa 1 → alert after 10 s → ⏰ reminder at +60 s | 1:10 |
+| 4 | 2:05 | Marius walks over → "✅ Rezolvat" (or Radu leaves → "👋 clientul a plecat") | 0:25 |
+| 5 | 2:30 | Guest raises a hand → alert | 0:20 |
+| 6 | 2:50 | Istoric shows everything | 0:25 |
+| 7 | 3:15 | Metrici: wait times | 0:25 |
+| — | 3:40 | Close: one sentence + team | 0:20 |
 
 ### 1. Login → location → live (0:00–0:20)
 
@@ -73,21 +73,23 @@ and closes the alert on its own.
   rules that already exist keep running", and show the two pre-created rules. Step 5 then has no hand rule:
   skip it.
 
-### 3. The guest waits → alert → reminder (0:55–1:40)
+### 3. The guest waits → alert → reminder (0:55–2:05)
 
 - **Radu:** sit at Masa 1. **Marius:** stay away from the table.
 - **Expected after ~10 s:** in the dashboard a coral alert **"Masa 1 așteaptă de 10 s"**; in the Telegram group
   **AiveeAlerts** the same alert with the blurred snapshot and one button, **Vezi în aplicație**; on Marius's
   phone a push notification.
 - **Say:** "Nobody came for ten seconds, so AiVee raises it. In a real restaurant this would be a minute or two."
-- **Expected 30 s later:** a reply to that Telegram alert **"⏰ Încă neservit: Masa 1, de 1 min"** (the minutes
-  round up to 1), and again every 30 s while nobody comes.
+- **While the minute runs:** show the alert card on Live and the Telegram message; explain that the camera, not
+  a button, will close it.
+- **Expected 60 s after the alert:** a reply to that Telegram alert **"⏰ Încă neservit: Masa 1, de 1 min"**,
+  and again every 60 s while nobody comes.
 - **Say:** "If nobody reacts, it keeps reminding, without anyone pressing anything."
-- **Fallback:** no alert after 30 s → check Dispozitive (camera online?) and that Marius is not inside Masa 1.
+- **Fallback:** no alert 30 s after Radu sat down → check Dispozitive (camera online?) and that Marius is not inside Masa 1.
   Telegram silent but dashboard OK → carry on; Telegram is a notifier, not the pipeline. Push silent → carry on
   with Telegram (push needs HTTPS and permission on the phone).
 
-### 4. Staff arrives → "✅ Rezolvat" (1:40–2:05)
+### 4. Staff arrives → "✅ Rezolvat" (2:05–2:30)
 
 - **Marius:** walk to Masa 1 and **stay at least 5 s** (`ARRIVE_S`); serve Radu.
 - **Expected:** on Live Marius is „angajat”; in Telegram a follow-up **"Un angajat a ajuns la Masa 1 după …"**,
@@ -101,28 +103,28 @@ and closes the alert on its own.
   knows that too."
 - **Fallback:** no "a ajuns" → Marius is probably labelled guest: stand still, fully in the zone, 5 s more.
 
-### 5. The guest raises a hand (2:05–2:25)
+### 5. The guest raises a hand (2:30–2:50)
 
 - **Marius:** step out of Masa 1. **Radu:** raise a hand clearly above the shoulder, 2–3 s.
 - **Expected:** alert **"Masa 1: un client cheamă"** within a few seconds, Telegram + push.
 - **Say:** "That is the rule we wrote two minutes ago, already running."
 - **Fallback:** pose only runs inside table zones: Radu must be fully in Masa 1. Still nothing → move on.
 
-### 6. Istoric (2:25–2:55)
+### 6. Istoric (2:50–3:15)
 
 - **Presenter:** **Istoric**.
 - **Expected, newest first:** the hand rule created by the owner (with before/after), the alerts opened by the
   camera, arrived, closed, the login. Filter by kind **Alerte** to narrow it.
 - **Say:** "Append-only, enforced in Postgres: not even the app can rewrite it. Staff see only their own actions."
 
-### 7. Metrici (2:55–3:20)
+### 7. Metrici (3:15–3:40)
 
 - **Presenter:** **Metrici**.
 - **Expected:** **Așteptare** (median and p90), from the arrival times, including the alert from step 4, and the
   alert count; below, FPS, CPU and verified frames per device.
 - **Say:** "This is the owner's question: how long do guests wait before someone gets to them."
 
-### Close (3:20–3:40)
+### Close (3:40–4:00)
 
 "AiVee: the staff's extra pair of eyes, configured in Romanian, private by design, with the cameras you already
 have. In our EU cloud as standard, or on your own PC if the video must never leave. Marius, Radu — thank you."
@@ -142,7 +144,7 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
       (`ARRIVE_S` = 5 s counts from entering the zone).
 - [ ] Zones clean: Masa 1, Intrare drawn on Laptop Radu on today's camera position (the camera did not move).
       Nobody sitting at a table zone before the demo (no stale alerts); Alerte has no open alert.
-- [ ] Server ingest has `REMIND_S=30`; a rehearsal alert got its ⏰ reply 30 s after it opened.
+- [ ] Server ingest has `REMIND_S=60`; a rehearsal alert got its ⏰ reply 60 s after it opened.
 - [ ] Rules created (`make seed` creates accounts only, not rules): „Client neservit (demo 10 s)” and
       „Foc în imagine” on Laptop Radu, confirmed and shown as "activă" on Reguli; the hand rule **not**
       created yet.

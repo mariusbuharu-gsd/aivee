@@ -30,7 +30,7 @@ The laptop stack shares the bot, so its `.env` has `TELEGRAM_POLL=false`: only o
    - turn off „Masă ocupată” and anything noisy; on **Laptop coleg 1** every rule stays off.
 4. Staff: only **Marius** is enrolled (via `/angajat-nou`, in the **purple hoodie** he wears for the demo).
    Live labels him „angajat”.
-5. Server env: `REMIND_S=30` on ingest (a ⏰ reminder every 30 s while nobody arrived).
+5. Server env: `REMIND_S=60` on ingest (a ⏰ reminder every 60 s while nobody arrived).
 6. Live → **Configurare → Ascunde**.
 
 ## Rehearsal checklist (09:00, then once more after setup)
@@ -40,7 +40,7 @@ The laptop stack shares the bot, so its `.env` has `TELEGRAM_POLL=false`: only o
 | T1 | — | nobody in front of the camera | Live: no open alerts |
 | T2 | presenter | Reguli → mic: „Anunță-mă dacă apare un urs” → Confirmă | rule active within 5 s |
 | T3 | Radu (guest) | sits at Masa 1, nobody comes | „Masa 1 așteaptă de 10 s” on Live **and** in AiveeAlerts within ~15 s; only the „Vezi în aplicație” button, no Preiau |
-| T3b | — | nobody comes for 30 s more | „⏰ Încă neservit: Masa 1, de 1 min” as a reply to the alert, then again every 30 s |
+| T3b | — | nobody comes for 60 s more | „⏰ Încă neservit: Masa 1, de 1 min” as a reply to the alert, then again every 60 s („de 2 min”, …) |
 | T4 | Marius (staff) | walks to Masa 1 and stays ≥ 5 s | labelled „angajat”; „Un angajat a ajuns la Masa 1 după …”; the original alert now starts with „✅ Rezolvat · un angajat a ajuns după …” and has no buttons; reminders stop |
 | T4b | Radu (guest) | repeat T3, then leaves the table before anyone comes | ~10 s after he leaves: „👋 Clientul a plecat de la Masa 1 fără să fie servit (a așteptat …)”; the original becomes „⚪ Închisă · clientul a plecat” |
 | T5 | presenter | phone: `/angajat-nou`, name, 20 s capture of a colleague, Salvează | „Gata, ești recunoscut…”; that colleague becomes „angajat” on Live |
