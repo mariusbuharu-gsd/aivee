@@ -24,7 +24,7 @@ and closes the alert on its own.
   **Laptop coleg 1** (`cam-coleg-1`) is not used: all its rules are off.
 - Two rules already created and confirmed on Reguli for Laptop Radu (not live):
   - „Client neservit (demo 10 s)” on Masa 1 (present guest 10 s ∧ absent staff 10 s) → Telegram;
-  - „Foc în imagine” (cooldown 30 s).
+  - „Foc în imagine” (threshold 0.8, minimum 5 s, lamp glare as a negative; cooldown 30 s).
 - The raised-hand rule is **not** created yet: it is the one written live in step 2.
 - Marius, in the purple hoodie, is enrolled as staff through `/angajat-nou`, so Live labels him „angajat”.
 - Ingest runs with `REMIND_S=60`: while nobody has arrived, a ⏰ reminder every 60 s.
@@ -105,7 +105,7 @@ and closes the alert on its own.
 ### 5. Fire in the picture (2:30–2:50)
 
 - **Marius:** step out of Masa 1. **Radu:** hold the lit lighter in front of the camera, still, for **at least
-  5 s** (the „Foc în imagine” rule: threshold 0.8, minimum 5 s, trained against lamp glare).
+  5 s** (the „Foc în imagine” rule: threshold 0.8, minimum 5 s, lamp glare listed as a negative).
 - **Expected within a few seconds:** an alert **„…: posibil foc”** („Verifică imediat locul.”) on Live and in
   AiveeAlerts, with the blurred snapshot.
 - **Say:** "Not only guests: the same camera watches for what must never be missed."
