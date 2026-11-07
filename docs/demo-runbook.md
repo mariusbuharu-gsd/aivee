@@ -72,6 +72,5 @@ After T5, delete the test profile (no delete button yet: ask the developer on du
 ## Known limits (say them as the roadmap)
 
 One location per server; each cloud camera needs a provisioned device account and vision worker;
-staff profiles are global; invites are links (no email); a rule reload while an alert is open leaves that
-alert open (see "Do not show"). Next: pairing codes, one vision worker for
+staff profiles are global; invites are links (no email). Next: pairing codes, one vision worker for
 all cameras, per-location profiles.
