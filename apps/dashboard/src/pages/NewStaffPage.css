@@ -1,0 +1,43 @@
+/* "Adaugă angajat" on one phone: one column, the preview as large as the screen allows. */
+.new-staff {
+  max-width: 640px;
+}
+.new-staff-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.new-staff-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  max-height: 60vh;
+  margin: 0 auto;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--night-2);
+}
+/* Uncropped: portrait and landscape both show the whole frame the server will see. */
+.new-staff-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.new-staff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.new-staff-actions .btn {
+  min-height: var(--tap);
+}
+.new-staff-done {
+  align-items: flex-start;
+  color: var(--text);
+}
+.new-staff-done > svg {
+  color: var(--live);
+}

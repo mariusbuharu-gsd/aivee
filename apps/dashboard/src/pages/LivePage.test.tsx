@@ -1,0 +1,101 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { App } from '../App';
+import { ApiContext } from '../api/context';
+import { MockApi } from '../api/mock';
+import { MOCK_PASSWORD } from '../api/mockAccounts';
+import { AuthProvider } from '../auth/AuthProvider';
+import { Toaster } from '../ui/Toaster';
+
+function renderLive(email: string, open = true) {
+  const api = new MockApi({ latencyMs: 0, autoplay: false });
+  if (open) {
+    api.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut');
+  }
+  api.accounts.login(email, MOCK_PASSWORD);
+  render(
+    <ApiContext.Provider value={api}>
+      <AuthProvider>
+        <MemoryRouter initialEntries={['/']}>
+          <Toaster>
+            <App />
+          </Toaster>
+        </MemoryRouter>
+      </AuthProvider>
+    </ApiContext.Provider>,
+  );
+  return api;
+}
+
+beforeEach(() => localStorage.clear());
+
+describe('Live', () => {
+  it('says the room is fine when nobody waits', async () => {
+    renderLive('manager@aivee.demo', false);
+    expect(await screen.findByText('Totul e în regulă.')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Alerte deschise' })).toBeNull();
+    expect(screen.getByText('Sala e liniștită')).toBeInTheDocument();
+  });
+
+  it('leads with the open alert: band, hot zone on the camera and "Sala acum"', async () => {
+    renderLive('manager@aivee.demo');
+    expect(await screen.findByText('O masă așteaptă.')).toBeInTheDocument();
+    const band = screen.getByRole('list', { name: 'Alerte deschise' });
+    expect(within(band).getByText('Masa 2: nimeni de la personal de 1 minut')).toBeInTheDocument();
+    expect(within(band).getByText('Nimeni nu a ajuns încă')).toBeInTheDocument();
+    expect(within(band).getByRole('timer')).toBeInTheDocument();
+    const room = await screen.findByRole('article', { name: 'Camera Sala principală' });
+    expect(within(room).getByText(/^Masa 2 · \d+:\d{2}$/)).toBeInTheDocument();
+    expect(screen.getByText('Masa 2 așteaptă')).toBeInTheDocument();
+    // The offline camera is one row, after the cameras that see.
+    const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
+    expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
+  });
+
+  it('the Alerte nav count is the number of open alerts, like the Deschise filter', async () => {
+    const api = renderLive('manager@aivee.demo');
+    api.emitSuggestion();
+    const nav = await screen.findByRole('link', { name: /Alerte/ });
+    await waitFor(() => expect(within(nav).getByLabelText('1 deschise')).toHaveTextContent('1'));
+    expect(screen.getAllByLabelText(/^\d+ (deschise|noi)$/)).toHaveLength(1);
+  });
+
+  it('the side column asks the Alerte question and lists at most 5 closed rows', async () => {
+    const user = userEvent.setup();
+    const api = renderLive('owner@aivee.demo', false);
+    api.emitSuggestion();
+    const side = await screen.findByRole('complementary', { name: 'Alerte recente' });
+    const question = await within(side).findByRole('article', {
+      name: 'Persoana asta e din personal?',
+    });
+    expect(question).toHaveClass('suggestion-q-side');
+    expect(within(side).queryByText(/scor/)).toBeNull();
+    expect(within(question).getByRole('button', { name: /^Da, #\d+ e din personal$/ }));
+    expect(within(question).getByRole('button', { name: /^Nu, #\d+ e client$/ }));
+
+    const rows = await within(side).findByRole('list', { name: 'Alerte închise' });
+    expect(rows.querySelectorAll(':scope > li')).toHaveLength(5);
+    expect(within(rows).getAllByTestId('dur-bar').length).toBeGreaterThan(0);
+    expect(within(side).queryByText('Vezi desfășurarea')).toBeNull();
+    expect(within(side).getByRole('link', { name: 'Toate alertele' })).toHaveAttribute(
+      'href',
+      '/alerte',
+    );
+    // A row opens on click and shows how the alert went.
+    const first = rows.querySelector<HTMLElement>(':scope > li');
+    if (!first) throw new Error('no row');
+    const summary = first.querySelector('summary');
+    if (!summary) throw new Error('no summary');
+    await user.click(summary);
+    expect(within(first).getByRole('list', { name: 'Desfășurarea alertei' })).toBeVisible();
+  });
+
+  it('offers no "Preiau" on the band: the camera closes the alert when someone arrives', async () => {
+    renderLive('staff@aivee.demo');
+    const band = await screen.findByRole('list', { name: 'Alerte deschise' }, { timeout: 5000 });
+    expect(within(band).getByText('Nimeni nu a ajuns încă')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Preiau/ })).toBeNull();
+  });
+});

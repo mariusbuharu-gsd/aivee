@@ -1,0 +1,836 @@
+{
+  "unattended-demo": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă neservită 1 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 60,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 60,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la o masă stau clienți de cel puțin un minut și niciun ospătar nu a trecut pe la ei de un minut."
+  },
+  "unattended-words": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă neservită 5 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 60,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 300,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la o masă stau clienți de cel puțin un minut și niciun chelner nu a trecut pe la ei de 5 minute."
+  },
+  "unattended-no-diacritics": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă neservită 3 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 60,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 180,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la o masă stau clienți de cel puțin un minut și niciun ospătar nu a trecut pe la ei de 3 minute."
+  },
+  "unattended-ten": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă neservită 10 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 60,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 600,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la o masă stau clienți de cel puțin un minut și niciun ospătar nu a trecut pe la ei de 10 minute."
+  },
+  "unattended-seconds": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă neservită 90 s",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 60,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 90,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la o masă stau clienți de cel puțin un minut și niciun chelner nu a trecut pe la ei de 90 de secunde."
+  },
+  "unattended-cooldown": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă neservită 4 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 120,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 240,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 600,
+    "explanation_ro": "Te anunț când la o masă stau clienți de cel puțin 2 minute și niciun ospătar nu a trecut pe la ei de 4 minute, cel mult o dată la 10 minute pentru aceeași masă."
+  },
+  "hand-demo": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Client cheamă ospătarul",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "pose",
+        "role": "guest",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": "raised_hand",
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 60,
+    "explanation_ro": "Te anunț când un client de la o masă ridică mâna ca să cheme ospătarul, cel mult o alertă pe minut pentru aceeași masă."
+  },
+  "hand-no-diacritics": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Client cheamă ospătarul",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "pose",
+        "role": "guest",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": "raised_hand",
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 60,
+    "explanation_ro": "Te anunț când un client de la o masă ridică mâna ca să cheme ospătarul, cel mult o alertă pe minut pentru aceeași masă."
+  },
+  "hand-bill": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Client ridică mâna",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "pose",
+        "role": "guest",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": "raised_hand",
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 60,
+    "explanation_ro": "Te anunț când un client de la o masă ridică mâna pentru a chema ospătarul (de exemplu pentru notă), cu cel mult o alertă pe minut pentru aceeași masă."
+  },
+  "queue-count-digits": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Coadă la intrare 4 persoane",
+    "zone_tag": "entrance",
+    "all_of": [
+      {
+        "kind": "count",
+        "role": "guest",
+        "min_duration_s": 0,
+        "min_count": 4,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la intrare sunt cel puțin 4 clienți și nu este nimeni din personal acolo, cu cel mult o alertă la 5 minute."
+  },
+  "queue-count-words": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Coadă la intrare 3+ persoane",
+    "zone_tag": "entrance",
+    "all_of": [
+      {
+        "kind": "count",
+        "role": "guest",
+        "min_duration_s": 0,
+        "min_count": 3,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când la intrare așteaptă cel puțin 3 clienți și niciun ospătar nu este acolo; alertele pentru aceeași zonă sunt trimise la cel mult 5 minute una de alta."
+  },
+  "queue-wait": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Client neîntâmpinat la intrare 2 min",
+    "zone_tag": "entrance",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 120,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când un client așteaptă la intrare de cel puțin 2 minute și niciun membru al personalului nu este acolo să-l întâmpine."
+  },
+  "queue-default": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Coadă la intrare 3 min",
+    "zone_tag": "entrance",
+    "all_of": [
+      {
+        "kind": "present",
+        "role": "guest",
+        "min_duration_s": 180,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      },
+      {
+        "kind": "absent",
+        "role": "staff",
+        "min_duration_s": 0,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când un client așteaptă la intrare de cel puțin 3 minute și niciun angajat nu este acolo să-l conducă la masă."
+  },
+  "clear-demo": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă nedebarasată 5 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "objects_unattended",
+        "role": "any",
+        "min_duration_s": 300,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "cup",
+          "bottle",
+          "wine glass",
+          "bowl",
+          "fork",
+          "knife",
+          "spoon"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când pe o masă au rămas vase, pahare sau tacâmuri și nimeni nu a mai fost la masă de cel puțin 5 minute."
+  },
+  "clear-glasses": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă nedebarasată 10 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "objects_unattended",
+        "role": "any",
+        "min_duration_s": 600,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "cup",
+          "bottle",
+          "wine glass",
+          "bowl",
+          "fork",
+          "knife",
+          "spoon"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când pe o masă rămân vase, pahare sau sticle și nimeni nu a fost la masă de cel puțin 10 minute."
+  },
+  "clear-quarter-hour": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Masă nedebarasată 15 min",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "objects_unattended",
+        "role": "any",
+        "min_duration_s": 900,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "cup",
+          "bottle",
+          "wine glass",
+          "bowl",
+          "fork",
+          "knife",
+          "spoon"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 300,
+    "explanation_ro": "Te anunț când pe o masă au rămas vase, pahare sau tacâmuri și nimeni nu a stat la ea de cel puțin 15 minute."
+  },
+  "gone-glass": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Pahar dispărut de pe masă",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "object_gone",
+        "role": "any",
+        "min_duration_s": 30,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "wine glass",
+          "cup"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": ""
+      }
+    ],
+    "cooldown_s": 60,
+    "explanation_ro": "Te anunț când un pahar care a stat pe o masă cel puțin 30 de secunde dispare de pe ea."
+  },
+  "present-bear": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Urs în imagine",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "object_present",
+        "role": "any",
+        "min_duration_s": 2,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "bear"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": "urs"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă apare un urs oriunde în imagine cel puțin 2 secunde, cu cel mult o alertă la 2 minute."
+  },
+  "present-dog": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Câine în local",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "object_present",
+        "role": "any",
+        "min_duration_s": 2,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "dog"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": "câine"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț când apare un câine oriunde în imagine cel puțin 2 secunde."
+  },
+  "present-knife": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Cuțit vizibil",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "object_present",
+        "role": "any",
+        "min_duration_s": 2,
+        "min_count": 1,
+        "pose": null,
+        "objects": [
+          "knife"
+        ],
+        "positive": [],
+        "negative": [],
+        "threshold": 0.5,
+        "crop": null,
+        "label_ro": "cuțit"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț când se vede un cuțit oriunde în imagine timp de cel puțin 2 secunde."
+  },
+  "visual-fire": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Foc în imagine",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "a photo of fire",
+          "flames",
+          "a burning fire"
+        ],
+        "negative": [
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo",
+          "a photo of a normal restaurant room",
+          "people sitting at tables"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "foc"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede foc oriunde în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "visual-kitchen-fire": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Incendiu în bucătărie",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "a photo of fire",
+          "flames",
+          "a burning fire"
+        ],
+        "negative": [
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo",
+          "a photo of a normal kitchen",
+          "a clean kitchen with steel counters"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "foc"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede foc oriunde în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "visual-smoke": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Fum în local",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "a photo of smoke",
+          "thick smoke in a room",
+          "smoke rising"
+        ],
+        "negative": [
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo",
+          "a photo of a normal restaurant room",
+          "people sitting at tables",
+          "a clear room with clean air"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "fum"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede fum oriunde în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "visual-water": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Apă pe jos",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "water spilled on the floor",
+          "a wet floor with a puddle",
+          "liquid spilled on the floor"
+        ],
+        "negative": [
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo",
+          "a photo of a normal restaurant room",
+          "a dry clean floor",
+          "people sitting at tables"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "apă pe jos"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede apă sau lichid vărsat pe jos oriunde în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "visual-door": {
+    "understood": true,
+    "clarification_ro": "",
+    "name": "Ușă rămasă deschisă",
+    "zone_tag": "anywhere",
+    "all_of": [
+      {
+        "kind": "visual",
+        "role": "any",
+        "min_duration_s": 3,
+        "min_count": 1,
+        "pose": null,
+        "objects": [],
+        "positive": [
+          "an open door",
+          "a door left wide open"
+        ],
+        "negative": [
+          "a closed door",
+          "a photo of a normal restaurant room",
+          "a photo of a person",
+          "a photo of a room",
+          "a blurry photo"
+        ],
+        "threshold": 0.5,
+        "crop": "frame",
+        "label_ro": "ușă deschisă"
+      }
+    ],
+    "cooldown_s": 120,
+    "explanation_ro": "Te anunț dacă se vede o ușă deschisă în imagine cel puțin 3 secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă."
+  },
+  "refuse-age-gender": {
+    "understood": false,
+    "clarification_ro": "Îmi pare rău, AiVee nu poate estima vârsta sau genul persoanelor, deoarece nu judecăm trăsăturile oamenilor. Vă pot anunța, de exemplu, când se formează coadă la intrare.",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 0,
+    "explanation_ro": ""
+  },
+  "refuse-everything": {
+    "understood": false,
+    "clarification_ro": "Cererea este prea generală pentru a alege o regulă. Vă rog să precizați ce situație doriți să urmăresc, de exemplu o masă neservită, un client care cheamă ospătarul, coadă la intrare sau foc în local.",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 300,
+    "explanation_ro": ""
+  },
+  "refuse-face": {
+    "understood": false,
+    "clarification_ro": "Îmi pare rău, AiVee nu poate recunoaște fețe sau identifica persoane anume, precum Ion. Pot în schimb să vă anunț, de exemplu, când se formează coadă la intrare.",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 0,
+    "explanation_ro": ""
+  },
+  "refuse-vague": {
+    "understood": false,
+    "clarification_ro": "Cererea este prea vagă pentru a alege o situație. Vă rog să precizați ce anume să urmăresc (de exemplu: o masă neservită, coadă la intrare, foc, fum sau apă pe jos).",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 300,
+    "explanation_ro": ""
+  },
+  "refuse-money": {
+    "understood": false,
+    "clarification_ro": "Îmi pare rău, nu pot număra banii sau urmări încasările; AiVee urmărește doar situații vizibile în sală, precum mese neservite, cozi sau obiecte dispărute de pe masă.",
+    "name": "",
+    "zone_tag": "",
+    "all_of": [],
+    "cooldown_s": 0,
+    "explanation_ro": ""
+  }
+}

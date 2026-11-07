@@ -1,6 +1,7 @@
 """API test doubles. Unit tests use them without a DB; integration tests add `sessions`."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -63,13 +64,20 @@ class ListDecoder:
 class EvenCropper:
     """Finds a person only in even frames."""
 
-    def crops(self, frame: Any) -> list[Any]:
+    def crops(self, frame: Any, largest_only: bool = False) -> list[Any]:
         return [frame] if int(frame) % 2 == 0 else []
+
+
+class TagEncoder:
+    """A "JPEG" thumbnail that just names the crop."""
+
+    def jpeg(self, crop: Any, max_side: int) -> bytes:
+        return b"\xff\xd8\xff" + f"crop-{crop}".encode()
 
 
 @pytest.fixture
 def fake_enroller() -> Enroller:
-    return Enroller(ListDecoder(), EvenCropper(), OneHotEmbedder())
+    return Enroller(ListDecoder(), EvenCropper(), OneHotEmbedder(), TagEncoder())
 
 
 @pytest.fixture
@@ -120,3 +128,110 @@ def draft_factory() -> Any:
 @pytest.fixture
 def translator_factory() -> Any:
     return FakeTranslator
+
+
+# --- accounts and tenancy (integration) ---------------------------------------------------
+
+PASSWORD = "parola-test-1"
+
+
+@dataclass(frozen=True)
+class Tenancy:
+    """org-t: locations `test` (= settings.site) and `other`; org-x: location `far`.
+    Users (password PASSWORD): owner@t.ro, manager@t.ro (test), staff@t.ro (test),
+    other@t.ro (manager of `other`), owner@x.ro."""
+
+    org: str = "org-t"
+    location: str = "test"
+    other_location: str = "other"
+    foreign_location: str = "far"
+
+
+async def seed_tenancy(sessions: Any) -> Tenancy:
+    from aivee_api.accounts.models import Membership, Organization, User
+    from aivee_api.auth.passwords import hash_password
+    from aivee_api.db.models import Site
+
+    t = Tenancy()
+    pw = hash_password(PASSWORD)
+    async with sessions() as s:
+        s.add_all([Organization(id="org-t", name="Org T"), Organization(id="org-x", name="Org X")])
+        s.add(Site(id=t.location, name="Terasa", org_id="org-t", type="terrace"))
+        await s.commit()  # `test` is created first, so it is everyone's default location
+        s.add_all(
+            [
+                Site(id=t.other_location, name="Sala mare", org_id="org-t", type="restaurant"),
+                Site(id=t.foreign_location, name="Străin", org_id="org-x", type="shop"),
+            ]
+        )
+        await s.flush()
+        users = [
+            ("u-owner", "org-t", "owner@t.ro", "Olga", True),
+            ("u-manager", "org-t", "manager@t.ro", "Mihai", False),
+            ("u-staff", "org-t", "staff@t.ro", "Ana", False),
+            ("u-other", "org-t", "other@t.ro", "Otilia", False),
+            ("u-xowner", "org-x", "owner@x.ro", "Xenia", True),
+        ]
+        s.add_all(
+            [
+                User(id=i, org_id=o, email=e, name=n, password_hash=pw, is_owner=own)
+                for i, o, e, n, own in users
+            ]
+        )
+        await s.flush()
+        s.add_all(
+            [
+                Membership(user_id="u-manager", location_id=t.location, role="manager"),
+                Membership(user_id="u-staff", location_id=t.location, role="staff"),
+                Membership(user_id="u-other", location_id=t.other_location, role="manager"),
+            ]
+        )
+        await s.commit()
+    return t
+
+
+@pytest.fixture
+def tenancy_factory() -> Any:
+    return seed_tenancy
+
+
+async def login_as(client: Any, email: str, password: str = PASSWORD) -> Any:
+    r = await client.post("/api/auth/login", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+    return r
+
+
+@pytest.fixture
+def login() -> Any:
+    return login_as
+
+
+@pytest.fixture
+def services(
+    settings: ApiSettings,
+    sessions: Any,
+    publisher: RecordingPublisher,
+    translator: FakeTranslator,
+) -> Services:
+    """Integration services without enrolment models (test files may override this)."""
+    return make_services(settings, sessions, publisher, translator)
+
+
+@pytest.fixture
+def client_factory(services: Services) -> Any:
+    """`async with client_factory() as c:` — one cookie jar per simulated browser."""
+    import httpx
+    from aivee_api.main import create_app
+
+    app = create_app(services)
+
+    def make() -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+    return make
+
+
+@pytest.fixture
+async def api(client_factory: Any) -> AsyncIterator[Any]:
+    async with client_factory() as c:
+        yield c

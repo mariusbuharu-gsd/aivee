@@ -1,0 +1,79 @@
+/* Alerte page layout. Feed variants live in AlertFeed.css, the Da/Nu line in SuggestionCard.css. */
+.alerts-page .page-head {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.alerts-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.alerts-main .feed-group {
+  margin: 0 0 8px;
+}
+/* "Mai multe" under the closed rows: the next page, quiet and centred. */
+.alerts-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.alerts-more-q {
+  align-self: flex-start;
+}
+.alerts-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.alerts-staff h2 {
+  margin: 0;
+}
+.alerts-staff .upload {
+  padding-top: 10px;
+}
+.alerts-staff > details {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+}
+.alerts-staff > .link {
+  align-self: flex-start;
+}
+.alerts-telegram h3 {
+  margin: 0;
+}
+
+/* Owner-only: push cannot work here. Quiet, above the content, says what to do. */
+.push-banner {
+  margin-bottom: 16px;
+}
+.push-banner .banner {
+  padding: 8px 12px;
+  font-size: 0.88rem;
+}
+.push-banner-link {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+.push-note {
+  margin: 0;
+  padding: 0 4px;
+}
+
+/* Count on a filter button ("Deschise 1"). */
+.seg-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--coral);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+}

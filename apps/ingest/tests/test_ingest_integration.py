@@ -4,12 +4,13 @@ import asyncio
 import contextlib
 import uuid
 from collections.abc import AsyncIterator, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from aivee_api.db.repositories import DeviceRepository
+from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent, StaffSuggestion
 from aivee_edge.adapters.mqtt import MqttEdgeClient
 from aivee_ingest.config import IngestSettings
@@ -24,9 +25,17 @@ pytestmark = pytest.mark.integration
 class RecordingNotifier:
     def __init__(self) -> None:
         self.calls: list[tuple[AlertEvent, Path | None]] = []
+        self.texts: list[str] = []
+        self.kinds: list[PushKind] = []
 
     async def notify(self, event: AlertEvent, snapshot: Path | None) -> None:
         self.calls.append((event, snapshot))
+
+    async def send_text(
+        self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
+    ) -> None:
+        self.texts.append(text)
+        self.kinds.append(kind)
 
 
 def _event(state: str = "opened") -> AlertEvent:
@@ -143,6 +152,12 @@ async def test_suggestion_crop_is_stored_like_an_event_snapshot(
         await asyncio.to_thread(edge.stop)
 
     assert (tmp_path / f"{suggestion.suggestion_id}.jpg").read_bytes() == b"\xff\xd8person"
+    async with sessions() as s:
+        path = await s.scalar(
+            text("SELECT snapshot_path FROM suggestions WHERE suggestion_id = :id"),
+            {"id": suggestion.suggestion_id},
+        )
+    assert path == f"{suggestion.suggestion_id}.jpg"  # the API links it as snapshot_url
 
 
 async def test_last_will_marks_device_offline(
@@ -187,3 +202,40 @@ async def test_two_workers_split_the_shared_event_stream(
     assert not a & b, "no event may be processed by both workers"
     assert a | b == ours
     assert sum(len(h.handled_events) for h, _ in workers) == n
+
+
+async def test_arrival_without_ack_is_folded_and_announced(
+    broker: Any, sessions: async_sessionmaker[AsyncSession], site: str, tmp_path: Path
+) -> None:
+    opened = _event()
+    arrived = opened.model_copy(
+        update={
+            "event_id": str(uuid.uuid4()),
+            "state": "arrived",
+            "at": opened.at + timedelta(seconds=130),
+            "summary_ro": "Masa 1: a venit un angajat",
+        }
+    )
+    async with _workers(broker, sessions, tmp_path, 1) as [(_, notifier)]:
+        edge = await _edge(broker, site)
+        edge.publish_alert(opened, None)
+        await _until(lambda: _events_are(sessions, 1))
+        edge.publish_alert(arrived, None)
+        await _until(lambda: _events_are(sessions, 2))
+        await asyncio.sleep(0.3)
+        await asyncio.to_thread(edge.stop)
+
+    assert notifier.texts == ["Un angajat a ajuns la t1 după 2 min 10 s"]
+    assert notifier.kinds == ["arrived"]
+    async with sessions() as s:
+        row = (
+            await s.execute(
+                text("SELECT arrived_at, alert_id FROM events WHERE event_id = :id"),
+                {"id": opened.event_id},
+            )
+        ).one()
+        linked = await s.scalar(
+            text("SELECT alert_id FROM events WHERE event_id = :id"), {"id": arrived.event_id}
+        )
+    assert row.arrived_at == arrived.at and row.alert_id == opened.event_id
+    assert linked == opened.event_id

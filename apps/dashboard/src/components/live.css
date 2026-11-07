@@ -1,0 +1,264 @@
+/* Live page and shell: room status, open-alert bands, hot zones, slim offline row, "Sala acum". */
+
+/* One-line state */
+.room-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+}
+.room-status-title {
+  font: 600 clamp(20px, 2.2vw, 26px) / 1.2 var(--display);
+}
+.room-status.is-waiting .room-status-title {
+  color: var(--coral-strong);
+}
+.room-status-facts {
+  color: var(--muted);
+}
+
+/* Open alerts: dark bands with a ring timer */
+.open-alerts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.open-alert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--night);
+  color: var(--night-text);
+}
+.ring {
+  --fill: 0;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(var(--coral) calc(var(--fill) * 360deg), var(--night-border) 0);
+  flex: none;
+}
+.ring-time {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--night-3);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.open-alert.is-taken .ring {
+  background: conic-gradient(
+    var(--live-on-night) calc(var(--fill) * 360deg),
+    var(--night-border) 0
+  );
+}
+.open-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.open-alert-where {
+  font-size: 12px;
+  color: var(--night-muted);
+}
+.open-alert-text strong {
+  font-size: 17px;
+  line-height: 1.3;
+}
+.open-alert-who {
+  font-size: 14px;
+  color: var(--night-muted);
+}
+.open-alert.is-taken .open-alert-who {
+  color: var(--live-on-night);
+}
+.open-alert-go {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.open-alert-go .error {
+  color: var(--danger-on-night);
+}
+
+/* Hot zone on a live tile */
+.zone-outline.zone-hot {
+  fill: rgba(255, 92, 108, 0.16);
+  stroke: var(--coral);
+  stroke-width: 2.4;
+  stroke-dasharray: none;
+}
+.zone-hot-label {
+  position: absolute;
+  margin-top: 4px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--coral);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Offline camera: one row instead of a dark frame */
+.tile.tile-down {
+  grid-column: 1 / -1;
+  align-self: start;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--coral-wash);
+  border-color: var(--coral-line);
+}
+.tile-down .badge {
+  position: static;
+  flex: none;
+}
+.tile-down-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.tile-down-what {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.tile-down .link {
+  flex: none;
+  font-weight: 700;
+}
+
+/* "Sala acum": sidebar card, and a dock above the phone's tab bar */
+.pulse {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--night-3);
+  border: 1px solid var(--night-border);
+  color: var(--night-text);
+  text-decoration: none;
+}
+a.pulse:hover {
+  border-color: var(--coral);
+}
+.pulse-kicker {
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--night-muted);
+}
+.pulse-title {
+  font-weight: 700;
+}
+.pulse.is-quiet .pulse-title {
+  font-weight: 500;
+  color: var(--night-muted);
+}
+.pulse-bar {
+  height: 4px;
+  border-radius: 4px;
+  background: var(--night-border);
+  overflow: hidden;
+}
+.pulse-bar i {
+  display: block;
+  height: 100%;
+  background: var(--coral);
+  transition: width 1s linear;
+}
+.pulse-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--night-muted);
+  font-variant-numeric: tabular-nums;
+}
+.pulse-dock {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+}
+.app.is-phone.has-dock .main {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+}
+.pulse-dock .pulse {
+  margin: 0;
+  box-shadow: var(--shadow-pop);
+}
+.pulse.is-compact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  padding: 10px 12px;
+}
+.pulse.is-compact .pulse-kicker,
+.pulse.is-compact .pulse-bar {
+  display: none;
+}
+.pulse.is-compact .pulse-meta {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+}
+
+/* Sidebar groups and the logo's gaze */
+.nav-group {
+  display: block;
+  padding: 14px 12px 4px;
+  font: 700 10.5px var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--night-muted);
+}
+.logo .logo-pupil {
+  transition: transform 0.6s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.logo.is-watching .logo-pupil {
+  transform: translate(-3.6px, 5px);
+}
+
+@media (max-width: 640px) {
+  .open-alert {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .open-alert-go {
+    grid-column: 1 / -1;
+    align-items: stretch;
+  }
+  .open-alert-go .btn {
+    width: 100%;
+  }
+  .tile.tile-down {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo .logo-pupil,
+  .pulse-bar i {
+    transition: none;
+  }
+}

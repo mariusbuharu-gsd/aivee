@@ -1,8 +1,10 @@
 """EdgePipeline with every port faked: scripted frames in, published calls out."""
 
+import logging
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import count
 
+import pytest
 from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfile, StaffProfiles, StaffSuggestion
@@ -11,6 +13,7 @@ from aivee_contracts.rules import Action, Condition, Rule
 from aivee_edge.domain.observation import BBox, Frame, ObjectObs, TrackObs
 from aivee_edge.domain.ports import Image
 from aivee_edge.domain.pose import Keypoint
+from aivee_edge.domain.role import StaffWeights
 from aivee_edge.pipeline import EdgePipeline, StepResult
 
 CAM = "cam-01"
@@ -89,13 +92,17 @@ class EchoDetector:
 class Recorder:
     def __init__(self) -> None:
         self.alerts: list[tuple[AlertEvent, bytes | None]] = []
+        self.befores: list[bytes | None] = []
         self.suggestions: list[StaffSuggestion] = []
         self.suggestions_with_snapshots: list[tuple[StaffSuggestion, bytes | None]] = []
         self.metrics: list[Metrics] = []
         self.detections: list[Detections] = []
 
-    def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
         self.alerts.append((event, snapshot_jpeg))
+        self.befores.append(before_jpeg)
 
     def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
         self.suggestions.append(suggestion)
@@ -178,7 +185,7 @@ def walker_position(t: float) -> tuple[float, float]:
 # -- tests ---------------------------------------------------------------------------
 
 
-def test_unattended_table_opens_then_closes_when_staff_like_walker_arrives() -> None:
+def test_unattended_table_arrives_then_closes_when_staff_like_walker_stays() -> None:
     frames = []
     for ts in range(0, 121):
         tracks = list(guests(ts))
@@ -191,11 +198,17 @@ def test_unattended_table_opens_then_closes_when_staff_like_walker_arrives() -> 
     p = pipeline(frames, Config([UNATTENDED], ZONES), rec)
     p.run()
 
-    assert rec.states() == [("opened", "unattended", "t1"), ("closed", "unattended", "t1")]
-    opened, closed = rec.alerts[0][0], rec.alerts[1][0]
+    assert rec.states() == [
+        ("opened", "unattended", "t1"),
+        ("arrived", "unattended", "t1"),
+        ("closed", "unattended", "t1"),
+    ]
+    opened, arrived, closed = (e for e, _ in rec.alerts)
     assert opened.at.timestamp() == 60
     assert opened.summary_ro == "Masa 1: neservită de 1 min"
-    assert closed.at.timestamp() == 100
+    # The waiter reaches Masa 1 at 100 and has stayed ARRIVE_S (5 s) at 105.
+    assert arrived.at.timestamp() == closed.at.timestamp() == 105
+    assert rec.alerts[1][1] is None  # no snapshot for arrived
     assert [s.track_id for s in rec.suggestions] == [7]
 
 
@@ -215,6 +228,89 @@ def test_raised_hand_counts_only_inside_table_zones() -> None:
     hands = {t.track_id: t.raised_hand for t in second.frame.tracks}
     assert hands == {1: True, 2: False}
     assert rec.states() == [("opened", "calls", "t2")]
+
+
+def standing_keypoints() -> list[Keypoint]:
+    kps: list[Keypoint] = [(0.5, 0.5, 0.0)] * 17
+    kps[11], kps[13], kps[15] = (0.5, 0.5, 0.9), (0.5, 0.65, 0.9), (0.5, 0.8, 0.9)
+    return kps
+
+
+class StandingPose:
+    def __init__(self) -> None:
+        self.calls: list[list[int]] = []
+
+    def estimate(self, image: Image, tracks: Sequence[TrackObs]) -> Mapping[int, list[Keypoint]]:
+        self.calls.append([t.track_id for t in tracks])
+        return {t.track_id: standing_keypoints() for t in tracks}
+
+
+def one_profile() -> StaffProfiles:
+    return StaffProfiles(
+        device="edge-01", profiles=[StaffProfile(id="p", name="Ospătar", centroid=[1.0, 0.0])]
+    )
+
+
+def test_pose_runs_for_everyone_while_appearance_is_scored() -> None:
+    at_door = TrackObs(track_id=2, bbox=at(ENTRANCE))
+    frames = [Frame(ts=0.0, tracks=(at_door,))]
+    pose = StandingPose()
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        pose=pose,
+        embedder=CountingEmbedder(),
+        profiles=one_profile,
+    )
+    result = p.step()
+    assert result is not None and result.verified
+    assert pose.calls == [[2]]
+    assert result.frame.tracks[0].standing is True
+
+
+def test_enrolled_staff_standing_still_at_a_table_is_suggested() -> None:
+    """Appearance 1 and standing 1, no walking: 0.60 + 0.25 = 0.85 >= 0.7."""
+    waiter = TrackObs(track_id=7, bbox=at(T1))
+    frames = [Frame(ts=t / 10, tracks=(waiter,)) for t in range(31)]  # 3 s at 10 fps
+    rec = Recorder()
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        rec,
+        pose=StandingPose(),
+        embedder=CountingEmbedder(),
+        profiles=one_profile,
+    )
+    p.run()
+    assert [s.track_id for s in rec.suggestions] == [7]
+    assert rec.suggestions[0].staff_score >= 0.7
+    assert "stă în picioare" in rec.suggestions[0].reason_ro
+    assert rec.detections[-1].tracks[0].staff_score == pytest.approx(0.85, abs=0.01)
+
+
+def test_staff_weights_are_passed_to_the_classifier() -> None:
+    frames = [Frame(ts=0.0, tracks=(TrackObs(1, at(T1)),))]
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        embedder=CountingEmbedder(),
+        profiles=one_profile,
+        staff_weights=StaffWeights(appearance=0.3, standing=0.0, behaviour=0.3),
+    )
+    result = p.step()
+    assert result is not None
+    assert result.frame.tracks[0].staff_score == pytest.approx(0.5)  # (0.3 · 1 + 0.3 · 0) / 0.6
+
+
+def test_stance_falls_back_to_the_box_shape_without_pose() -> None:
+    tall = TrackObs(track_id=1, bbox=(0.4, 0.2, 0.45, 0.6))  # 0.05 x 0.4 on 16:9 → 4.5
+    squat = TrackObs(track_id=2, bbox=(0.6, 0.4, 0.75, 0.6))  # 0.15 x 0.2 on 16:9 → 0.75
+    frames = [Frame(ts=0.0, tracks=(tall, squat), aspect=16 / 9)]
+    result = pipeline(frames, Config([], ZONES), Recorder()).step()
+    assert result is not None
+    assert [t.standing for t in result.frame.tracks] == [True, False]
 
 
 def test_metrics_are_published_every_interval() -> None:
@@ -284,9 +380,40 @@ def test_appearance_runs_only_with_profiles_and_at_most_every_interval() -> None
     )
     result = p.step()  # ts 0.5: first embed
     assert result is not None and result.verified
-    assert result.frame.tracks[0].staff_score == 0.5  # appearance 1.0, behaviour 0.0
+    # Appearance 1.0, behaviour 0.0, stance unknown: (0.60 · 1 + 0.15 · 0) / 0.75.
+    assert result.frame.tracks[0].staff_score == pytest.approx(0.8)
     p.run()  # ts 1.0 .. 4.5: embeds again at 2.5 and 4.5
     assert embedder.calls == 3
+
+
+def test_appearance_thresholds_are_passed_to_the_score() -> None:
+    frames = [Frame(ts=0.0, tracks=(TrackObs(1, at(T1)),))]
+    profiles = StaffProfiles(
+        device="edge-01", profiles=[StaffProfile(id="p", name="Ospătar", centroid=[0.5, 0.0])]
+    )
+    p = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        embedder=CountingEmbedder(),
+        profiles=lambda: profiles,
+        appearance_low=0.9,
+        appearance_high=0.95,
+    )
+    p.run()
+    assert p.appearance_of(1) == 1.0  # cosine 1.0 >= high
+    lower = pipeline(
+        frames,
+        Config([], ZONES),
+        Recorder(),
+        embedder=CountingEmbedder(),
+        profiles=lambda: StaffProfiles(
+            device="edge-01",
+            profiles=[StaffProfile(id="p", name="Ospătar", centroid=[0.76, 0.6499230723708769])],
+        ),
+    )
+    lower.run()
+    assert lower.appearance_of(1) == pytest.approx(0.5)  # cosine 0.76 with defaults 0.70-0.82
 
 
 class FakeSnapshots:
@@ -426,3 +553,68 @@ def test_detections_carry_roles_hands_and_objects_with_clamped_boxes() -> None:
     assert by_id[1].bbox == hand.bbox
     assert by_id[2].bbox == (0.0, 0.5, 0.1, 1.0)
     assert [(o.label, o.bbox) for o in d.objects] == [("cup", cup.bbox)]
+
+
+class TimestampSnapshots(FakeSnapshots):
+    """The 'JPEG' names the frame it was made from."""
+
+    def make(self, image: Image) -> bytes | None:
+        assert isinstance(image, Frame)
+        return f"ts={image.ts:g}".encode()
+
+
+GLASS_GONE = rule(
+    "gone",
+    "table",
+    Condition(kind="object_gone", objects=["wine glass"], min_duration_s=10),
+)
+
+
+def glass(zone: Zone) -> ObjectObs:
+    x, y = centre(zone)
+    return ObjectObs("wine glass", (x - 0.01, y - 0.05, x + 0.01, y))
+
+
+def test_object_gone_publishes_the_last_frame_with_the_object_as_before() -> None:
+    frames = [Frame(ts=t / 2, objects=(glass(T1),)) for t in range(0, 40)]  # 0 .. 19.5 s
+    frames += [Frame(ts=20 + t / 2) for t in range(0, 20)]  # gone from 20 s
+    rec = Recorder()
+    p = pipeline(frames, Config([GLASS_GONE], ZONES), rec, snapshots=TimestampSnapshots())
+    p.run()
+
+    assert rec.states() == [("opened", "gone", "t1")]
+    (event, after), before = rec.alerts[0], rec.befores[0]
+    assert event.object_change is not None and event.object_change.objects == ["wine glass"]
+    assert before == b"ts=19.5"
+    assert after == f"ts={event.at.timestamp():g}".encode()
+
+
+def test_other_alerts_have_no_before_snapshot() -> None:
+    frames = [Frame(ts=float(ts), tracks=guests(ts)) for ts in range(0, 130)]
+    rec = Recorder()
+    p = pipeline(frames, Config([UNATTENDED], ZONES), rec, snapshots=TimestampSnapshots())
+    p.run()
+    assert rec.states()[0][0] == "opened"
+    assert rec.befores == [None]
+
+
+def test_a_stream_gap_is_bridged_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """E26: after a 30 s capture gap the first frames have no tracks; the guests are not
+    counted as gone, so the open alert does not close as "rezolvat"."""
+    seated = rule(
+        "seated",
+        "table",
+        Condition(kind="present", role="guest", min_duration_s=10),
+        cooldown_s=0,
+    )
+    frames = [Frame(ts=float(t), tracks=guests(t)) for t in range(0, 21)]
+    frames += [Frame(ts=float(t)) for t in range(50, 53)]
+    frames += [Frame(ts=float(t), tracks=guests(t)) for t in range(53, 60)]
+    rec = Recorder()
+    p = pipeline(frames, Config([seated], [T1]), rec, grace_s=5.0)
+    with caplog.at_level(logging.INFO, logger="aivee_edge.pipeline"):
+        p.run()
+    assert rec.states() == [("opened", "seated", "t1")]
+    assert [r.getMessage() for r in caplog.records if "stream_gap" in r.getMessage()] == [
+        "stream_gap seconds=30.0"
+    ]

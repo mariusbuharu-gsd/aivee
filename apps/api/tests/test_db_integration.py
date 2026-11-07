@@ -30,6 +30,7 @@ TABLES = {
     "staff_profiles",
     "staff_examples",
     "suggestions",
+    "push_subscriptions",
 }
 
 
@@ -68,12 +69,13 @@ def _unit(*hot: int) -> list[float]:
 
 def test_migration_upgrade_and_downgrade(empty_db_url: str) -> None:
     # Sync test: Alembic's async env runs its own event loop.
+    # Later migrations add their own tables (see their tests); these must always exist.
     upgrade(empty_db_url)
-    assert asyncio.run(_tables(empty_db_url)) == TABLES
+    assert asyncio.run(_tables(empty_db_url)) >= TABLES
     downgrade(empty_db_url)
     assert asyncio.run(_tables(empty_db_url)) == set()
     upgrade(empty_db_url)
-    assert asyncio.run(_tables(empty_db_url)) == TABLES
+    assert asyncio.run(_tables(empty_db_url)) >= TABLES
 
 
 async def test_duplicate_event_is_stored_once(
@@ -138,6 +140,29 @@ async def test_camera_rule_and_suggestion_roundtrip(
     assert stored_cam is not None and stored_cam.zones[0]["id"] == "t1"
     assert rules == [rule]
     assert pending == []
+
+
+async def test_a_suggestion_remembers_whether_the_edge_sent_its_crop(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    with_crop = StaffSuggestion(
+        suggestion_id="sg-crop",
+        camera_id="cam1",
+        track_id=7,
+        staff_score=0.8,
+        reason_ro="x",
+        snapshot=True,
+    )
+    without = with_crop.model_copy(update={"suggestion_id": "sg-none", "snapshot": False})
+    async with sessions() as s:
+        await SuggestionRepository(s).insert_if_new(with_crop, "edge-01")
+        await SuggestionRepository(s).insert_if_new(without, "edge-01")
+        await s.commit()
+    async with sessions() as s:
+        a = await SuggestionRepository(s).get("sg-crop")
+        b = await SuggestionRepository(s).get("sg-none")
+    assert a is not None and a.snapshot_path == "sg-crop.jpg"
+    assert b is not None and b.snapshot_path is None
 
 
 async def test_pgvector_nearest_profile(sessions: async_sessionmaker[AsyncSession]) -> None:

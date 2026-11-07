@@ -1,0 +1,7 @@
+/* Push notifications card (Alerte page). Layout only; colours come from the tokens via .card/.pill. */
+.push-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}

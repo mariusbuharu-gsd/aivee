@@ -14,7 +14,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from aivee_api.accounts.invites import router as invites_router
+from aivee_api.alerts.router import router as alerts_router
+from aivee_api.audit.router import router as audit_router
+from aivee_api.auth.router import router as auth_router
 from aivee_api.cameras.router import router as cameras_router
+from aivee_api.capabilities import router as capabilities_router
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.deps import Services
 from aivee_api.devices.router import router as devices_router
@@ -23,13 +28,20 @@ from aivee_api.edge.publisher import MqttEdgeLink, RecordingPublisher
 from aivee_api.edge.sync import EdgeCommands, EdgeSync, LoggingEdgeCommands, MqttEdgeCommands
 from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
+from aivee_api.frames.router import router as frames_router
+from aivee_api.frames.store import LiveFrames
+from aivee_api.locations.router import router as locations_router
+from aivee_api.locations.telegram import TelegramBotUsername
 from aivee_api.metrics.cache import MetricsCache
 from aivee_api.metrics.router import router as metrics_router
+from aivee_api.push.router import router as push_router
 from aivee_api.rules.router import router as rules_router
 from aivee_api.rules.translator import ClaudeRuleTranslator
 from aivee_api.settings import ApiSettings
 from aivee_api.staff.adapters import build_enroller
 from aivee_api.staff.router import router as staff_router
+from aivee_api.videos.router import router as videos_router
+from aivee_api.videos.runner import EdgeClipProcess, VideoQueue
 from aivee_api.zones.router import router as zones_router
 
 log = logging.getLogger(__name__)
@@ -44,16 +56,24 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
     live = LiveDetections()
     task: asyncio.Task[None] | None = None
     commands: EdgeCommands
+    frames = LiveFrames()
     if settings.mqtt_enabled:
         link = MqttEdgeLink(settings, metrics, live=live)
         sync = EdgeSync(sessions, link, settings.site, settings.device)
         link.on_connect = sync.publish_all  # the broker gets the full state on every connect
         commands = MqttEdgeCommands(link, settings.site, settings.device)
+        frames = LiveFrames(link)
         task = asyncio.create_task(link.run())
     else:
         sync = EdgeSync(sessions, RecordingPublisher(), settings.site, settings.device)
         commands = LoggingEdgeCommands()
     settings.snapshot_dir.mkdir(parents=True, exist_ok=True)
+    settings.video_dir.mkdir(parents=True, exist_ok=True)
+    videos = VideoQueue(sessions, sync, EdgeClipProcess(settings))
+    try:
+        await videos.start()
+    except Exception:  # e.g. migration 0009 not applied yet: everything else still works
+        log.exception("video analysis queue did not start; run the migrations")
     try:
         yield Services(
             settings=settings,
@@ -64,8 +84,14 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
             enroller=build_enroller(settings.yolo_weights),
             metrics=metrics,
             live=live,
+            frames=frames,
+            videos=videos,
+            telegram_bot=TelegramBotUsername(
+                settings.telegram_bot_username, settings.telegram_bot_token
+            ),
         )
     finally:
+        await videos.stop()
         if task is not None:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -93,9 +119,14 @@ def create_app(services: Services | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Frame-At"],  # the time of /api/cameras/{id}/frame
     )
     install_handlers(app)
     for router in (
+        auth_router,
+        locations_router,
+        invites_router,
+        audit_router,
         cameras_router,
         zones_router,
         rules_router,
@@ -103,6 +134,11 @@ def create_app(services: Services | None = None) -> FastAPI:
         devices_router,
         staff_router,
         metrics_router,
+        push_router,
+        alerts_router,
+        videos_router,
+        frames_router,
+        capabilities_router,
     ):
         app.include_router(router)
 

@@ -75,7 +75,12 @@ class Cv2Source:
         self._last_emit = -float("inf")
 
     def _open(self) -> bool:
-        cap = cv2.VideoCapture(self._source)
+        if isinstance(self._source, str) and "://" in self._source:
+            # FFmpeg's frame threading holds about one frame per decoder thread: at 5 fps on
+            # 12 cores that is ~2.4 s behind the camera. One thread keeps the reader live.
+            cap = cv2.VideoCapture(self._source, cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])
+        else:
+            cap = cv2.VideoCapture(self._source)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if not cap.isOpened():
             cap.release()
@@ -124,6 +129,9 @@ class Cv2Source:
 class FileSource:
     """Recorded clip. Samples frames at `target_fps` of video time.
 
+    Never sleeps: a clip is decoded and analysed as fast as the CPU allows, while the
+    timestamps stay in video time, so durations in rules mean seconds of the clip.
+
     Timestamps are video positions in seconds (frame index / native fps), plus an
     offset per loop so they stay monotonic when `loop=True`.
     """
@@ -148,6 +156,12 @@ class FileSource:
     @property
     def native_fps(self) -> float:
         return self._native_fps
+
+    @property
+    def duration_s(self) -> float | None:
+        """Length of one pass in seconds (frame count / native fps), None if unknown."""
+        count = self._cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        return count / self._native_fps if count and count > 0 else None
 
     def read(self) -> tuple[float, Image] | None:
         while True:

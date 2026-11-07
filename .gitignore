@@ -19,3 +19,9 @@ recordings/
 snapshots/
 .claude/worktrees/
 models/
+# Playwright
+dist-e2e/
+playwright-report/
+test-results/
+blob-report/
+infra/edge/edge.env

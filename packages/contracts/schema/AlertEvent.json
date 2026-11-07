@@ -1,5 +1,37 @@
 {
-  "description": "Published by the edge when a rule's situation starts or stops holding.",
+  "$defs": {
+    "ObjectChange": {
+      "description": "What changed for an `object_gone` alert: the COCO classes that disappeared.",
+      "properties": {
+        "kind": {
+          "const": "gone",
+          "default": "gone",
+          "title": "Kind",
+          "type": "string"
+        },
+        "objects": {
+          "description": "COCO class names that disappeared",
+          "items": {
+            "type": "string"
+          },
+          "title": "Objects",
+          "type": "array"
+        },
+        "before_snapshot": {
+          "default": false,
+          "description": "The last frame with the object was sent on `snapshots/<event_id>-before`",
+          "title": "Before Snapshot",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "objects"
+      ],
+      "title": "ObjectChange",
+      "type": "object"
+    }
+  },
+  "description": "Published by the edge when a rule's situation starts or stops holding, and once in\nbetween (`arrived`) when a staff member has stayed in the zone for ARRIVE_S.",
   "properties": {
     "event_id": {
       "description": "UUID; idempotency key for ingest",
@@ -21,6 +53,7 @@
     "state": {
       "enum": [
         "opened",
+        "arrived",
         "closed"
       ],
       "title": "State",
@@ -39,6 +72,18 @@
       "default": false,
       "title": "Snapshot",
       "type": "boolean"
+    },
+    "object_change": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ObjectChange"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Set on `opened` events of an `object_gone` rule"
     }
   },
   "required": [

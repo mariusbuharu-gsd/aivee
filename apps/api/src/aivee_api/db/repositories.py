@@ -59,6 +59,10 @@ class DeviceRepository:
     async def list_all(self) -> Sequence[Device]:
         return (await self.s.scalars(select(Device).order_by(Device.id))).all()
 
+    async def ids_for_site(self, site_id: str) -> list[str]:
+        rows = await self.s.scalars(select(Device.id).where(Device.site_id == site_id))
+        return list(rows)
+
 
 class CameraRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -73,6 +77,39 @@ class CameraRepository:
         }
         stmt = insert(Camera).values(id=camera.id, **values)
         await self.s.execute(stmt.on_conflict_do_update(index_elements=[Camera.id], set_=values))
+
+    async def insert(self, camera: CameraConfig, device_id: str | None = None) -> bool:
+        """Create the camera; False (and nothing written) when the id is already taken."""
+        stmt = (
+            insert(Camera)
+            .values(
+                id=camera.id,
+                name=camera.name,
+                source=camera.source,
+                zones=[z.model_dump(mode="json") for z in camera.zones],
+                device_id=device_id,
+            )
+            .on_conflict_do_nothing(index_elements=[Camera.id])
+            .returning(Camera.id)
+        )
+        return (await self.s.execute(stmt)).first() is not None
+
+    async def update(
+        self,
+        camera_id: str,
+        *,
+        name: str | None = None,
+        source: str | None = None,
+        device_id: str | None = None,
+    ) -> None:
+        """Change only the given fields; zones are untouched."""
+        values = {
+            k: v
+            for k, v in {"name": name, "source": source, "device_id": device_id}.items()
+            if v is not None
+        }
+        if values:
+            await self.s.execute(update(Camera).where(Camera.id == camera_id).values(**values))
 
     async def get(self, camera_id: str) -> Camera | None:
         return await self.s.get(Camera, camera_id)
@@ -89,6 +126,15 @@ class CameraRepository:
             .where(Camera.id == camera_id)
             .values(zones=[z.model_dump(mode="json") for z in zones])
         )
+
+    async def delete(self, camera_id: str) -> bool:
+        """The camera, its zones (a column) and its rules. Events keep their camera_id
+        (no FK), so the history stays."""
+        await self.s.execute(delete(RuleRow).where(RuleRow.camera_id == camera_id))
+        result = await self.s.execute(
+            delete(Camera).where(Camera.id == camera_id).returning(Camera.id)
+        )
+        return result.first() is not None
 
 
 def camera_config(row: Camera) -> CameraConfig:
@@ -146,7 +192,11 @@ class EventRepository:
         self.s = session
 
     async def insert_if_new(
-        self, event: AlertEvent, device_id: str = "", snapshot_path: str | None = None
+        self,
+        event: AlertEvent,
+        device_id: str = "",
+        snapshot_path: str | None = None,
+        before_snapshot_path: str | None = None,
     ) -> bool:
         """Store the event once per event_id. True only when this call inserted it."""
         stmt = (
@@ -161,6 +211,7 @@ class EventRepository:
                 at=event.at,
                 summary_ro=event.summary_ro,
                 snapshot_path=snapshot_path,
+                before_snapshot_path=before_snapshot_path,
             )
             .on_conflict_do_nothing(index_elements=[EventRow.event_id])
             .returning(EventRow.id)
@@ -170,9 +221,13 @@ class EventRepository:
     async def get(self, event_id: str) -> EventRow | None:
         return await self.s.scalar(select(EventRow).where(EventRow.event_id == event_id))
 
-    async def recent(self, limit: int = 50) -> Sequence[EventRow]:
-        rows = await self.s.scalars(select(EventRow).order_by(EventRow.at.desc()).limit(limit))
-        return rows.all()
+    async def recent(
+        self, limit: int = 50, states: Sequence[str] | None = None
+    ) -> Sequence[EventRow]:
+        stmt = select(EventRow).order_by(EventRow.at.desc()).limit(limit)
+        if states is not None:
+            stmt = stmt.where(EventRow.state.in_(states))
+        return (await self.s.scalars(stmt)).all()
 
     async def max_id(self) -> int:
         return int(await self.s.scalar(select(func.coalesce(func.max(EventRow.id), 0))) or 0)
@@ -194,10 +249,15 @@ class SuggestionRepository:
         self.s = session
 
     async def insert_if_new(self, suggestion: StaffSuggestion, device_id: str = "") -> bool:
+        # The snapshot itself is a file in SNAPSHOT_DIR named after the suggestion id.
+        path = f"{suggestion.suggestion_id}.jpg" if suggestion.snapshot else None
         stmt = (
             insert(SuggestionRow)
-            # The snapshot itself is a file in SNAPSHOT_DIR named after the suggestion id.
-            .values(device_id=device_id, **suggestion.model_dump(exclude={"snapshot"}))
+            .values(
+                device_id=device_id,
+                snapshot_path=path,
+                **suggestion.model_dump(exclude={"snapshot"}),
+            )
             .on_conflict_do_nothing(index_elements=[SuggestionRow.suggestion_id])
             .returning(SuggestionRow.id)
         )

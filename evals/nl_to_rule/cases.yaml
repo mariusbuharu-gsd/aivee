@@ -1,5 +1,6 @@
 # Romanian request → rule. Every case runs against a camera with two tables and an entrance.
 # expect.refuse: the request must be clarified or refused (no rule).
+# expect.zone_tag: a tag, or a list of acceptable tags ("anywhere" = the whole image).
 # expect.conditions: each listed condition must appear (same kind, and role if given);
 #   listed fields must match (a list means "any of these"); the rule must have exactly
 #   that many conditions. `objects_include`: these COCO names must be in `objects`.
@@ -128,15 +129,80 @@ cases:
       conditions:
         - { kind: objects_unattended, min_duration_s: 900, objects_include: [bowl] }
 
+  # --- 5. object disappeared -----------------------------------------------------------
+  - id: gone-glass
+    text: "Anunță-mă dacă dispare un pahar de pe masă"
+    expect:
+      zone_tag: table
+      conditions:
+        - { kind: object_gone, objects_include: ["wine glass"] }
+
+  # --- 6. a COCO object appears (object_present) ---------------------------------------
+  - id: present-bear
+    text: "anunță-mă dacă vine un urs"
+    expect:
+      zone_tag: anywhere
+      cooldown_s: 120
+      conditions:
+        - { kind: object_present, objects_include: [bear] }
+  - id: present-dog
+    text: "dacă intră un câine"
+    expect:
+      zone_tag: [anywhere, entrance]
+      conditions:
+        - { kind: object_present, objects_include: [dog] }
+  - id: present-knife
+    text: "dacă cineva are un cuțit"
+    expect:
+      zone_tag: anywhere
+      conditions:
+        - { kind: object_present, objects_include: [knife] }
+
+  # --- 7. a visual situation (visual) --------------------------------------------------
+  - id: visual-fire
+    text: "dacă e foc"
+    expect:
+      zone_tag: anywhere
+      cooldown_s: 120
+      conditions:
+        - { kind: visual }
+  - id: visual-kitchen-fire
+    text: "Trimite alertă dacă începe un incendiu în bucătărie"
+    expect:
+      zone_tag: anywhere
+      conditions:
+        - { kind: visual }
+  - id: visual-smoke
+    text: "dacă iese fum"
+    expect:
+      zone_tag: anywhere
+      conditions:
+        - { kind: visual }
+  - id: visual-water
+    text: "dacă e apă pe jos"
+    expect:
+      zone_tag: anywhere
+      conditions:
+        - { kind: visual }
+  - id: visual-door
+    text: "dacă ușa rămâne deschisă"
+    expect:
+      zone_tag: [anywhere, entrance]
+      conditions:
+        - { kind: visual }
+
   # --- out of scope / ambiguous: must be refused or clarified --------------------------
+  - id: refuse-age-gender
+    text: "Spune-mi câți ani au clienții care intră și dacă sunt bărbați sau femei"
+    expect: { refuse: true }
+  - id: refuse-everything
+    text: "Vreau să știu tot ce se întâmplă în restaurant"
+    expect: { refuse: true }
   - id: refuse-face
     text: "Recunoaște-l pe Ion când intră pe ușă și spune-mi imediat"
     expect: { refuse: true }
   - id: refuse-vague
     text: "Anunță-mă dacă se întâmplă ceva ciudat"
-    expect: { refuse: true }
-  - id: refuse-fire
-    text: "Trimite alertă dacă începe un incendiu în bucătărie"
     expect: { refuse: true }
   - id: refuse-money
     text: "Spune-mi câți bani a încasat ospătarul azi"

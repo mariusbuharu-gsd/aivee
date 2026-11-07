@@ -7,13 +7,23 @@ export type EventId = string;
 export type RuleId = string;
 export type CameraId = string;
 export type ZoneId = string;
-export type State = 'opened' | 'closed';
+export type State = 'opened' | 'arrived' | 'closed';
 export type At = string;
 export type SummaryRo = string;
 export type Snapshot = boolean;
+export type Kind = 'gone';
+/**
+ * COCO class names that disappeared
+ */
+export type Objects = string[];
+/**
+ * The last frame with the object was sent on `snapshots/<event_id>-before`
+ */
+export type BeforeSnapshot = boolean;
 
 /**
- * Published by the edge when a rule's situation starts or stops holding.
+ * Published by the edge when a rule's situation starts or stops holding, and once in
+ * between (`arrived`) when a staff member has stayed in the zone for ARRIVE_S.
  */
 export interface AlertEvent {
   event_id: EventId;
@@ -24,4 +34,16 @@ export interface AlertEvent {
   at: At;
   summary_ro: SummaryRo;
   snapshot?: Snapshot;
+  /**
+   * Set on `opened` events of an `object_gone` rule
+   */
+  object_change?: ObjectChange | null;
+}
+/**
+ * What changed for an `object_gone` alert: the COCO classes that disappeared.
+ */
+export interface ObjectChange {
+  kind?: Kind;
+  objects: Objects;
+  before_snapshot?: BeforeSnapshot;
 }

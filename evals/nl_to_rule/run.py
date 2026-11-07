@@ -1,10 +1,12 @@
 """Romanian request → rule eval: `make eval` (needs ANTHROPIC_API_KEY; costs a few cents).
 
 Runs every case in cases.yaml through the real translator plus the API's draft checks,
-prints a per-case table and the score, and writes results.md next to this file.
+prints a per-case table and the score, and writes results.md next to this file, plus
+drafts.json (each case's raw model output, the source of the translator's parse tests).
 """
 
 import asyncio
+import json
 import sys
 import time
 from dataclasses import dataclass
@@ -30,6 +32,7 @@ class Outcome:
     seconds: float
     got: str
     why: str = ""
+    draft: dict[str, Any] | None = None
 
 
 def _match(value: Any, expected: Any) -> bool:
@@ -49,7 +52,7 @@ def check(rule: Rule, expect: dict[str, Any]) -> str:
     """'' when the rule satisfies `expect`, otherwise the reason it does not."""
     if expect.get("refuse"):
         return "expected a refusal/clarification, got a rule"
-    if rule.zone_tag != expect["zone_tag"]:
+    if not _match(rule.zone_tag, expect["zone_tag"]):
         return f"zone_tag {rule.zone_tag!r} != {expect['zone_tag']!r}"
     if "cooldown_s" in expect and rule.cooldown_s != expect["cooldown_s"]:
         return f"cooldown_s {rule.cooldown_s} != {expect['cooldown_s']}"
@@ -76,7 +79,9 @@ def describe(rule: Rule) -> str:
         if c.pose:
             bits.append(c.pose)
         if c.objects:
-            bits.append(f"{len(c.objects)} obj")
+            bits.append(f"{len(c.objects)} obj" if len(c.objects) > 2 else "/".join(c.objects))
+        if c.kind == "visual":
+            bits.append(f"+{len(c.positive)}/-{len(c.negative)} t{c.threshold} {c.crop}")
         parts.append(" ".join(bits))
     return f"{rule.zone_tag}: " + " ∧ ".join(parts) + f" (cd {rule.cooldown_s}s)"
 
@@ -86,18 +91,20 @@ async def run_case(
 ) -> Outcome:
     async with gate:
         start = time.monotonic()
+        raw: dict[str, Any] | None = None
         try:
             draft = await translator.translate(case["text"], zones)
+            raw = draft.model_dump(mode="json")
             rule = draft_to_rule(draft, "cam1", case["text"], zones)
         except TranslationError as e:
             secs = time.monotonic() - start
             got = f"{e.code}: {e.message_ro}"
             if case["expect"].get("refuse") and e.code in REFUSED:
-                return Outcome(case["id"], True, secs, got)
-            return Outcome(case["id"], False, secs, got, "expected a rule")
+                return Outcome(case["id"], True, secs, got, draft=raw)
+            return Outcome(case["id"], False, secs, got, "expected a rule", draft=raw)
         secs = time.monotonic() - start
         why = check(rule, case["expect"])
-        return Outcome(case["id"], not why, secs, describe(rule), why)
+        return Outcome(case["id"], not why, secs, describe(rule), why, draft=raw)
 
 
 def _cell(text: str) -> str:
@@ -145,6 +152,8 @@ async def main() -> int:
     score = sum(o.passed for o in outcomes)
     print(f"\nscore: {score}/{len(outcomes)}")
     (HERE / "results.md").write_text(report(list(outcomes), cases, "claude-opus-5-5"))
+    drafts = {o.case_id: o.draft for o in outcomes}
+    (HERE / "drafts.json").write_text(json.dumps(drafts, indent=2, ensure_ascii=False) + "\n")
     print(f"wrote {HERE / 'results.md'}")
     return 0 if score == len(outcomes) else 1
 

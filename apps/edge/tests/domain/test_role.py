@@ -1,11 +1,19 @@
 import itertools
 from collections.abc import Mapping
+from dataclasses import replace
 
 import pytest
 from aivee_contracts.events import StaffSuggestion
 from aivee_edge.domain.behaviour import BehaviourFeatures, behaviour_score
 from aivee_edge.domain.observation import Frame, TrackObs
-from aivee_edge.domain.role import RoleClassifier, reason_ro
+from aivee_edge.domain.role import (
+    W_APPEARANCE,
+    W_BEHAVIOUR,
+    W_STANDING,
+    RoleClassifier,
+    StaffWeights,
+    reason_ro,
+)
 
 WALKER = BehaviourFeatures(
     duration_s=120,
@@ -28,6 +36,11 @@ SITTER = BehaviourFeatures(
     stationary_ratio=1.0,
     in_staff_zone=False,
 )
+
+
+STANDS_STILL = replace(SITTER, standing_ratio=1.0)
+"""A waiter standing at one table: no behaviour signal, but upright the whole window."""
+SEATED = replace(SITTER, standing_ratio=0.0)
 
 
 def test_fixture_scores_cover_the_hysteresis_bands() -> None:
@@ -65,15 +78,67 @@ def test_fusion_without_appearance_uses_behaviour_only() -> None:
     assert rc.fuse(WALKER, None) == pytest.approx(behaviour_score(WALKER))
 
 
-def test_fusion_with_appearance_is_weighted() -> None:
-    rc = _classifier(w_behaviour=0.6, w_appearance=0.4)
-    expected = 0.6 * behaviour_score(SITTER) + 0.4 * 1.0
+def test_default_weights() -> None:
+    assert (W_APPEARANCE, W_STANDING, W_BEHAVIOUR) == (0.60, 0.25, 0.15)
+    assert StaffWeights() == StaffWeights(appearance=0.60, standing=0.25, behaviour=0.15)
+
+
+def test_fusion_with_all_signals_is_weighted() -> None:
+    rc = _classifier(w_appearance=0.5, w_standing=0.3, w_behaviour=0.2)
+    features = replace(MIDDLING, standing_ratio=0.5)
+    expected = 0.5 * 0.8 + 0.3 * 0.5 + 0.2 * behaviour_score(MIDDLING)
+    assert rc.fuse(features, 0.8) == pytest.approx(expected)
+
+
+def test_fusion_renormalises_over_the_available_signals() -> None:
+    rc = _classifier()
+    # Stance unknown: appearance and behaviour only, 0.60 + 0.15 = 0.75 of weight.
+    expected = (0.60 * 1.0 + 0.15 * behaviour_score(SITTER)) / 0.75
     assert rc.fuse(SITTER, 1.0) == pytest.approx(expected)
 
 
 def test_fusion_with_appearance_only() -> None:
     assert _classifier().fuse(None, 0.8) == pytest.approx(0.8)
     assert _classifier().fuse(None, None) == 0.0
+
+
+def test_zero_weights_never_divide_by_zero() -> None:
+    rc = _classifier(w_appearance=0.0, w_standing=0.0, w_behaviour=0.0)
+    assert rc.fuse(STANDS_STILL, 1.0) == 0.0
+
+
+def test_enrolled_staff_standing_still_becomes_staff() -> None:
+    rc = _classifier()
+    assert rc.fuse(STANDS_STILL, 1.0) == pytest.approx(0.85)
+    frame, suggestions = _step(rc, {1: STANDS_STILL}, {1: 1.0})
+    assert _track(frame, 1).role == "staff"
+    assert suggestions[0].reason_ro == "seamănă cu personalul, stă în picioare"
+
+
+def test_seated_guest_stays_guest() -> None:
+    rc = _classifier()
+    assert rc.fuse(SEATED, 0.0) <= 0.4
+    frame, suggestions = _step(rc, {1: SEATED}, {1: 0.0})
+    assert _track(frame, 1).role == "guest" and suggestions == []
+
+
+def test_guest_who_stood_up_stays_below_staff() -> None:
+    rc = _classifier()
+    assert rc.fuse(STANDS_STILL, 0.0) == pytest.approx(0.25)
+    # Even walking around a lot, a guest who looks nothing like staff cannot reach 0.7.
+    assert rc.fuse(replace(WALKER, standing_ratio=1.0), 0.0) < 0.7
+    frame, _ = _step(rc, {1: STANDS_STILL}, {1: 0.0})
+    assert _track(frame, 1).role == "guest"
+
+
+def test_without_appearance_standing_is_ignored() -> None:
+    """No profiles enrolled: behaviour alone decides, exactly as before the standing signal."""
+    rc = _classifier()
+    assert rc.fuse(STANDS_STILL, None) == pytest.approx(behaviour_score(SITTER))
+    frame, _ = _step(rc, {1: STANDS_STILL})
+    assert _track(frame, 1).role == "guest"
+    walker = replace(WALKER, standing_ratio=1.0)
+    assert rc.fuse(walker, None) == pytest.approx(behaviour_score(WALKER))
 
 
 def test_appearance_can_lift_a_middling_walker_to_staff() -> None:
@@ -196,4 +261,6 @@ def test_reason_uses_romanian_plural_and_fallback() -> None:
     many = BehaviourFeatures(120, 0.0, frozenset(f"t{i}" for i in range(20)), 1.0, False)
     assert reason_ro(many, None) == "vizitează 20 de mese"
     assert reason_ro(SITTER, None) == "se comportă ca personalul"
+    assert reason_ro(STANDS_STILL, None) == "se comportă ca personalul"  # stance needs appearance
+    assert reason_ro(replace(SITTER, standing_ratio=0.2), 1.0) == "seamănă cu personalul"
     assert reason_ro(None, None) == "se comportă ca personalul"

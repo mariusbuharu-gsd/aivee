@@ -1,45 +1,61 @@
-import { MetricsStrip } from '../components/MetricsStrip';
-import { useLiveData } from '../state/context';
+import { useState } from 'react';
+import { Link } from 'react-router';
+import { useAuth } from '../auth/context';
+import { ServiceStats } from '../components/ServiceStats';
+import { Segmented } from '../ui/controls';
+import './MetricsPage.css';
 
+const PERIODS = [
+  { value: '1', label: 'Azi' },
+  { value: '7', label: '7 zile' },
+  { value: '30', label: '30 de zile' },
+];
+
+/** How fast guests are served. Device numbers (FPS, CPU) live on Dispozitive. */
 export function MetricsPage() {
-  const { metrics } = useLiveData();
+  const { can } = useAuth();
+  const [period, setPeriod] = useState('7');
   return (
-    <div className="page">
+    <div className="page metrics-page">
       <header className="page-head">
         <h1>Metrici</h1>
+        <Segmented
+          label="Perioadă"
+          hideLabel
+          value={period}
+          options={PERIODS}
+          onChange={setPeriod}
+        />
       </header>
-      <MetricsStrip metrics={metrics} />
-      <section aria-labelledby="per-device-h">
-        <h2 id="per-device-h">Pe dispozitiv</h2>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th scope="col">Dispozitiv</th>
-                <th scope="col">FPS</th>
-                <th scope="col">Cadre verificate</th>
-                <th scope="col">CPU</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(metrics?.devices ?? []).map((d) => (
-                <tr key={d.device}>
-                  <th scope="row" className="mono">
-                    {d.device}
-                  </th>
-                  <td className="mono">{d.fps.toFixed(1)}</td>
-                  <td className="mono">{(d.verified_ratio * 100).toFixed(1)}%</td>
-                  <td className="mono">{Math.round(d.cpu_percent)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="muted small">
-          Cadre verificate = procentul de cadre trimise modelului greu. Restul rulează doar detecția
-          rapidă, pe dispozitiv.
+      <ServiceStats days={Number(period)} />
+      <details className="card terms">
+        <summary>Cum citești cifrele</summary>
+        <dl className="roles">
+          <dt>Masă neservită</dt>
+          <dd>
+            Clienții stau la masă și nu a venit nimeni de la personal în timpul din regulă. Atunci
+            pornește alerta.
+          </dd>
+          <dt>Așteptare</dt>
+          <dd>
+            De la alertă până ajunge cineva de la personal la masă (sau până se închide alerta).
+            Clienții așteptau deja de dinainte, cât spune regula.
+          </dd>
+        </dl>
+        <p className="small muted">
+          Mediana: jumătate din alerte au fost mai rapide, jumătate mai lente. p90: 9 din 10 alerte
+          au fost cel mult atât.
         </p>
-      </section>
+      </details>
+      {can('devices.manage') && (
+        <p className="muted small">
+          Cifrele camerelor și ale dispozitivelor (FPS, procesor) sunt pe{' '}
+          <Link to="/dispozitive" className="link">
+            Camere
+          </Link>
+          .
+        </p>
+      )}
     </div>
   );
 }

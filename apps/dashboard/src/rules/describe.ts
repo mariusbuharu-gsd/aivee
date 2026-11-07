@@ -9,7 +9,8 @@ const ROLE: Record<NonNullable<Condition['role']>, string> = {
 export const ZONE_TAGS: { value: string; label: string; plural: string }[] = [
   { value: 'table', label: 'Masă', plural: 'fiecare masă' },
   { value: 'entrance', label: 'Intrare', plural: 'intrare' },
-  { value: 'staff', label: 'Zonă personal', plural: 'zona personalului' },
+  // The stored tag stays `staff`; only the words changed ("Personal" read like a person).
+  { value: 'staff', label: 'Zonă angajați', plural: 'zona angajaților' },
 ];
 
 export const tagLabel = (tag: string) => ZONE_TAGS.find((t) => t.value === tag)?.label ?? tag;
@@ -37,6 +38,12 @@ export function describeCondition(c: Condition): string {
       return `${who} ridică mâna`;
     case 'objects_unattended':
       return `rămân obiecte (${(c.objects ?? []).join(', ') || 'vase'}) fără nimeni${duration(c.min_duration_s)}`;
+    case 'object_gone':
+      return `dispare un obiect (${(c.objects ?? []).join(', ') || 'pahar'}) aflat pe masă${duration(c.min_duration_s)}`;
+    case 'object_present':
+      return `apare un obiect (${(c.objects ?? []).join(', ')})${duration(c.min_duration_s)}`;
+    case 'visual':
+      return `se vede ${c.label_ro?.trim() || c.positive?.[0] || 'situația căutată'}${duration(c.min_duration_s)} (verificat pe imagine înainte de alertă)`;
   }
 }
 
@@ -49,7 +56,9 @@ const ACTION: Record<Rule['action']['type'], string> = {
 /** Romanian one-liner for the "Ce am înțeles" panel. */
 export function describeRule(rule: Rule): string {
   const where =
-    ZONE_TAGS.find((t) => t.value === rule.zone_tag)?.plural ?? `zona „${rule.zone_tag}”`;
+    rule.zone_tag === 'anywhere'
+      ? 'oricare loc din imagine'
+      : (ZONE_TAGS.find((t) => t.value === rule.zone_tag)?.plural ?? `zona „${rule.zone_tag}”`);
   const when = rule.all_of.map(describeCondition).join(' și ');
   return `La ${where}, când ${when} → ${ACTION[rule.action.type]}.`;
 }

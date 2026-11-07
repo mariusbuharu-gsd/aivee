@@ -8,10 +8,14 @@
   `camera_id`, else the first one) over the camera given at construction.
 - `commands` (not retained) are queued; the pipeline drains them with `take_commands()` on
   its own thread, so the network thread never touches pipeline state.
+- Transport: plain TCP by default; `transport="websockets"` (+ `ws_path`) and `tls=True` let a
+  remote edge reach the broker as `wss://host:443/path` through an HTTPS reverse proxy.
 """
 
 import logging
+import ssl
 import threading
+import time
 from collections import deque
 from typing import Any
 
@@ -38,6 +42,7 @@ log = logging.getLogger(__name__)
 
 SESSION_EXPIRY_S = 3600
 MAX_PENDING_COMMANDS = 256
+TRANSPORTS = ("tcp", "websockets")
 
 
 class MqttEdgeClient:
@@ -56,7 +61,12 @@ class MqttEdgeClient:
         camera_id: str | None = None,
         version: str = "0.1.0",
         keepalive: int = 30,
+        transport: str = "tcp",
+        tls: bool = False,
+        ws_path: str = "/mqtt",
     ) -> None:
+        if transport not in TRANSPORTS:
+            raise ValueError(f"MQTT transport must be one of {TRANSPORTS}, not {transport!r}")
         self.topics = Topics(site=site, device=device)
         self._host, self._port, self._keepalive = host, port, keepalive
         self._device, self._version = device, version
@@ -73,7 +83,13 @@ class MqttEdgeClient:
             callback_api_version=CallbackAPIVersion.VERSION2,
             client_id=f"edge-{site}-{device}",
             protocol=mqtt.MQTTv5,
+            transport="websockets" if transport == "websockets" else "tcp",
         )
+        if transport == "websockets":
+            self._client.ws_set_options(path=ws_path)
+        if tls:
+            # System CA bundle, hostname checked: the server presents a public certificate.
+            self._client.tls_set_context(ssl.create_default_context())
         self._client.username_pw_set(user, password)
         self._client.will_set(self.topics.status, self._status("offline"), qos=1, retain=True)
         self._client.on_connect = self._on_connect
@@ -109,10 +125,16 @@ class MqttEdgeClient:
 
     # -- EventPublisher ------------------------------------------------------------
 
-    def publish_alert(self, event: AlertEvent, snapshot_jpeg: bytes | None) -> None:
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
         if snapshot_jpeg is not None:
             self._client.publish(self.topics.snapshot(event.event_id), snapshot_jpeg, qos=1)
             event = event.model_copy(update={"snapshot": True})
+        if before_jpeg is not None and event.object_change is not None:
+            self._client.publish(self.topics.snapshot_before(event.event_id), before_jpeg, qos=1)
+            change = event.object_change.model_copy(update={"before_snapshot": True})
+            event = event.model_copy(update={"object_change": change})
         self._client.publish(self.topics.events, event.model_dump_json(), qos=1)
 
     def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
@@ -152,6 +174,21 @@ class MqttEdgeClient:
         if self._camera_id is None:
             return cameras[0]
         return next((c for c in cameras if c.id == self._camera_id), None)
+
+    def wait_for_state(self, timeout: float) -> bool:
+        """Wait until the retained `config` names this device's camera and a `rules` set
+        arrived. An offline clip run uses it: it must not analyse frames without its zones
+        and rules, and a clip has no "later" to pick them up in."""
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock:
+                ready = self._rules is not None and (
+                    self._config is not None
+                    and any(c.id == self._camera_id for c in self._config.cameras)
+                )
+            if ready or time.monotonic() >= deadline:
+                return ready
+            time.sleep(0.05)
 
     def set_camera(self, camera: CameraConfig) -> None:
         with self._lock:

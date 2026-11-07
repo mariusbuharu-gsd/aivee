@@ -1,0 +1,97 @@
+/* The AiVee loader: the logo's eyes look around the room (left, right, up) and blink once. */
+.eyes-look {
+  display: inline-block;
+  flex: none;
+  overflow: visible;
+  vertical-align: middle;
+  color: inherit;
+}
+.eyes-look .ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 7;
+}
+.eyes-look .pupil {
+  fill: var(--coral);
+}
+.eyes-look .p,
+.eyes-look .lid {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.eyes-look .p {
+  transform: translate(3.6px, 1.8px);
+  animation: eyes-look 3.2s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+.eyes-look .lid {
+  animation: eyes-blink 3.2s ease-in-out infinite;
+}
+/* On a coral button the pupils take the text colour, so they don't disappear. */
+.btn-accent .eyes-look .pupil {
+  fill: currentColor;
+}
+@keyframes eyes-look {
+  0%,
+  10% {
+    transform: translate(3.6px, 1.8px);
+  }
+  18%,
+  36% {
+    transform: translate(-6px, 0.5px);
+  }
+  46%,
+  62% {
+    transform: translate(6px, 0.5px);
+  }
+  72%,
+  86% {
+    transform: translate(0, -5.5px);
+  }
+  100% {
+    transform: translate(3.6px, 1.8px);
+  }
+}
+@keyframes eyes-blink {
+  0%,
+  88%,
+  100% {
+    transform: scaleY(1);
+  }
+  92% {
+    transform: scaleY(0.08);
+  }
+}
+/* Reduced motion: the eyes keep the logo's look and fade softly instead. */
+@media (prefers-reduced-motion: reduce) {
+  .eyes-look .p,
+  .eyes-look .lid {
+    animation: none;
+  }
+  .eyes-look {
+    animation: eyes-breathe 1.8s ease-in-out infinite;
+  }
+}
+@keyframes eyes-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* A loading line: eyes plus what is loading. */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.loading .eyes-look {
+  color: var(--text);
+}
+.loading-page {
+  min-height: 100dvh;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  font-family: var(--mono);
+}

@@ -1,14 +1,17 @@
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from aivee_contracts.geometry import CameraConfig, Zone
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from aivee_api.cameras.schemas import CameraIn, CameraOut
+from aivee_api.alerts.audit import AuditWriter, system_closed_entry
+from aivee_api.alerts.repository import AlertRepository
+from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.db.models import Camera
 from aivee_api.db.repositories import CameraRepository, DeviceRepository, camera_config
 from aivee_api.edge.sync import EdgeSync
-from aivee_api.errors import Invalid, NotFound
+from aivee_api.errors import Conflict, Invalid, NotFound
 
 
 def _out(row: Camera, online_devices: set[str]) -> CameraOut:
@@ -25,7 +28,7 @@ def check_unique_zone_ids(zones: Sequence[Zone]) -> None:
 
 
 class CameraService:
-    """Cameras created here belong to the API's configured device (SITE/DEVICE env)."""
+    """A camera belongs to the device given on create, else the API's DEVICE (env)."""
 
     def __init__(self, session: AsyncSession, sync: EdgeSync) -> None:
         self._s = session
@@ -54,11 +57,46 @@ class CameraService:
             source=data.source,
             zones=data.zones,
         )
-        await self._devices.ensure_device(self._sync.site, self._sync.device)
-        await self._cameras.upsert(camera, device_id=self._sync.device)
+        device = data.device or self._sync.device
+        await self._devices.ensure_device(self._sync.site, device)
+        if not await self._cameras.insert(camera, device_id=device):
+            raise Conflict(
+                f"Există deja o cameră cu id-ul „{camera.id}”. "
+                "Alege alt id sau modifică camera existentă."
+            )
         await self._s.commit()
         await self._sync.publish_config()
         return await self.get(camera.id)
+
+    async def update(self, camera_id: str, patch: CameraPatch) -> CameraOut:
+        before = await self.get(camera_id)
+        if patch.device:
+            await self._devices.ensure_device(self._sync.site, patch.device)
+        await self._cameras.update(
+            camera_id, name=patch.name, source=patch.source, device_id=patch.device
+        )
+        await self._s.commit()
+        await self._sync.publish_config()
+        if patch.device and patch.device != before.device:
+            await self._sync.publish_rules()  # the camera's rules move with it
+        return await self.get(camera_id)
+
+    async def delete(self, camera_id: str, audit: AuditWriter) -> CameraOut:
+        """Delete the camera with its zones and rules; its open alerts are closed by the
+        system (`camera_deleted`) in the same transaction, and the device's retained
+        config and rules are republished so the edge drops the camera. Returns the
+        camera as it was."""
+        before = await self.get(camera_id)
+        closed = await AlertRepository(self._s).close_open_for_camera(
+            camera_id, datetime.now(UTC), "camera_deleted"
+        )
+        for view in closed:
+            await audit.append(self._s, system_closed_entry(view, "camera_deleted"))
+        await self._cameras.delete(camera_id)
+        await self._s.commit()
+        await self._sync.publish_config()
+        await self._sync.publish_rules()
+        return before
 
     async def zones(self, camera_id: str) -> list[Zone]:
         return (await self.get(camera_id)).zones

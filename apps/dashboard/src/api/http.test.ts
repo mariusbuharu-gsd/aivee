@@ -80,8 +80,24 @@ describe('HttpApi', () => {
   it('maps validation and network errors to Romanian messages', async () => {
     mockFetch(json({ detail: [{ loc: ['body', 'text'], msg: 'too short' }] }, 422));
     await expect(api.listRules()).rejects.toMatchObject({
-      message: 'Datele trimise nu sunt valide.',
+      message: 'Date invalide: verificați text.',
       code: 'invalid',
+    });
+    mockFetch(
+      json(
+        {
+          detail: {
+            code: 'camera_site',
+            message_ro: 'Camera poate fi adăugată doar la Terasa demo.',
+          },
+        },
+        422,
+      ),
+    );
+    await expect(api.listRules()).rejects.toMatchObject({
+      message: 'Camera poate fi adăugată doar la Terasa demo.',
+      code: 'camera_site',
+      status: 422,
     });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(api.listRules()).rejects.toMatchObject({ code: 'network' });
@@ -100,12 +116,276 @@ describe('HttpApi', () => {
     };
     mockFetch(
       json([
-        { ...ev, snapshot_url: '/api/snapshots/e-1' },
+        {
+          ...ev,
+          snapshot_url: '/api/snapshots/e-1',
+          before_snapshot_url: '/api/snapshots/e-1-before',
+        },
         { ...ev, event_id: 'e-2', snapshot: false, snapshot_url: null },
       ]),
     );
     const [a, b] = await api.listAlerts();
     expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/e-1');
+    expect(a?.before_snapshot_url).toBe('http://api:8000/api/snapshots/e-1-before');
     expect(b?.snapshot_url).toBeNull();
+    expect(b?.before_snapshot_url).toBeNull();
+  });
+
+  it("resolves a suggestion's photo url against the API base, and keeps none as none", async () => {
+    const sug = {
+      suggestion_id: 's-1',
+      camera_id: 'cam-01',
+      track_id: 7,
+      staff_score: 0.8,
+      reason_ro: 'Se mișcă între mese',
+      snapshot: true,
+      snapshot_url: '/api/snapshots/s-1',
+    };
+    mockFetch(json([sug, { ...sug, suggestion_id: 's-2', snapshot: false, snapshot_url: null }]));
+    const [a, b] = await api.listSuggestions();
+    expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/s-1');
+    expect(b?.snapshot_url).toBeNull();
+  });
+});
+
+describe('HttpApi videos', () => {
+  const upload = {
+    id: '3f9a2c1d',
+    location_id: 'centru',
+    camera_id: 'video-3f9a2c1d',
+    source_camera_id: 'cam-01',
+    filename: 'sala-1.mp4',
+    size_bytes: 1024,
+    rotate: 90,
+    status: 'queued',
+    progress: 0,
+    duration_s: null,
+    events: 0,
+    error_ro: null,
+    created_at: '2026-11-06T10:00:00Z',
+    started_at: null,
+    finished_at: null,
+    created_by: null,
+  };
+
+  it('uploads the clip as multipart with the location, rotation and source camera', async () => {
+    const api = new HttpApi('http://api:8000');
+    api.setLocation('centru');
+    const fetch = mockFetch(json(upload, 201));
+    const file = new File(['x'], 'sala-1.mp4', { type: 'video/mp4' });
+    expect(await api.uploadVideo({ file, rotate: 90, copy_from_camera_id: 'cam-01' })).toEqual(
+      upload,
+    );
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(/^http:\/\/api:8000\/api\/videos/);
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    const form = init?.body as FormData;
+    expect(form.get('file')).toBeInstanceOf(File);
+    expect(form.get('location_id')).toBe('centru');
+    expect(form.get('rotate')).toBe('90');
+    expect(form.get('copy_from_camera_id')).toBe('cam-01');
+    // The browser sets the multipart boundary itself.
+    expect(new Headers(init?.headers).get('Content-Type')).toBeNull();
+  });
+
+  it('leaves out the optional fields and shows the API message on 422', async () => {
+    const api = new HttpApi('http://api:8000');
+    api.setLocation('centru');
+    const fetch = mockFetch(
+      json({ detail: { code: 'too_long', message_ro: 'Clipul are mai mult de 2 minute.' } }, 422),
+    );
+    const file = new File(['x'], 'lung.mp4', { type: 'video/mp4' });
+    await expect(api.uploadVideo({ file })).rejects.toMatchObject({
+      message: 'Clipul are mai mult de 2 minute.',
+      status: 422,
+    });
+    const form = fetch.mock.calls[0]?.[1]?.body as FormData;
+    expect(form.has('rotate')).toBe(false);
+    expect(form.has('copy_from_camera_id')).toBe(false);
+  });
+
+  it('lists, reads and fetches the alerts of an upload with absolute snapshot urls', async () => {
+    const api = new HttpApi('http://api:8000');
+    api.setLocation('centru');
+    const alert = {
+      event_id: 'e-1',
+      zone_id: 'z-1',
+      zone_name: 'Masa 2',
+      summary_ro: 'Masa 2: neservită de 1 min',
+      state: 'closed',
+      at_s: 12,
+      arrived_at_s: 40,
+      closed_at_s: 41,
+      wait_s: 29,
+      closed_reason: null,
+      snapshot_url: '/api/snapshots/e-1',
+    };
+    const fetch = mockFetch(
+      json([upload]),
+      json(upload),
+      json([alert, { ...alert, event_id: 'e-2', snapshot_url: null }]),
+    );
+    expect(await api.listVideos()).toEqual([upload]);
+    expect(await api.getVideo('3f9a2c1d')).toEqual(upload);
+    const [a, b] = await api.videoEvents('3f9a2c1d');
+    expect(fetch.mock.calls.map(([u]) => String(u))).toEqual([
+      'http://api:8000/api/videos?location_id=centru',
+      'http://api:8000/api/videos/3f9a2c1d?location_id=centru',
+      'http://api:8000/api/videos/3f9a2c1d/events?location_id=centru',
+    ]);
+    expect(a?.snapshot_url).toBe('http://api:8000/api/snapshots/e-1');
+    expect(b?.snapshot_url).toBeNull();
+  });
+});
+
+describe('HttpApi alert paging', () => {
+  it('pages events and alert cases back with `before` and `limit`', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json([]), json([]), json([]));
+    api.setLocation('centru');
+    await api.listAlerts();
+    await api.listAlerts({ before: '2026-11-06T10:00:00+00:00', limit: 50 });
+    await api.listAlertCases({ location_id: 'centru', before: '2026-11-06T10:00:00Z', limit: 100 });
+    expect(fetch.mock.calls.map(([u]) => String(u))).toEqual([
+      'http://api:8000/api/events?location_id=centru',
+      'http://api:8000/api/events?before=2026-11-06T10%3A00%3A00%2B00%3A00&limit=50&location_id=centru',
+      'http://api:8000/api/alerts?location_id=centru&before=2026-11-06T10%3A00%3A00Z&limit=100',
+    ]);
+  });
+});
+
+describe('HttpApi accounts (auth-roles-audit spec)', () => {
+  it('sends the session cookie and scopes resources to the current location', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json([]), json([]), json({ user: {} }));
+    api.setLocation('terasa');
+    await api.listCameras();
+    await api.listAlertCases({ location_id: 'centru', state: 'open' });
+    await api.me();
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/cameras?location_id=terasa');
+    expect(fetch.mock.calls[0]?.[1]?.credentials).toBe('include');
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'http://api:8000/api/alerts?location_id=centru&state=open',
+    );
+    expect(fetch.mock.calls[2]?.[0]).toBe('http://api:8000/api/auth/me');
+  });
+
+  it('announces a 401 so the app returns to /intra, except for the auth calls', async () => {
+    const api = new HttpApi('http://api:8000');
+    const seen = vi.fn();
+    window.addEventListener('aivee:unauthorized', seen);
+    const err = { detail: { code: 'unauthenticated', message_ro: 'Intră în cont.' } };
+    mockFetch(json(err, 401), json(err, 401));
+    await expect(api.listRules()).rejects.toMatchObject({ status: 401 });
+    await expect(api.me()).rejects.toMatchObject({ status: 401 });
+    expect(seen).toHaveBeenCalledTimes(1);
+    window.removeEventListener('aivee:unauthorized', seen);
+  });
+
+  it('treats a socket closed with 1008 (no session) like a 401 and stops reconnecting', () => {
+    const sockets: { onclose: ((e: CloseEvent) => void) | null; close: () => void }[] = [];
+    class FakeSocket {
+      onclose: ((e: CloseEvent) => void) | null = null;
+      onmessage: unknown = null;
+      constructor() {
+        sockets.push(this);
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    vi.useFakeTimers();
+    const seen = vi.fn();
+    window.addEventListener('aivee:unauthorized', seen);
+    const off = new HttpApi('http://api:8000').subscribeAlerts(() => undefined);
+    sockets[0]?.onclose?.({ code: 1008 } as CloseEvent);
+    vi.advanceTimersByTime(5000);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(1);
+    off();
+    window.removeEventListener('aivee:unauthorized', seen);
+    vi.useRealTimers();
+  });
+
+  it('acknowledges an alert with "Preiau"', async () => {
+    const api = new HttpApi('http://api:8000');
+    const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));
+    await api.ackAlert('e-1');
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/alerts/e-1/ack');
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
+  });
+});
+
+describe('HttpApi counts', () => {
+  it('asks for 7 days of rule stats at the current location', async () => {
+    const api = new HttpApi('http://api:8000');
+    const stats = { days: ['2026-11-06'], rules: [{ rule_id: 'r-1', total: 2, per_day: [2] }] };
+    const fetch = mockFetch(json(stats));
+    api.setLocation('terasa');
+    expect(await api.getRuleStats()).toEqual(stats);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      'http://api:8000/api/rules/stats?days=7&location_id=terasa',
+    );
+  });
+});
+
+describe('HttpApi camera frames', () => {
+  const api = new HttpApi('http://api:8000');
+  afterEach(() => vi.restoreAllMocks());
+
+  it('fetches the blurred still with the session cookie and reads its time', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:frame-1');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+    const fetch = mockFetch(
+      new Response(new Blob(['jpeg'], { type: 'image/jpeg' }), {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg', 'X-Frame-At': '2026-11-06T19:00:00+00:00' },
+      }),
+    );
+    const frame = await api.captureFrame('cam 1');
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/cameras/cam%201/frame');
+    expect(fetch.mock.calls[0]?.[1]?.credentials).toBe('include');
+    expect(frame.url).toBe('blob:frame-1');
+    expect(frame.at).toBe('2026-11-06T19:00:00+00:00');
+    frame.release();
+    expect(revoke).toHaveBeenCalledWith('blob:frame-1');
+  });
+
+  it('turns a missing frame into the API error', async () => {
+    mockFetch(
+      json({ detail: { code: 'not_found', message_ro: 'Nu există încă o imagine.' } }, 404),
+    );
+    await expect(api.captureFrame('cam-1')).rejects.toMatchObject({
+      status: 404,
+      message: 'Nu există încă o imagine.',
+    });
+  });
+
+  it('pushes a phone frame as a JPEG body with the session cookie', async () => {
+    const fetch = mockFetch(new Response(null, { status: 204 }));
+    const jpeg = new Blob(['jpeg'], { type: 'image/jpeg' });
+    await api.pushFrame('cam-1', jpeg);
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(url).toBe('http://api:8000/api/ingest/frames/cam-1');
+    expect(init?.method).toBe('POST');
+    expect(init?.credentials).toBe('include');
+    expect(init?.body).toBe(jpeg);
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('image/jpeg');
+  });
+
+  it('turns a refused frame into the API error', async () => {
+    mockFetch(json({ detail: { code: 'conflict', message_ro: 'Nu e cameră cloud.' } }, 409));
+    await expect(api.pushFrame('cam-1', new Blob(['x']))).rejects.toMatchObject({
+      status: 409,
+      message: 'Nu e cameră cloud.',
+    });
+  });
+
+  it('passes last_seen through from /api/devices', async () => {
+    mockFetch(
+      json([{ device: 'edge-01', state: 'online', last_seen: '2026-11-06T19:00:00Z', site: 's' }]),
+    );
+    const [d] = await api.listDevices();
+    expect(d?.last_seen).toBe('2026-11-06T19:00:00Z');
   });
 });

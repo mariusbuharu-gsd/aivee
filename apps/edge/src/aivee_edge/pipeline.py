@@ -1,13 +1,24 @@
 """The edge application loop: one `step` per frame, every stage behind a port.
 
-source.read → detector.detect → (pose → raised hand, table zones only) → trajectory →
+source.read → detector.detect → (pose → raised hand at tables; stance from pose or box
+shape) → trajectory + stance ratio →
 behaviour features → (appearance vs staff profiles) → roles → situation engine →
-publish alerts (with snapshot on open), staff suggestions (with a person crop), live
+publish alerts (with snapshot on open; an object change also sends the last frame that
+still showed the object as its "before" image), staff suggestions (with a person crop), live
 detections (<= 5 Hz) and periodic metrics. Owner commands (confirm/reject staff) are
 applied at the start of every step.
 
 Rules and zones are re-read from the `ConfigSource` on every frame and applied when
 they change, so edits in the dashboard take effect without a restart.
+
+A capture gap longer than `stream_gap_s(grace_s)` (the stream stalled or reconnected)
+is bridged by the engine, so it does not count as everyone leaving (E26); each bridged
+gap is logged as `stream_gap seconds=...`.
+
+Open rules: a rule tagged `anywhere` gets the whole-frame pseudo-zone (named after the
+camera); `object_present` rules add their COCO classes to the detector (when it supports
+`set_extra_classes`); `visual` rules are scored by the optional `VisualScorer` on the
+frame image, throttled to `visual_hz` (see `domain/visual.py`).
 """
 
 import logging
@@ -17,16 +28,16 @@ from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from aivee_contracts.detections import DetectedObject, DetectedTrack, Detections
 from aivee_contracts.events import AlertEvent, Metrics, StaffProfiles, StaffSuggestion
 from aivee_contracts.geometry import Zone
 from aivee_contracts.rules import Rule
 
-from aivee_edge.domain.appearance import appearance_score
+from aivee_edge.domain.appearance import HIGH_SIMILARITY, LOW_SIMILARITY, appearance_score
 from aivee_edge.domain.behaviour import BehaviourFeatures, TrajectoryBuffer
-from aivee_edge.domain.engine import SituationEngine, utc_from_timestamp
+from aivee_edge.domain.engine import SituationEngine, stream_gap_s, utc_from_timestamp
 from aivee_edge.domain.geometry import foot_point, point_in_polygon
 from aivee_edge.domain.observation import BBox, Frame, TrackObs
 from aivee_edge.domain.ports import (
@@ -36,9 +47,12 @@ from aivee_edge.domain.ports import (
     FrameSource,
     Image,
     PersonDetector,
+    VisualScorer,
 )
 from aivee_edge.domain.pose import Keypoint, is_raised_hand
-from aivee_edge.domain.role import RoleClassifier
+from aivee_edge.domain.role import RoleClassifier, StaffWeights
+from aivee_edge.domain.stance import is_standing
+from aivee_edge.domain.visual import DEFAULT_VISUAL_HZ, with_whole_frame
 from aivee_edge.metrics import MetricsMeter, cpu_percent
 
 log = logging.getLogger("aivee_edge.pipeline")
@@ -53,6 +67,27 @@ class PoseEstimator(Protocol):
     ) -> Mapping[int, Sequence[Keypoint]]:
         """COCO-17 keypoints (normalised x, y, confidence) per track id of `tracks`."""
         ...
+
+
+@runtime_checkable
+class ExtraClasses(Protocol):
+    """A detector that can add COCO classes asked for by `object_present` rules."""
+
+    def set_extra_classes(self, extra: Sequence[str]) -> None: ...
+
+
+def extra_classes(rules: Sequence[Rule]) -> list[str]:
+    """COCO classes of the enabled `object_present` conditions, sorted."""
+    return sorted(
+        {
+            label
+            for r in rules
+            if r.enabled
+            for c in r.all_of
+            if c.kind == "object_present"
+            for label in c.objects
+        }
+    )
 
 
 class Embedder(Protocol):
@@ -114,13 +149,19 @@ class EdgePipeline:
         snapshots: SnapshotMaker | None = None,
         commands: CommandSource | None = None,
         grace_s: float = 1.5,
+        arrive_s: float | None = 5.0,
         embed_interval_s: float = 2.0,
+        appearance_low: float = LOW_SIMILARITY,
+        appearance_high: float = HIGH_SIMILARITY,
+        staff_weights: StaffWeights | None = None,
         forget_after_s: float = 5.0,
         metrics_interval_s: float = 5.0,
         detections_interval_s: float = 0.2,
         id_factory: Callable[[], str] = _new_id,
         to_datetime: Callable[[float], datetime] = utc_from_timestamp,
         cpu: Callable[[], float] = cpu_percent,
+        visual: VisualScorer | None = None,
+        visual_hz: float = DEFAULT_VISUAL_HZ,
     ) -> None:
         self._source = source
         self._detector = detector
@@ -137,6 +178,8 @@ class EdgePipeline:
         self._detections_interval_s = detections_interval_s
         self._detections_at = -float("inf")
         self._embed_interval_s = embed_interval_s
+        self._appearance_low = appearance_low
+        self._appearance_high = appearance_high
         self._forget_after_s = forget_after_s
 
         self._rules: list[Rule] = []
@@ -144,14 +187,32 @@ class EdgePipeline:
         self._tables: dict[str, list[tuple[float, float]]] = {}
         self._staff_zones: dict[str, list[tuple[float, float]]] = {}
         self.engine = SituationEngine(
-            [], [], id_factory, camera_id, to_datetime=to_datetime, grace_s=grace_s
+            [],
+            [],
+            id_factory,
+            camera_id,
+            to_datetime=to_datetime,
+            grace_s=grace_s,
+            arrive_s=arrive_s,
+            gap_s=stream_gap_s(grace_s),
+            visual=visual,
+            visual_hz=visual_hz,
         )
         self.buffer = TrajectoryBuffer()
-        self.classifier = RoleClassifier(camera_id, id_factory)
+        weights = staff_weights or StaffWeights()
+        self.classifier = RoleClassifier(
+            camera_id,
+            id_factory,
+            w_appearance=weights.appearance,
+            w_standing=weights.standing,
+            w_behaviour=weights.behaviour,
+        )
         self.meter = MetricsMeter(device, metrics_interval_s, cpu)
         self._last_seen: dict[int, float] = {}
         self._appearance: dict[int, float | None] = {}
         self._embedded_at: dict[int, float] = {}
+        self._before: dict[str, Image] = {}
+        """Per zone: the latest frame showing every object the zone is believed to hold."""
 
     # -- config --------------------------------------------------------------------
 
@@ -170,10 +231,16 @@ class EdgePipeline:
             self._rules = rules
             self.engine.update_rules(rules)
             log.info("rules reloaded count=%d ids=%s", len(rules), ",".join(r.id for r in rules))
+            if isinstance(self._detector, ExtraClasses):
+                mine = [r for r in rules if r.camera_id == self._camera_id]
+                self._detector.set_extra_classes(extra_classes(mine))
         try:
-            zones = list(self._config.camera().zones)
+            camera = self._config.camera()
+            zones, camera_name = list(camera.zones), camera.name
         except LookupError:
-            zones = []
+            zones, camera_name = [], self._camera_id
+        mine = [r for r in rules if r.camera_id == self._camera_id]
+        zones = with_whole_frame(zones, mine, camera_name)
         if zones != self._zones:
             self._zones = zones
             self.engine.update_zones(zones)
@@ -229,8 +296,9 @@ class EdgePipeline:
         self.apply_commands()
 
         frame = self._detector.detect(image, ts)
-        frame, posed = self._raised_hands(image, frame)
-        appearance, embedded = self._appearance_scores(image, frame)
+        centroids = self._centroids()
+        frame, posed = self._poses(image, frame, everyone=bool(centroids))
+        appearance, embedded = self._appearance_scores(image, frame, centroids)
 
         self.buffer.observe(frame)
         features: dict[int, BehaviourFeatures] = {
@@ -238,21 +306,27 @@ class EdgePipeline:
             for t in frame.tracks
         }
         frame, suggestions = self.classifier.assign(frame, features, appearance)
-        events = self.engine.step(frame)
+        events = self.engine.step(frame, image)
+        if self.engine.last_gap_s is not None:
+            log.info("stream_gap seconds=%.1f", self.engine.last_gap_s)
 
         for event in events:
             snapshot = self._snapshots.make(image) if event.state == "opened" else None
-            self._publisher.publish_alert(event, snapshot)
+            before = self._before_snapshot(event)
+            self._publisher.publish_alert(event, snapshot, before)
             log.info(
-                "alert event_id=%s state=%s rule=%s camera=%s zone=%s snapshot=%s summary=%r",
+                "alert event_id=%s state=%s rule=%s camera=%s zone=%s snapshot=%s before=%s "
+                "summary=%r",
                 event.event_id,
                 event.state,
                 event.rule_id,
                 event.camera_id,
                 event.zone_id,
                 snapshot is not None,
+                before is not None,
                 event.summary_ro,
             )
+        self._keep_before(image)
         boxes = {t.track_id: t.bbox for t in frame.tracks}
         for suggestion in suggestions:
             # The crop lets the API learn this person's appearance if the owner confirms.
@@ -293,18 +367,39 @@ class EdgePipeline:
 
     # -- stages --------------------------------------------------------------------
 
+    def _before_snapshot(self, event: AlertEvent) -> bytes | None:
+        if event.state != "opened" or event.object_change is None:
+            return None
+        before = self._before.get(event.zone_id)
+        return None if before is None else self._snapshots.make(before)
+
+    def _keep_before(self, image: Image) -> None:
+        """Remember, per zone, this frame if it shows all of the zone's objects. Called
+        after publishing, so a disappearance gets the frame from before it."""
+        for zone_id, state in self.engine.zone_states().items():
+            if state.objects.all_in_view():
+                self._before[zone_id] = image
+        for zone_id in set(self._before) - {z.id for z in self._zones}:
+            del self._before[zone_id]
+
     def _in_table(self, track: TrackObs) -> bool:
         p = foot_point(track.bbox)
         return any(point_in_polygon(p, poly) for poly in self._tables.values())
 
-    def _raised_hands(self, image: Image, frame: Frame) -> tuple[Frame, bool]:
-        """Raised hand counts only for people at a table; pose runs only if someone is."""
+    def _poses(self, image: Image, frame: Frame, *, everyone: bool) -> tuple[Frame, bool]:
+        """Raised hands (table zones only) and per-frame stance.
+
+        Pose runs for people at a table (raised hand), and for everyone while appearance
+        scoring is active, because the standing signal only counts next to appearance.
+        Without keypoints the stance falls back to the box shape.
+        """
         seated = [t for t in frame.tracks if self._in_table(t)]
         at_table = {t.track_id for t in seated}
+        targets = list(frame.tracks) if everyone else seated
         keypoints: Mapping[int, Sequence[Keypoint]] = {}
         posed = False
-        if self._pose is not None and seated:
-            keypoints = self._pose.estimate(image, seated)
+        if self._pose is not None and targets:
+            keypoints = self._pose.estimate(image, targets)
             posed = True
         tracks = tuple(
             replace(
@@ -312,17 +407,23 @@ class EdgePipeline:
                 raised_hand=t.track_id in at_table
                 and t.track_id in keypoints
                 and is_raised_hand(keypoints[t.track_id]),
+                standing=is_standing(keypoints.get(t.track_id), t.bbox, frame.aspect),
             )
             for t in frame.tracks
         )
         return replace(frame, tracks=tracks), posed
 
+    def _centroids(self) -> list[list[float]]:
+        """Staff profile centroids when appearance scoring is possible, else []."""
+        if self._embedder is None or self._profiles is None:
+            return []
+        profiles = self._profiles()
+        return [list(p.centroid) for p in profiles.profiles] if profiles else []
+
     def _appearance_scores(
-        self, image: Image, frame: Frame
+        self, image: Image, frame: Frame, centroids: Sequence[Sequence[float]]
     ) -> tuple[dict[int, float | None], bool]:
         """Appearance score per track, re-embedding each track at most every interval."""
-        profiles = self._profiles() if self._profiles is not None else None
-        centroids = [p.centroid for p in profiles.profiles] if profiles else []
         if self._embedder is None or not centroids:
             return {}, False
         embedded = False
@@ -334,7 +435,9 @@ class EdgePipeline:
             embedded = True
             self._embedded_at[t.track_id] = frame.ts
             if vector is not None:
-                self._appearance[t.track_id] = appearance_score(vector, centroids)
+                self._appearance[t.track_id] = appearance_score(
+                    vector, centroids, low=self._appearance_low, high=self._appearance_high
+                )
         return {t.track_id: self._appearance.get(t.track_id) for t in frame.tracks}, embedded
 
     def _publish_detections(self, frame: Frame) -> None:
@@ -372,6 +475,10 @@ class EdgePipeline:
             self._appearance.pop(tid, None)
             self._embedded_at.pop(tid, None)
             log.info("track_gone track=%d", tid)
+
+    def appearance_of(self, track_id: int) -> float | None:
+        """Last appearance score of a track (None: not embedded or no profiles)."""
+        return self._appearance.get(track_id)
 
     def tracked_ids(self) -> set[int]:
         return set(self._last_seen)

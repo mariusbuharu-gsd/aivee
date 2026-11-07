@@ -1,0 +1,65 @@
+/* Reguli: rule cards read as one short sentence; a pill only when the rule is off. */
+
+/* A long name wraps inside the title, never pushes the switch to its own line. */
+.rule-card > .side-head {
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+.rule-card .rule-tools {
+  flex: none;
+}
+
+.rule-title {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  /* Same height as the switch row, so a one-line name sits centred beside it. */
+  min-height: 44px;
+}
+.rule-title h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rule-line {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.rule-prompt {
+  margin: -4px 0 0;
+}
+.rule-card .tech p {
+  margin: 6px 0 0;
+}
+.rule-card.is-off .rule-line {
+  color: var(--muted);
+}
+
+/* Alerts per day over the last week: thin bars, no axes, the total beside them. */
+.rule-spark {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+  align-self: flex-start;
+  font-size: 0.8125rem;
+  line-height: 1;
+  color: var(--muted);
+}
+.rule-spark svg {
+  flex: none;
+  fill: var(--muted);
+}
+.rule-spark rect.is-zero {
+  fill: var(--border);
+}
+.rule-spark-total {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.rule-card.is-off .rule-spark svg {
+  opacity: 0.5;
+}

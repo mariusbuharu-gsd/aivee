@@ -6,8 +6,10 @@ dependencies = [
     "aiomqtt>=2.5.1",
     "aivee-api",
     "aivee-contracts",
+    "anthropic>=2.6.0",
     "httpx>=0.28.1",
     "pydantic-settings>=2.16.2",
+    "pywebpush>=2.5.0",
     "tzdata>=2026.6",
 ]
 

@@ -6,3 +6,6 @@ export type { AlertEvent } from './AlertEvent';
 export type { DeviceStatus } from './DeviceStatus';
 export type { Metrics } from './Metrics';
 export type { StaffSuggestion } from './StaffSuggestion';
+export type { Detections, DetectedTrack, DetectedObject } from './Detections';
+export type { EdgeCommand } from './EdgeCommand';
+export type { Verification } from './Verification';

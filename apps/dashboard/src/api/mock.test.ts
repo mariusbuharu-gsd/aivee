@@ -42,9 +42,135 @@ describe('MockApi timeline', () => {
       'z-masa-2:closed',
     ]);
     expect(suggestions).toHaveBeenCalledTimes(1);
+    // A stand-in photo, as the real API links the edge's face-blurred crop.
+    expect(suggestions.mock.calls[0]?.[0].snapshot_url).toMatch(/^data:image\/svg\+xml,/);
     await api.confirmSuggestion('sug-track-7');
     await vi.advanceTimersByTimeAsync(45_000);
     expect(suggestions).toHaveBeenCalledTimes(1);
     api.dispose();
+  });
+});
+
+describe('MockApi demo alerts', () => {
+  it('includes an object_gone alert confirmed by the AI check, with before/after snapshots', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const alerts = await api.listAlerts();
+    const gone = alerts.find((a) => a.verification);
+    expect(gone?.summary_ro).toBe('Masa 1: a dispărut paharul de vin');
+    expect(gone?.verification).toEqual({
+      status: 'confirmed',
+      summary_ro: 'Masa 1: a dispărut paharul de vin',
+      object_ro: 'pahar de vin',
+    });
+    expect(gone?.snapshot_url).toMatch(/^data:image\/svg\+xml,/);
+    expect(gone?.before_snapshot_url).toMatch(/^data:image\/svg\+xml,/);
+    expect(gone?.before_snapshot_url).not.toBe(gone?.snapshot_url);
+    const rules = await api.listRules();
+    const rule = rules.find((r) => r.id === gone?.rule_id);
+    if (!rule) throw new Error('the demo alert has no rule');
+    expect(rule.all_of[0].kind).toBe('object_gone');
+    expect(describeRule(rule)).toMatch(/dispare un obiect/);
+    api.dispose();
+  });
+});
+
+describe('MockApi alert paging', () => {
+  it('serves events newest first in pages, like GET /api/events?before=', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const first = await api.listAlerts({ limit: 50 });
+    expect(first).toHaveLength(50);
+    const ats = first.map((e) => e.at);
+    expect([...ats].sort().reverse()).toEqual(ats);
+    const oldest = ats[ats.length - 1] ?? '';
+    const next = await api.listAlerts({ before: oldest, limit: 50 });
+    expect(next.length).toBeGreaterThan(0);
+    expect(next.every((e) => e.at < oldest)).toBe(true);
+    // The demo day has more closed alerts than the Alerte page shows at first (20).
+    const all = await api.listAlerts({ limit: 500 });
+    expect(all.filter((e) => e.state === 'closed').length).toBeGreaterThan(25);
+    api.dispose();
+  });
+});
+
+describe('MockApi videos', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('ships a finished demo clip with its alerts in clip order', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const [demo] = await api.listVideos();
+    if (!demo) throw new Error('no demo upload');
+    expect(demo).toMatchObject({ filename: 'sala-1.mp4', status: 'done', progress: 1 });
+    expect(demo.source_camera_id).toBe('cam-sala');
+    expect(demo.duration_s).toBeGreaterThan(60);
+    const alerts = await api.videoEvents(demo.id);
+    expect(alerts).toHaveLength(demo.events);
+    expect(alerts.length).toBeGreaterThanOrEqual(4);
+    const at = alerts.map((a) => a.at_s);
+    expect(at).toEqual([...at].sort((x, y) => x - y));
+    expect(alerts.some((a) => a.closed_reason === 'video_end')).toBe(true);
+    expect(alerts.some((a) => a.arrived_at_s !== null && a.state === 'closed')).toBe(true);
+  });
+
+  it('takes a new upload from queued through running to done', async () => {
+    vi.useFakeTimers();
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const file = new File(['x'], 'terasa.mp4', { type: 'video/mp4' });
+    const up = await api.uploadVideo({ file, rotate: 90, copy_from_camera_id: 'cam-sala' });
+    expect(up).toMatchObject({ status: 'queued', rotate: 90, filename: 'terasa.mp4' });
+    expect((await api.listVideos())[0]?.id).toBe(up.id);
+    await vi.advanceTimersByTimeAsync(3_000);
+    const running = await api.getVideo(up.id);
+    expect(running.status).toBe('running');
+    expect(running.progress).toBeGreaterThan(0);
+    expect(running.progress).toBeLessThan(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const done = await api.getVideo(up.id);
+    expect(done).toMatchObject({ status: 'done', progress: 1 });
+    expect(await api.videoEvents(up.id)).toHaveLength(done.events);
+  });
+
+  it('refuses a file that is not a video', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const file = new File(['x'], 'poza.jpg', { type: 'image/jpeg' });
+    await expect(api.uploadVideo({ file })).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe('MockApi setup data', () => {
+  it('starts without staff photos, so the setup checklist has work left', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    expect(await api.listStaffProfiles()).toEqual([]);
+    await api.uploadStaffPhoto(new File(['x'], 'a.jpg', { type: 'image/jpeg' }));
+    await api.uploadStaffPhoto(new File(['x'], 'b.jpg', { type: 'image/jpeg' }));
+    expect(await api.listStaffProfiles()).toEqual([
+      expect.objectContaining({ id: 'uniforma', examples: 2 }),
+    ]);
+  });
+
+  it('has an online camera with zones and an active rule (a mix of done and to do)', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const cameras = await api.listCameras();
+    expect(cameras.some((c) => c.online && (c.zones?.length ?? 0) > 0)).toBe(true);
+    expect((await api.listRules()).some((r) => r.enabled !== false)).toBe(true);
+  });
+});
+
+describe('MockApi devices and frames', () => {
+  it('has a fresh last_seen online and an old one offline', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const devices = await api.listDevices();
+    const age = (state: string) =>
+      Date.now() - Date.parse(devices.find((d) => d.state === state)?.last_seen ?? '');
+    expect(age('online')).toBeLessThan(10_000);
+    expect(age('offline')).toBeGreaterThan(10 * 60_000);
+  });
+
+  it('serves a placeholder still for a known camera and 404 otherwise', async () => {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const frame = await api.captureFrame('cam-sala');
+    expect(frame.url).toMatch(/^data:image\/svg\+xml,/);
+    expect(Date.parse(frame.at ?? '')).toBeLessThanOrEqual(Date.now());
+    frame.release();
+    await expect(api.captureFrame('nope')).rejects.toMatchObject({ status: 404 });
   });
 });

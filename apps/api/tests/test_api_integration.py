@@ -49,10 +49,19 @@ def services(
 
 
 @pytest.fixture
-async def api(services: Services) -> AsyncIterator[httpx.AsyncClient]:
+async def api(
+    services: Services, sessions: Any, tenancy_factory: Any, login: Any
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Logged in as the owner of the org that holds location `test` (= settings.site), whose
+    edge device `edge-01` events and suggestions come from."""
+    await tenancy_factory(sessions)
+    async with sessions() as s:
+        await DeviceRepository(s).ensure_device("test", "edge-01")
+        await s.commit()
     app = create_app(services)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        await login(client, "owner@t.ro")
         yield client
 
 
@@ -101,12 +110,100 @@ async def test_camera_and_zones_publish_the_full_device_config(
     assert [z["id"] for z in (await api.get("/api/cameras/cam1/zones")).json()] == ["t1", "e1"]
 
 
+async def test_creating_an_existing_camera_is_409_and_keeps_it(api: httpx.AsyncClient) -> None:
+    await _camera(api)
+    r = await api.post("/api/cameras", json={"id": "cam1", "name": "Alta", "source": "rtsp://y"})
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "conflict" and "cam1" in detail["message_ro"]
+    camera = (await api.get("/api/cameras/cam1")).json()
+    assert (camera["name"], camera["source"], len(camera["zones"])) == ("Sala", "rtsp://x", 1)
+
+
+async def test_camera_create_takes_an_optional_device(
+    api: httpx.AsyncClient, publisher: RecordingPublisher
+) -> None:
+    r = await api.post(
+        "/api/cameras",
+        json={"id": "cam2", "name": "Terasa", "source": "rtsp://t", "device": "edge-02"},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["device"] == "edge-02"
+    other = DeviceConfig.model_validate(
+        _retained(publisher, Topics(site="test", device="edge-02").config)
+    )
+    assert [c.id for c in other.cameras] == ["cam2"]
+    await _camera(api)  # no device: the API's DEVICE
+    assert (await api.get("/api/cameras/cam1")).json()["device"] == "edge-01"
+    default = DeviceConfig.model_validate(_retained(publisher, TOPICS.config))
+    assert [c.id for c in default.cameras] == ["cam1"]
+
+
+@pytest.mark.parametrize("method", ["PUT", "PATCH"])
+async def test_updating_a_camera_keeps_its_zones(
+    api: httpx.AsyncClient, publisher: RecordingPublisher, method: str
+) -> None:
+    await _camera(api, [TABLE, DOOR])
+    r = await api.request(
+        method, "/api/cameras/cam1", json={"name": "Sala mare", "source": "rtsp://nou"}
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert (body["name"], body["source"], body["device"]) == ("Sala mare", "rtsp://nou", "edge-01")
+    assert [z["id"] for z in body["zones"]] == ["t1", "e1"]
+    [camera] = DeviceConfig.model_validate(_retained(publisher, TOPICS.config)).cameras
+    assert (camera.name, [z.id for z in camera.zones]) == ("Sala mare", ["t1", "e1"])
+
+
+async def test_moving_a_camera_republishes_both_devices(
+    api: httpx.AsyncClient, publisher: RecordingPublisher
+) -> None:
+    await _camera(api)
+    rule = (await api.post("/api/rules", json=_rule_body())).json()
+    r = await api.patch("/api/cameras/cam1", json={"device": "edge-02"})
+    assert r.status_code == 200 and r.json()["device"] == "edge-02"
+
+    other = Topics(site="test", device="edge-02")
+    assert DeviceConfig.model_validate(_retained(publisher, TOPICS.config)).cameras == []
+    assert RuleSet.model_validate(_retained(publisher, TOPICS.rules)).rules == []
+    moved = DeviceConfig.model_validate(_retained(publisher, other.config))
+    assert [c.id for c in moved.cameras] == ["cam1"]
+    rules = RuleSet.model_validate(_retained(publisher, other.rules))
+    assert (rules.device, [r.id for r in rules.rules]) == ("edge-02", [rule["id"]])
+
+
+async def test_camera_update_errors(api: httpx.AsyncClient) -> None:
+    r = await api.patch("/api/cameras/nope", json={"name": "X"})
+    assert r.status_code == 404 and r.json()["detail"]["message_ro"]
+    await _camera(api)
+    assert (await api.patch("/api/cameras/cam1", json={"name": ""})).status_code == 422
+    assert (await api.patch("/api/cameras/cam1", json={"device": "a/b"})).status_code == 422
+
+
 async def test_zone_errors(api: httpx.AsyncClient) -> None:
     assert (await api.put("/api/cameras/nope/zones", json=[TABLE])).status_code == 404
     await _camera(api)
     r = await api.put("/api/cameras/cam1/zones", json=[TABLE, TABLE])
     assert r.status_code == 422
     assert r.json()["detail"]["message_ro"]
+
+
+async def test_overlapping_zones_are_saved_with_a_warning(api: httpx.AsyncClient) -> None:
+    await _camera(api)
+    redrawn = {**TABLE, "id": "t2", "name": "Masa 2", "polygon": [[0.1, 0], [0.4, 0], [0.4, 0.3]]}
+
+    r = await api.put("/api/cameras/cam1/zones", params={"warnings": "true"}, json=[TABLE, redrawn])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [z["id"] for z in body["zones"]] == ["t1", "t2"]
+    assert body["warnings_ro"] == ["Zonele «Masa 1» și «Masa 2» se suprapun"]
+    assert [z["id"] for z in (await api.get("/api/cameras/cam1/zones")).json()] == ["t1", "t2"]
+
+    r = await api.put("/api/cameras/cam1/zones", params={"warnings": "true"}, json=[TABLE, DOOR])
+    assert r.json()["warnings_ro"] == []
+    # Without the flag the body stays the plain list the dashboard reads.
+    r = await api.put("/api/cameras/cam1/zones", json=[TABLE, redrawn])
+    assert [z["id"] for z in r.json()] == ["t1", "t2"]
 
 
 async def test_camera_online_follows_device_status(api: httpx.AsyncClient, sessions: Any) -> None:
@@ -238,6 +335,60 @@ async def test_events_list_and_live_feed(api: httpx.AsyncClient, sessions: Any) 
     assert metrics["alert_latency_ms"] is not None and metrics["alert_latency_ms"] >= 0
 
 
+async def test_camera_frame_is_the_newest_blurred_frame_on_disk(
+    api: httpx.AsyncClient, sessions: Any, settings: ApiSettings
+) -> None:
+    await _camera(api)
+    assert (await api.get("/api/cameras/cam1/frame")).status_code == 404  # nothing yet
+    now = datetime.now(UTC)
+
+    def ev(event_id: str, at: datetime, camera_id: str = "cam1") -> AlertEvent:
+        return AlertEvent(
+            event_id=event_id,
+            rule_id="r1",
+            camera_id=camera_id,
+            zone_id="t1",
+            state="opened",
+            at=at,
+            summary_ro="Masa 1 așteaptă",
+            snapshot=True,
+        )
+
+    settings.snapshot_dir.mkdir(parents=True, exist_ok=True)
+    async with sessions() as s:
+        repo = EventRepository(s)
+        await repo.insert_if_new(ev("f-old", now - timedelta(minutes=5)), "edge-01", "f-old.jpg")
+        # Newest row whose JPEG has not landed yet: skipped, not a 404.
+        await repo.insert_if_new(ev("f-new", now), "edge-01", "f-new.jpg")
+        await repo.insert_if_new(ev("f-none", now + timedelta(seconds=1)), "edge-01", None)
+        await repo.insert_if_new(ev("f-other", now, "cam2"), "edge-01", "f-other.jpg")
+        await s.commit()
+    (settings.snapshot_dir / "f-old.jpg").write_bytes(b"old")
+    (settings.snapshot_dir / "f-other.jpg").write_bytes(b"other")
+
+    r = await api.get("/api/cameras/cam1/frame")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert r.content == b"old"
+    assert r.headers["cache-control"] == "no-store"
+    at = datetime.fromisoformat(r.headers["x-frame-at"])
+    assert abs((at - (now - timedelta(minutes=5))).total_seconds()) < 1
+
+    (settings.snapshot_dir / "f-new.jpg").write_bytes(b"new")
+    assert (await api.get("/api/cameras/cam1/frame")).content == b"new"
+    assert (await api.get("/api/cameras/nope/frame")).status_code == 404
+
+
+async def test_devices_carry_last_seen(api: httpx.AsyncClient, sessions: Any) -> None:
+    async with sessions() as s:
+        await DeviceRepository(s).apply_status(
+            "test", DeviceStatus(device="edge-01", state="online")
+        )
+        await s.commit()
+    [device] = (await api.get("/api/devices")).json()
+    seen = datetime.fromisoformat(device["last_seen"])
+    assert abs((datetime.now(UTC) - seen).total_seconds()) < 10
+
+
 async def test_metrics_combines_devices_and_cache(
     api: httpx.AsyncClient, services: Services, sessions: Any
 ) -> None:
@@ -256,12 +407,19 @@ async def test_metrics_combines_devices_and_cache(
     assert m["alert_latency_ms"] is None
 
 
-async def _suggestion(sessions: Any, suggestion_id: str | None = None) -> str:
+async def _suggestion(
+    sessions: Any, suggestion_id: str | None = None, snapshot: bool = False
+) -> str:
     sid = suggestion_id or f"s-{uuid.uuid4().hex[:6]}"
     async with sessions() as s:
         await SuggestionRepository(s).insert_if_new(
             StaffSuggestion(
-                suggestion_id=sid, camera_id="cam1", track_id=3, staff_score=0.7, reason_ro="x"
+                suggestion_id=sid,
+                camera_id="cam1",
+                track_id=3,
+                staff_score=0.7,
+                reason_ro="x",
+                snapshot=snapshot,
             ),
             "edge-01",
         )
@@ -291,6 +449,21 @@ async def test_confirm_and_reject_suggestions(
         (drop, False, "edge-01"),
     ]
     assert publisher.last(TOPICS.profiles) is None  # no snapshot → nothing learned
+
+
+async def test_pending_suggestions_link_the_blurred_crop_when_the_edge_sent_one(
+    api: httpx.AsyncClient, sessions: Any, settings: ApiSettings
+) -> None:
+    photo = await _suggestion(sessions, snapshot=True)
+    plain = await _suggestion(sessions)
+    (settings.snapshot_dir / f"{photo}.jpg").write_bytes(b"\xff\xd8crop")
+    urls = {
+        s["suggestion_id"]: s["snapshot_url"]
+        for s in (await api.get("/api/staff/suggestions")).json()
+    }
+    assert urls == {photo: f"/api/snapshots/{photo}", plain: None}
+    r = await api.get(urls[photo])
+    assert r.status_code == 200 and r.content == b"\xff\xd8crop"
 
 
 async def test_confirm_with_snapshot_learns_the_crop(
@@ -353,15 +526,53 @@ async def test_enrolment_without_models_is_503(
     publisher: RecordingPublisher,
     translator: Any,
     services_factory: Any,
+    tenancy_factory: Any,
+    login: Any,
 ) -> None:
+    await tenancy_factory(sessions)
     app = create_app(services_factory(settings, sessions, publisher, translator, None))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
+        await login(client, "manager@t.ro")
         r = await client.post(
             "/api/staff/photos", files=[("photo", ("a.jpg", bytes([2]), "image/jpeg"))]
         )
     assert r.status_code == 503
+    detail = r.json()["detail"]
+    assert detail["code"] == "unavailable" and "Înrolarea" in detail["message_ro"]
+
+
+class _NoWeights:
+    def embed(self, crop: Any) -> list[float]:
+        raise RuntimeError("Failed to download weights: Permission denied")
+
+
+async def test_enrolment_models_that_fail_to_load_are_503(
+    settings: ApiSettings,
+    sessions: Any,
+    publisher: RecordingPublisher,
+    translator: Any,
+    services_factory: Any,
+    fake_enroller: Enroller,
+    tenancy_factory: Any,
+    login: Any,
+) -> None:
+    await tenancy_factory(sessions)
+    broken = Enroller(fake_enroller._decoder, fake_enroller._cropper, _NoWeights())
+    app = create_app(services_factory(settings, sessions, publisher, translator, broken))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        await login(client, "manager@t.ro")
+        r = await client.post(
+            "/api/staff/photos", files=[("photo", ("a.jpg", bytes([2]), "image/jpeg"))]
+        )
+    assert r.status_code == 503
+    detail = r.json()["detail"]
+    assert detail["code"] == "unavailable" and "modelele" in detail["message_ro"]
+    async with sessions() as s:
+        assert await StaffRepository(s).profiles() == []
 
 
 async def test_publish_all_sends_every_retained_document(

@@ -6,6 +6,7 @@ import type { Rule, StaffSuggestion } from '../contracts';
 import { fakeApi, renderWithApi } from '../test/fakeApi';
 import { ApiError } from '../api/client';
 import { AddCameraForm } from './AddCameraForm';
+import { ruleLimitS } from '../alerts/limit';
 import { AlertFeed } from './AlertFeed';
 import { RuleComposer } from './RuleComposer';
 import { StaffPhotoUpload } from './StaffPhotoUpload';
@@ -38,7 +39,14 @@ describe('RuleComposer', () => {
     const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
     renderWithApi(<RuleComposer cameraId="cam-sala" onCreated={onCreated} />, api);
 
-    expect(screen.getByRole('button', { name: 'Creează regula' })).toBeDisabled();
+    // The button stays active; an empty field gets an inline message instead.
+    await user.click(screen.getByRole('button', { name: 'Creează regula' }));
+    expect(api.draftRuleFromText).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(screen.getByText(/Scrie mai întâi ce să urmărească camera/)).toBeInTheDocument();
     await typeRequest(user);
 
     expect(api.draftRuleFromText).toHaveBeenCalledWith(rule.prompt_ro, 'cam-sala');
@@ -52,7 +60,7 @@ describe('RuleComposer', () => {
     expect(api.createRule).not.toHaveBeenCalled();
     expect(onCreated).not.toHaveBeenCalled();
 
-    await user.click(within(panel).getByRole('button', { name: /Confirmă și salvează/ }));
+    await user.click(within(panel).getByRole('button', { name: /Pornește regula/ }));
     expect(api.createRule).toHaveBeenCalledWith(rule);
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Regula „Masă neservită” a fost salvată',
@@ -74,7 +82,7 @@ describe('RuleComposer', () => {
     const first = screen.getByLabelText('Durată condiția 1 (secunde)');
     await user.clear(first);
     await user.type(first, '120');
-    await user.click(screen.getByRole('button', { name: /Confirmă și salvează/ }));
+    await user.click(screen.getByRole('button', { name: /Pornește regula/ }));
     expect(api.createRule).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Masă uitată',
@@ -91,9 +99,66 @@ describe('RuleComposer', () => {
     const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
     renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
     await typeRequest(user);
-    await user.click(await screen.findByRole('button', { name: 'Renunță' }));
+    await user.click(await screen.findByRole('button', { name: 'Schimbă textul' }));
     expect(screen.queryByRole('region', { name: 'Ce am înțeles' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveValue(rule.prompt_ro);
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveFocus();
     expect(api.createRule).not.toHaveBeenCalled();
+  });
+
+  it('reads the sentence back as four chips, underlining what it understood', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
+    await typeRequest(user);
+    const panel = await screen.findByRole('region', { name: 'Ce am înțeles' });
+    const text = within(panel).getByTestId('rule-text');
+    expect(text).toHaveTextContent(rule.prompt_ro);
+    expect([...text.querySelectorAll('.reader-k')].map((k) => k.textContent)).toEqual([
+      'Anunță ospătarul',
+      'la o masă',
+      'nu a venit nimeni de 1 minut',
+    ]);
+    const chips = within(panel).getByRole('list', { name: 'Părțile regulii' });
+    expect(
+      within(chips)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([
+      'Undeorice masă',
+      'Clientstă 1 min',
+      'Personallipsește 1 min',
+      'Atuncimesaj pe Telegram',
+    ]);
+  });
+
+  it('a chip opens only its own field and the change is what gets saved', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => draft) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" />, api);
+    await typeRequest(user);
+    const staff = await screen.findByRole('button', { name: /Personal/ });
+    await user.click(staff);
+    expect(staff).toHaveAttribute('aria-expanded', 'true');
+    const group = screen.getByRole('group', { name: 'Corectezi: Personal' });
+    const minutes = within(group).getByLabelText('Cât timp (minute)');
+    expect(minutes).toHaveFocus();
+    expect(screen.queryByLabelText('Nume')).not.toBeInTheDocument();
+    await user.clear(minutes);
+    await user.type(minutes, '3');
+    expect(staff).toHaveTextContent('lipsește 3 min');
+    await user.click(within(group).getByRole('button', { name: 'Gata' }));
+    expect(screen.queryByRole('group', { name: 'Corectezi: Personal' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Pornește regula/ }));
+    expect(api.createRule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        all_of: [
+          { kind: 'present', role: 'guest', min_duration_s: 60 },
+          { kind: 'absent', role: 'staff', min_duration_s: 180 },
+        ],
+      }),
+    );
   });
 
   it('shows the Romanian API error', async () => {
@@ -124,6 +189,17 @@ describe('AddCameraForm', () => {
     const sent = { id: 'cam-01', name: 'Sala', source: 'rtsp://cam/1', device: 'edge-01' };
     expect(api.createCamera).toHaveBeenCalledWith(sent);
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining(sent)));
+  });
+
+  it('says next to the field what is wrong, before calling the API', async () => {
+    const user = userEvent.setup();
+    const { api } = renderWithApi(<AddCameraForm />);
+    await user.clear(screen.getByLabelText('Id cameră'));
+    await user.type(screen.getByLabelText('Id cameră'), 'cam 01');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    expect(api.createCamera).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Nume')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Id cameră')).toHaveAccessibleDescription(/Fără spații/);
   });
 });
 
@@ -161,19 +237,162 @@ describe('AlertFeed', () => {
     expect(within(rows[0] as HTMLElement).getByText('Deschisă')).toBeInTheDocument();
     expect(within(rows[0] as HTMLElement).getByText('Masa 2')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('Închisă')).toBeInTheDocument();
-    expect(within(rows[1] as HTMLElement).getByText('rezolvată în 1 min 30 s')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('a durat 1 min 30 s')).toBeInTheDocument();
+    // Only the alert with a snapshot gets one; no grey placeholder for the other.
     const shots = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
-    expect(shots).toHaveLength(2);
+    expect(shots).toHaveLength(1);
     expect(shots[0]).toHaveAttribute('src', 'http://api/api/snapshots/e-2');
-    expect(shots[1]?.tagName).not.toBe('IMG');
     fireEvent.error(shots[0] as HTMLElement);
-    const after = screen.getAllByRole('img', { name: 'Captură cu fețele estompate' });
-    expect(after.map((el) => el.tagName)).not.toContain('IMG');
+    expect(screen.queryByRole('img', { name: 'Captură cu fețele estompate' })).toBeNull();
+  });
+
+  const gone: AlertItem = {
+    key: 'e-9',
+    rule_id: 'r-pahar',
+    camera_id: 'c',
+    zone_id: 'z-1',
+    summary_ro: 'Masa 1: a dispărut un obiect',
+    opened_at: new Date(Date.now() - 30_000).toISOString(),
+    closed_at: null,
+    snapshot: true,
+    snapshot_url: 'http://api/api/snapshots/e-9',
+    before_snapshot_url: 'http://api/api/snapshots/e-9-before',
+    verification: {
+      status: 'confirmed',
+      summary_ro: 'Masa 1: a dispărut paharul de vin',
+      object_ro: 'pahar de vin',
+    },
+  };
+
+  it('shows the AI verdict, its summary and the before/after snapshots', () => {
+    render(<AlertFeed items={[gone]} zoneName={(id) => names[id] ?? id} showSnapshot />);
+    expect(screen.getByText('Confirmat de AI')).toBeInTheDocument();
+    expect(screen.getByText('Masa 1: a dispărut paharul de vin')).toBeInTheDocument();
+    expect(screen.getByText('Înainte')).toBeInTheDocument();
+    expect(screen.getByText('După')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /^Înainte/ })).toHaveAttribute(
+      'src',
+      'http://api/api/snapshots/e-9-before',
+    );
+    expect(screen.getByRole('img', { name: /^După/ })).toHaveAttribute(
+      'src',
+      'http://api/api/snapshots/e-9',
+    );
+  });
+
+  it.each([
+    ['rejected', 'Neconfirmat'],
+    ['pending', 'Se verifică…'],
+  ] as const)('labels a %s verification', (status, label) => {
+    render(
+      <AlertFeed
+        items={[{ ...gone, verification: { status } }]}
+        zoneName={(id) => names[id] ?? id}
+      />,
+    );
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it('looks like a plain alert when the AI check is unavailable', () => {
+    render(
+      <AlertFeed
+        items={[{ ...gone, verification: { status: 'unavailable', summary_ro: 'ignorat' } }]}
+        zoneName={(id) => names[id] ?? id}
+        showSnapshot
+      />,
+    );
+    expect(screen.queryByText(/Confirmat de AI|Neconfirmat|Se verifică/)).toBeNull();
+    expect(screen.queryByText('ignorat')).toBeNull();
+    expect(screen.queryByText('Înainte')).toBeNull();
+    const shots = screen.getAllByRole('img');
+    expect(shots).toHaveLength(1);
+    expect(shots[0]).toHaveAccessibleName('Captură cu fețele estompate');
+    expect(shots[0]).toHaveAttribute('src', 'http://api/api/snapshots/e-9');
   });
 
   it('shows an empty state', () => {
     render(<AlertFeed items={[]} zoneName={(id) => id} />);
     expect(screen.getByText('Nicio alertă încă.')).toBeInTheDocument();
+  });
+
+  it('hero: an open alert large, with snapshot, running clock, rule and optional "Preiau"', async () => {
+    const onAck = vi.fn(async () => undefined);
+    renderWithApi(
+      <AlertFeed
+        variant="hero"
+        items={[items[0] as AlertItem]}
+        zoneName={(id) => names[id] ?? id}
+        showSnapshot
+        ruleName={(id) => (id === 'r' ? 'Masă neservită' : undefined)}
+        onAck={onAck}
+      />,
+    );
+    const card = screen.getByRole('list', { name: 'Alerte deschise' });
+    expect(
+      within(card).getByRole('heading', { name: 'Masa 2: nimeni de la personal' }),
+    ).toBeVisible();
+    expect(within(card).getByText(/regula „Masă neservită”/)).toBeInTheDocument();
+    // The running clock; between 00:00 and 00:59 the opened-at <time> matches too.
+    const clocks = within(card)
+      .getAllByText(/^00:\d\d$/)
+      .filter((el) => el.tagName !== 'TIME');
+    expect(clocks).toHaveLength(1);
+    expect(within(card).getByRole('img', { name: 'Captură cu fețele estompate' })).toHaveAttribute(
+      'src',
+      'http://api/api/snapshots/e-2',
+    );
+    expect(within(card).getByText(/Opțional: colegii văd că vii/)).toBeInTheDocument();
+    await userEvent.click(within(card).getByRole('button', { name: 'Preiau Masa 2' }));
+    expect(onAck).toHaveBeenCalledWith('e-2');
+  });
+
+  it('rows: one line per closed alert with a bar against the rule threshold', () => {
+    const closed = items[1] as AlertItem; // open 90 s
+    const { container } = render(
+      <AlertFeed
+        variant="rows"
+        items={[closed, { ...closed, key: 'e-3', closed_at: '2026-11-06T10:00:30Z' }]}
+        zoneName={(id) => names[id] ?? id}
+        limit={(a) => (a.key === 'e-1' ? { seconds: 60, ofRule: true } : null)}
+      />,
+    );
+    const rows = within(screen.getByRole('list', { name: 'Alerte închise' })).getAllByRole(
+      'listitem',
+    );
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0] as HTMLElement).getByText('Masa 1')).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText('ospătarul a ajuns')).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByText('01:30 ·')).toBeInTheDocument();
+    const bars = container.querySelectorAll('.dur-bar');
+    // Past the 60 s limit: full and coral. No scale for the second row: no bar.
+    expect(bars).toHaveLength(1);
+    expect(bars[0]).toHaveClass('is-over');
+    expect(bars[0]).toHaveAttribute('title', '1 min 30 s din limita regulii de 1 min');
+    expect((bars[0]?.firstChild as HTMLElement).style.width).toBe('100%');
+  });
+
+  it('rows: a fallback scale never reads as over the limit', () => {
+    const closed = items[1] as AlertItem;
+    const { container } = render(
+      <AlertFeed
+        variant="rows"
+        items={[closed]}
+        zoneName={(id) => names[id] ?? id}
+        limit={() => ({ seconds: 180, ofRule: false })}
+      />,
+    );
+    const bar = container.querySelector('.dur-bar');
+    expect(bar).not.toHaveClass('is-over');
+    expect((bar?.firstChild as HTMLElement).style.width).toBe('50%');
+  });
+});
+
+describe('ruleLimitS', () => {
+  it('takes the longest condition duration, null for instant rules', () => {
+    expect(ruleLimitS(rule)).toBe(60);
+    expect(ruleLimitS({ all_of: [{ min_duration_s: 30 }, { min_duration_s: 180 }] })).toBe(180);
+    expect(ruleLimitS({ all_of: [{}] })).toBeNull();
+    expect(ruleLimitS({ all_of: [{ kind: 'object_gone', min_duration_s: 60 }] })).toBeNull();
   });
 });
 
@@ -186,15 +405,18 @@ describe('SuggestionCard', () => {
     reason_ro: 'Se mișcă între mese',
   };
 
-  it('confirms through the API and reports the decision', async () => {
+  it('Live (default card): the same light question, Da/Nu, no raw score', async () => {
     const user = userEvent.setup();
     const onResolved = vi.fn();
     const { api } = renderWithApi(
-      <SuggestionCard suggestion={suggestion} onResolved={onResolved} />,
+      <SuggestionCard suggestion={suggestion} cameraName="Sala" onResolved={onResolved} />,
     );
-    expect(screen.getByRole('heading', { name: 'Pare angajat — confirmi?' })).toBeInTheDocument();
-    expect(screen.getByText(/scor 82%/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Confirmă' }));
+    const card = screen.getByRole('article', { name: 'Persoana asta e din personal?' });
+    expect(card).toHaveClass('suggestion-q', 'suggestion-q-side');
+    expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
+    expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
+    expect(screen.queryByText(/scor|82/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Da, #7 e din personal' }));
     expect(api.confirmSuggestion).toHaveBeenCalledWith('sug-1');
     expect(api.rejectSuggestion).not.toHaveBeenCalled();
     await waitFor(() => expect(onResolved).toHaveBeenCalledWith('sug-1', 'confirmed'));
@@ -203,8 +425,64 @@ describe('SuggestionCard', () => {
   it('rejects through the API', async () => {
     const user = userEvent.setup();
     const { api } = renderWithApi(<SuggestionCard suggestion={suggestion} />);
-    await user.click(screen.getByRole('button', { name: 'Respinge' }));
+    await user.click(screen.getByRole('button', { name: 'Nu, #7 e client' }));
     expect(api.rejectSuggestion).toHaveBeenCalledWith('sug-1');
+  });
+
+  it('asks a Da/Nu question with the blurred person and the reason', async () => {
+    const user = userEvent.setup();
+    const onResolved = vi.fn();
+    const { api } = renderWithApi(
+      <SuggestionCard
+        variant="question"
+        suggestion={suggestion}
+        cameraName="Sala"
+        onResolved={onResolved}
+      />,
+    );
+    expect(
+      screen.getByRole('heading', { name: 'Persoana asta e din personal?' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
+    expect(screen.getByText('Se mișcă între mese · Sala')).toBeInTheDocument();
+    expect(screen.queryByText(/scor/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Nu, #7 e client' }));
+    expect(api.rejectSuggestion).toHaveBeenCalledWith('sug-1');
+    await waitFor(() => expect(onResolved).toHaveBeenCalledWith('sug-1', 'rejected'));
+    expect(screen.getByRole('button', { name: 'Da, #7 e din personal' })).toBeDisabled();
+  });
+
+  it("shows the person's face-blurred photo when the API links one", () => {
+    renderWithApi(
+      <SuggestionCard
+        variant="question"
+        suggestion={{ ...suggestion, snapshot: true, snapshot_url: 'http://api/s/sug-1' }}
+      />,
+    );
+    const photo = screen.getByRole('img', { name: 'Persoana #7, fața estompată' });
+    expect(photo).toHaveAttribute('src', 'http://api/s/sug-1');
+    expect(screen.queryByRole('img', { name: 'Persoana #7, estompată' })).toBeNull();
+  });
+
+  it('falls back to the blurred stand-in when the photo does not load', () => {
+    renderWithApi(
+      <SuggestionCard
+        variant="question"
+        suggestion={{ ...suggestion, snapshot: true, snapshot_url: 'http://api/s/gone' }}
+      />,
+    );
+    fireEvent.error(screen.getByRole('img', { name: 'Persoana #7, fața estompată' }));
+    expect(screen.getByRole('img', { name: 'Persoana #7, estompată' })).toBeInTheDocument();
+  });
+
+  it('shows the photo on the Live card too', () => {
+    renderWithApi(
+      <SuggestionCard suggestion={{ ...suggestion, snapshot_url: 'http://api/s/sug-1' }} />,
+    );
+    expect(screen.getByRole('img', { name: 'Persoana #7, fața estompată' })).toHaveAttribute(
+      'src',
+      'http://api/s/sug-1',
+    );
   });
 });
 
@@ -216,5 +494,36 @@ describe('StaffPhotoUpload', () => {
     await user.upload(screen.getByLabelText('Încarcă poză uniformă'), file);
     expect(api.uploadStaffPhoto).toHaveBeenCalledWith(file);
     expect(await screen.findByText('Poza a fost adăugată ca exemplu.')).toBeInTheDocument();
+  });
+});
+
+describe('RuleComposer examples', () => {
+  const examples = ['Anunță-mă dacă un client ridică mâna', 'Anunță-mă dacă la intrare e coadă'];
+
+  it('a chip fills the text; nothing is translated or saved until "Creează regula"', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi({ draftRuleFromText: vi.fn(async () => ({ rule, explanation_ro: '' })) });
+    renderWithApi(<RuleComposer cameraId="cam-sala" examples={examples} />, api);
+
+    const chips = screen.getByRole('group', { name: 'Exemple' });
+    await user.click(within(chips).getByRole('button', { name: examples[0] }));
+    const input = screen.getByLabelText('Spune-i camerei ce să vadă');
+    expect(input).toHaveValue(examples[0]);
+    expect(input).toHaveFocus();
+    expect(api.draftRuleFromText).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Creează regula' }));
+    expect(api.draftRuleFromText).toHaveBeenCalledWith(examples[0], 'cam-sala');
+    await screen.findByRole('region', { name: 'Ce am înțeles' });
+    expect(api.createRule).not.toHaveBeenCalled();
+  });
+
+  it('a camera without rules shows the examples as a start list', async () => {
+    const user = userEvent.setup();
+    renderWithApi(<RuleComposer cameraId="cam-sala" examples={examples} startHere />);
+    expect(screen.queryByRole('group', { name: 'Exemple' })).not.toBeInTheDocument();
+    const start = screen.getByRole('group', { name: /Pornește de la un exemplu/ });
+    await user.click(within(start).getByRole('button', { name: examples[1] }));
+    expect(screen.getByLabelText('Spune-i camerei ce să vadă')).toHaveValue(examples[1]);
   });
 });

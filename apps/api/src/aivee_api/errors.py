@@ -15,6 +15,21 @@ class DomainError(Exception):
         self.message_ro = message_ro
 
 
+class Unauthenticated(DomainError):
+    status = 401
+    code = "unauthenticated"
+
+
+class Forbidden(DomainError):
+    status = 403
+    code = "forbidden"
+
+
+class RateLimited(DomainError):
+    status = 429
+    code = "rate_limited"
+
+
 class NotFound(DomainError):
     status = 404
     code = "not_found"
@@ -23,6 +38,21 @@ class NotFound(DomainError):
 class Conflict(DomainError):
     status = 409
     code = "conflict"
+
+
+class Gone(DomainError):
+    status = 410
+    code = "gone"
+
+
+class TooLarge(DomainError):
+    status = 413
+    code = "too_large"
+
+
+class UnsupportedType(DomainError):
+    status = 415
+    code = "unsupported_type"
 
 
 class Invalid(DomainError):

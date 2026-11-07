@@ -8,6 +8,8 @@ topic read aivee/#
 topic read $share/ingest/aivee/#
 
 # Edge devices: %u = MQTT username = device id. A device can only touch its own topics.
+# The uploaded-clip runner (MQTT_UPLOAD_USER, e.g. upload-01) is one such device: its
+# username starts with `upload-`, which ingest reads as "never notify staff".
 pattern write aivee/+/%u/status
 pattern write aivee/+/%u/events
 pattern write aivee/+/%u/metrics
@@ -18,3 +20,6 @@ pattern read aivee/+/%u/rules
 pattern read aivee/+/%u/profiles
 pattern read aivee/+/%u/config
 pattern read aivee/+/%u/commands
+# Cloud mode: JPEG frames the API relays from POST /api/ingest/frames to the vision worker
+# that serves the camera (the camera's device = the worker's MQTT user).
+pattern read aivee/+/%u/frames/#

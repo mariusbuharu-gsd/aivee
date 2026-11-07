@@ -1,0 +1,152 @@
+/* Dispozitive: health, source and the offline checklist live on each camera card. */
+.device-card .side-head {
+  margin-bottom: -6px;
+}
+.device-sub {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+}
+.device-gone {
+  color: var(--danger);
+}
+
+/* The camera's latest blurred still, edge to edge at the top of the card. */
+.device-thumb {
+  position: relative;
+  margin: -14px -16px 0;
+  aspect-ratio: 16 / 9;
+  max-width: none;
+  overflow: hidden;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-soft);
+}
+.device-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.device-thumb.is-offline img {
+  filter: grayscale(1) brightness(0.8);
+}
+.device-thumb-age {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.72rem;
+}
+.device-thumb-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+}
+.device-card > .btn {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.device-tech {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.device-tech[open] > summary {
+  margin-bottom: 2px;
+}
+.device-health {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.device-health > div {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.device-health dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.device-health dd {
+  margin: 2px 0 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.device-source {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.device-offline {
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.device-offline.is-stale {
+  border-left-color: var(--warn);
+}
+.device-offline-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.device-offline ol {
+  margin: 0;
+  padding-left: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+.device-offline p {
+  margin: 0;
+}
+.device-offline .btn {
+  align-self: flex-start;
+}
+
+.device-system-tech {
+  margin-top: var(--gap);
+}
+.device-system {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.phone-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  text-align: center;
+}
+.phone-qr .qr {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+  background: #fff;
+}
+.phone-qr a {
+  word-break: break-all;
+}

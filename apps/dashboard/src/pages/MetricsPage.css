@@ -1,0 +1,328 @@
+/* Metrici: headline, small tiles, the daily wait against a target, the folded glossary. */
+.service-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.service-headline {
+  margin: 0;
+  max-width: 46ch;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(1.25rem, 1rem + 1.1vw, 1.65rem);
+  line-height: 1.3;
+  text-wrap: balance;
+  color: var(--text);
+}
+.service-headline strong {
+  font-weight: 600;
+  color: var(--coral-strong);
+  white-space: nowrap;
+}
+
+.metrics-page .service-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.metrics-page .service-cell {
+  padding: 10px 14px;
+  gap: 2px;
+}
+.metrics-page .service-cell dt {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+/* Figtree with tabular figures: a monospace space made "40 s" read as "40  s". */
+.metrics-page .service-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta {
+  font-weight: 600;
+  color: var(--muted);
+}
+.delta.is-better {
+  color: var(--ok);
+}
+.delta.is-worse {
+  color: var(--coral-strong);
+}
+
+/* Daily wait */
+.trend {
+  margin: 4px 0 0;
+  gap: 10px;
+}
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.trend-plot {
+  position: relative;
+  height: 170px;
+  margin-top: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.trend-bars,
+.trend-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.trend-bars {
+  height: 100%;
+}
+.trend-bars li {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+}
+.trend-bar {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(32px, 72%);
+  border-radius: 6px 6px 2px 2px;
+  background: var(--ink);
+}
+.trend-bars .is-under .trend-bar {
+  background: var(--border);
+}
+.trend-bars .is-slowest .trend-bar {
+  background: var(--coral);
+}
+.trend-value {
+  position: absolute;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-2);
+}
+.trend-bars .is-over .trend-value,
+.trend-bars .is-slowest .trend-value {
+  color: var(--text);
+  font-weight: 700;
+}
+.trend-target {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  border-top: 2px dashed var(--muted-2);
+  pointer-events: none;
+}
+.trend-legend .sw.is-target {
+  width: 18px;
+  height: 0;
+  border-radius: 0;
+  background: none;
+  border-top: 2px dashed var(--muted-2);
+}
+.trend-legend strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+.trend-days li {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trend-days .is-today {
+  color: var(--text);
+  font-weight: 700;
+}
+.trend-legend {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+}
+.trend-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.trend-legend .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--ink);
+}
+.trend-legend .sw.is-under {
+  background: var(--border);
+}
+.trend-legend .sw.is-slowest {
+  background: var(--coral);
+}
+
+/* „Setează ținta” popover */
+.target-wrap {
+  position: relative;
+  margin-left: auto;
+}
+.trend-legend .target-btn {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.target-pop {
+  position: absolute;
+  z-index: 30;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: min(340px, calc(100vw - 32px));
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-pop);
+  font-size: 0.88rem;
+}
+.target-q {
+  color: var(--text);
+  font-weight: 600;
+}
+.target-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.target-fields .field {
+  flex: 1;
+}
+.target-fields .input {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.target-colon {
+  padding-bottom: 8px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* „Când se așteaptă”: weekday × hour, light to coral by alert count */
+.heat {
+  margin: 0;
+  gap: 10px;
+}
+.heat-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.heat-grid {
+  border-collapse: separate;
+  border-spacing: 3px;
+  margin-inline: -3px;
+}
+.heat-grid th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+.heat-grid thead th {
+  text-align: center;
+  padding-bottom: 2px;
+}
+.heat-grid tbody th {
+  padding-right: 6px;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.heat-grid td {
+  min-width: 30px;
+  height: 24px;
+  border-radius: 4px;
+}
+.heat-grid thead td {
+  height: auto;
+}
+.lv-0 {
+  background: var(--surface-2);
+}
+.lv-1 {
+  background: var(--coral-wash);
+  box-shadow: inset 0 0 0 1px var(--coral-tint);
+}
+.lv-2 {
+  background: var(--coral-line);
+}
+.lv-3 {
+  background: color-mix(in srgb, var(--coral) 70%, var(--coral-line));
+}
+.lv-4 {
+  background: var(--coral-strong);
+}
+.heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.heat-sw {
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+}
+.heat-legend .heat-sw:first-of-type {
+  margin-left: 4px;
+}
+.heat-legend .heat-sw:last-of-type {
+  margin-right: 4px;
+}
+
+/* "Cum citești cifrele", folded */
+.metrics-page .terms > summary {
+  color: var(--text);
+  font-weight: 600;
+}
+.metrics-page .terms:not([open]) {
+  padding-block: 6px;
+}
+
+@media (max-width: 560px) {
+  .metrics-page .service-hint {
+    display: none;
+  }
+  .metrics-page .service-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .metrics-page .service-cell {
+    padding: 8px 10px;
+  }
+  .trend-bars,
+  .trend-days {
+    gap: 4px;
+  }
+  .trend-value {
+    font-size: 0.64rem;
+  }
+}

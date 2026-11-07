@@ -1,0 +1,287 @@
+/* Rule composer (Reguli): the field is the page's main piece; after a draft, the logo eyes read
+   the sentence and the rule drops into four chips. Same look as the site's reader. */
+
+.composer {
+  background: var(--surface);
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.composer-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.composer-label {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+
+.composer-field {
+  position: relative;
+}
+.composer-input {
+  display: block;
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+  padding: 14px 64px 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font: 600 clamp(1.05rem, 1.6vw, 1.25rem) / 1.45 var(--display);
+}
+.composer-input::placeholder {
+  color: var(--muted-2);
+  font-weight: 500;
+}
+.composer-input:focus {
+  border-color: var(--ink);
+  outline: none;
+  background: var(--surface);
+}
+.composer-field.is-invalid .composer-input {
+  border-color: var(--danger);
+}
+.composer-mic {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  background: var(--surface);
+}
+
+.composer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.composer-foot > p {
+  margin: 0;
+  flex: 1 1 260px;
+}
+.composer-foot .actions {
+  margin: 0;
+}
+/* Keyboard shortcuts mean nothing on a touch screen or a phone. */
+@media (pointer: coarse), (max-width: 760px) {
+  .composer-keys {
+    display: none;
+  }
+}
+.composer-hint {
+  color: var(--danger);
+  font-weight: 600;
+}
+.composer-go {
+  min-width: 170px;
+}
+
+/* ---------- Draft: what AiVee understood ---------- */
+.understood {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.understood-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--coral-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.understood-title:focus {
+  outline: none;
+}
+.understood-name {
+  margin: 0;
+}
+.understood > p {
+  margin: 0;
+}
+
+.reader {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.reader-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.reader-eyes {
+  flex: none;
+  width: 64px;
+  height: auto;
+  margin-top: 4px;
+  overflow: visible;
+  color: var(--ink);
+}
+.reader-eyes .ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 7;
+}
+.reader-eyes .pupil {
+  fill: var(--coral);
+  transition: transform 0.35s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.reader-text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font: 600 clamp(1.1rem, 1.8vw, 1.4rem) / 1.45 var(--display);
+  color: var(--muted-2);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.reader-k {
+  color: var(--text);
+  padding-bottom: 2px;
+  background: linear-gradient(var(--coral), var(--coral)) left 100% / 0% 3px no-repeat;
+  transition: background-size 0.45s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.reader-k.is-hit {
+  background-size: 100% 3px;
+}
+
+.reader-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.reader-chip {
+  width: 100%;
+  height: 100%;
+  min-height: var(--tap);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    opacity 0.3s,
+    transform 0.3s,
+    border-color 0.15s;
+}
+.reader-chip small {
+  font: 700 0.68rem var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.reader-chip span {
+  font-weight: 700;
+}
+.reader-chip:hover,
+.reader-chip.is-open {
+  border-color: var(--ink);
+}
+.reader-chip.is-open {
+  box-shadow: inset 0 -3px 0 var(--coral);
+}
+.reader-chip:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.reader-chip.is-then {
+  background: var(--night);
+  border-color: var(--night);
+  color: var(--night-text);
+}
+.reader-chip.is-then small {
+  color: var(--night-muted);
+}
+.reader-chip.is-then:hover,
+.reader-chip.is-then.is-open {
+  border-color: var(--coral);
+}
+.reader-chip.is-wait {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.chip-editor {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+.chip-editor legend {
+  padding: 0 4px;
+  font: 700 0.72rem var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.chip-editor .field {
+  flex: 0 1 220px;
+}
+.chip-editor > p {
+  margin: 0;
+  flex: 1 1 100%;
+}
+.chip-editor-done {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .composer {
+    padding: 14px;
+  }
+  .reader-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .reader-eyes {
+    width: 48px;
+  }
+  .composer-go,
+  .composer-foot .actions {
+    flex: 1 1 100%;
+  }
+  .composer-foot .actions {
+    flex-wrap: wrap;
+  }
+  .composer-foot .actions .btn {
+    flex: 1 1 0;
+  }
+  .composer-foot .actions .btn-accent {
+    flex-basis: 100%;
+    order: -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-eyes .pupil,
+  .reader-k,
+  .reader-chip {
+    transition: none;
+  }
+}

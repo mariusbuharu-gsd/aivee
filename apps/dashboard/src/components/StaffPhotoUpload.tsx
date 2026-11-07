@@ -1,4 +1,5 @@
 import { useId, useState, type ChangeEvent } from 'react';
+import { Link } from 'react-router';
 import { useApi } from '../api/context';
 import { Icon } from './Icon';
 
@@ -26,7 +27,7 @@ export function StaffPhotoUpload() {
   }
 
   return (
-    <div className="upload">
+    <div id="poze-personal" className="upload">
       <input
         id={id}
         className="visually-hidden"
@@ -40,6 +41,10 @@ export function StaffPhotoUpload() {
       </label>
       <p className="muted small">
         2–3 poze cu tricoul sau șorțul personalului. Fețele nu sunt folosite.
+      </p>
+      <p className="small">
+        Mai rapid: <Link to="/dispozitive">👔 Adaugă angajat</Link> de la o cameră, în 20 de
+        secunde.
       </p>
       {status && (
         <p className={error ? 'error' : 'small'} role="status">

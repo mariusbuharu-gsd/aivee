@@ -5,6 +5,9 @@ group/supergroup chat and writes TELEGRAM_CHAT_ID back into .env. Never prints t
 Then sends a test message to that chat.
 
 Usage: make telegram-id
+
+Prefer "Conectează Telegram" in the dashboard (Locații). While ingest runs its link poller
+(TELEGRAM_POLL, default on), this script's getUpdates conflicts with it and finds nothing.
 """
 
 import json

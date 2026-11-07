@@ -6,7 +6,13 @@ from typing import Any
 import pytest
 from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import Detections
-from aivee_contracts.events import AlertEvent, DeviceStatus, Metrics, StaffSuggestion
+from aivee_contracts.events import (
+    AlertEvent,
+    DeviceStatus,
+    Metrics,
+    ObjectChange,
+    StaffSuggestion,
+)
 from aivee_contracts.geometry import CameraConfig, DeviceConfig, Zone
 from aivee_contracts.rules import RuleSet
 from aivee_edge.adapters.mqtt import MqttEdgeClient
@@ -48,6 +54,26 @@ def test_snapshot_is_published_before_its_event(client: Any) -> None:
     assert [t for t, _, _ in sent] == [edge.topics.snapshot("e1"), edge.topics.events]
     assert all(qos == 1 for _, _, qos in sent)
     assert AlertEvent.model_validate_json(sent[1][1]).snapshot is True
+
+
+def test_object_change_publishes_the_before_snapshot_too(client: Any) -> None:
+    edge, sent = client
+    event = _event().model_copy(update={"object_change": ObjectChange(objects=["cup"])})
+    edge.publish_alert(event, b"after", b"before")
+    assert [t for t, _, _ in sent] == [
+        edge.topics.snapshot("e1"),
+        edge.topics.snapshot_before("e1"),
+        edge.topics.events,
+    ]
+    published = AlertEvent.model_validate_json(sent[2][1])
+    assert published.snapshot is True
+    assert published.object_change is not None and published.object_change.before_snapshot
+
+
+def test_before_snapshot_is_ignored_without_an_object_change(client: Any) -> None:
+    edge, sent = client
+    edge.publish_alert(_event(), b"after", b"before")
+    assert [t for t, _, _ in sent] == [edge.topics.snapshot("e1"), edge.topics.events]
 
 
 def test_alert_without_snapshot_publishes_only_the_event(client: Any) -> None:
@@ -198,3 +224,52 @@ def test_commands_are_queued_until_the_pipeline_takes_them() -> None:
     edge._on_message(edge._client, None, _command_msg(edge, b"{bad"))  # ignored
     assert edge.take_commands() == [cmd]
     assert edge.take_commands() == []
+
+
+# -- transport (remote edge over wss) ---------------------------------------------------------
+
+
+def test_default_transport_is_plain_tcp_without_tls() -> None:
+    edge = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    assert edge._client._transport == "tcp"
+    assert edge._client._ssl_context is None
+
+
+def test_websockets_transport_uses_the_given_path() -> None:
+    edge = MqttEdgeClient(
+        "mqtt.example.com",
+        80,
+        "edge-coleg-1",
+        "pw",
+        "s1",
+        "edge-coleg-1",
+        transport="websockets",
+        ws_path="/broker",
+    )
+    assert edge._client._transport == "websockets"
+    assert edge._client._websocket_path == "/broker"
+    assert edge._client._ssl_context is None
+
+
+def test_tls_sets_a_verifying_ssl_context() -> None:
+    import ssl
+
+    edge = MqttEdgeClient(
+        "mqtt.example.com",
+        443,
+        "edge-coleg-1",
+        "pw",
+        "s1",
+        "edge-coleg-1",
+        transport="websockets",
+        tls=True,
+    )
+    ctx = edge._client._ssl_context
+    assert ctx is not None
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+
+
+def test_unknown_transport_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        MqttEdgeClient("h", 1, "u", "p", "s", "d", transport="carrier-pigeon")

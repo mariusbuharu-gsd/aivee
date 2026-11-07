@@ -1,25 +1,52 @@
 // In-browser stand-in for the backend: realistic demo data plus a scripted timeline in which
 // alerts open and close, and a "looks like staff" suggestion appears. Used when VITE_API_URL
 // is unset, so the dashboard can be built and demoed before the API exists.
-import type {
-  AlertEvent,
-  Condition,
-  DeviceStatus,
-  Rule,
-  StaffSuggestion,
-  Zone,
-} from '../contracts';
+import type { AlertEvent, Condition, Detections, Rule, Zone } from '../contracts';
+import { MockAccounts } from './mockAccounts';
 import {
   ApiError,
+  MAX_VIDEO_BYTES,
+  VIDEO_TYPES,
+  type AlertPageQuery,
   type AlertView,
   type ApiClient,
+  type CameraFrame,
   type CameraView,
+  type DeviceView,
+  type SuggestionView,
   type DashboardMetrics,
   type Detection,
+  type AlertCase,
+  type AuditQuery,
+  type Location,
+  type CameraPatch,
   type NewCamera,
+  type SavedZones,
+  type StaffCapture,
+  type StaffCaptureConfirm,
+  type StaffEnrolResult,
+  type StaffProfile,
+  type RulePatch,
+  type RegisterInput,
+  type Role,
   type RuleDraft,
+  type RuleStats,
   type Unsubscribe,
+  type NewVideoUpload,
+  type VideoAlert,
+  type VideoUpload,
 } from './client';
+import { fromContract } from '../live/detections';
+
+/** A person-shaped placeholder thumbnail for the mock capture (no real camera here). */
+function silhouette(hue: number): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="200" viewBox="0 0 120 200">` +
+    `<rect width="120" height="200" fill="hsl(${hue} 20% 88%)"/>` +
+    `<circle cx="60" cy="45" r="22" fill="hsl(${hue} 15% 60%)"/>` +
+    `<path d="M22 200V120a38 38 0 0 1 76 0v80z" fill="hsl(${hue} 45% 35%)"/></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const wait = (ms: number) =>
@@ -121,10 +148,161 @@ function seedRules(): Rule[] {
       cooldown_s: 60,
       enabled: true,
     },
+    {
+      id: 'r-pahar',
+      camera_id: 'cam-sala',
+      name: 'Obiect dispărut',
+      prompt_ro: 'Spune-mi dacă dispare un pahar de pe o masă',
+      zone_tag: 'table',
+      all_of: [{ kind: 'object_gone', role: 'any', objects: ['wine glass'], min_duration_s: 60 }],
+      action: { type: 'push', target: null },
+      cooldown_s: 300,
+      enabled: true,
+    },
+    {
+      id: 'r-foc',
+      camera_id: 'cam-sala',
+      name: 'Foc în imagine',
+      prompt_ro: 'dacă e foc',
+      zone_tag: 'anywhere',
+      all_of: [VISUAL_FIRE],
+      action: { type: 'telegram', target: null },
+      cooldown_s: 120,
+      enabled: true,
+    },
+    {
+      id: 'r-caine',
+      camera_id: 'cam-sala',
+      name: 'Câine în local',
+      prompt_ro: 'dacă intră un câine',
+      zone_tag: 'anywhere',
+      all_of: [
+        {
+          kind: 'object_present',
+          role: 'any',
+          objects: ['dog'],
+          min_duration_s: 2,
+          label_ro: 'câine',
+        },
+      ],
+      action: { type: 'telegram', target: null },
+      cooldown_s: 120,
+      enabled: true,
+    },
   ];
 }
 
-function seedAlerts(): AlertEvent[] {
+/**
+ * The translator's visual condition for "dacă e foc" after the API's draft check: small-flame
+ * positives added, no person prompts in `negative` (they hid a lighter held in a hand).
+ */
+const VISUAL_FIRE: Condition = {
+  kind: 'visual',
+  role: 'any',
+  min_duration_s: 3,
+  positive: [
+    'a photo of fire',
+    'flames',
+    'a burning fire',
+    'a lighter with a flame',
+    'a small open flame',
+    'a hand holding a lit lighter',
+  ],
+  negative: ['a photo of a room', 'a blurry photo', 'a photo of a normal restaurant room'],
+  threshold: 0.5,
+  crop: 'frame',
+  label_ro: 'foc',
+};
+
+const PRESENT_RO: [RegExp, string, string][] = [
+  [/(^|[^a-zăâîșț])urs/, 'bear', 'urs'],
+  [/c[aâ]ine/, 'dog', 'câine'],
+  [/pisic/, 'cat', 'pisică'],
+  [/cu[tț]it/, 'knife', 'cuțit'],
+  [/rucsac/, 'backpack', 'rucsac'],
+];
+
+/**
+ * Stand-in snapshots for the mock (the real ones are face-blurred JPEGs from the API): a table
+ * seen from above, with or without the wine glass. Colours are the brand's night tokens.
+ */
+function tableSketch(withGlass: boolean): string {
+  const glass = withGlass
+    ? '<circle cx="104" cy="44" r="9" fill="none" stroke="#7dd3fc" stroke-width="3"/>'
+    : '';
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90">' +
+    '<rect width="160" height="90" fill="#1b1d22"/>' +
+    '<ellipse cx="80" cy="47" rx="56" ry="28" fill="#23262d" stroke="#e6e8ec" stroke-width="2"/>' +
+    '<circle cx="58" cy="48" r="11" fill="none" stroke="#a3a9b4" stroke-width="2"/>' +
+    glass +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/** Alerts of the seeded rules on the 6 days before today, oldest first (today comes from the feed). */
+const RULE_HISTORY: Record<string, number[]> = {
+  'r-neservit': [3, 5, 2, 4, 6, 3],
+  'r-mana': [1, 2, 0, 3, 1, 2],
+  'r-pahar': [0, 0, 1, 0, 0, 1],
+};
+
+/** Cameras of the locations the mock does not serve cameras for (only `demo` has real ones). */
+const OTHER_CAMERAS: Record<string, { total: number; online: number }> = {
+  centru: { total: 2, online: 1 },
+};
+
+const utcDay = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);
+
+/**
+ * Stand-in for the edge's face-blurred person crop: a silhouette in the waiter's dark-red
+ * shirt, the head a plain blurred disc. Nothing in it could be a real face.
+ */
+function personSketch(): string {
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 80">' +
+    '<defs><filter id="b"><feGaussianBlur stdDeviation="3"/></filter></defs>' +
+    '<rect width="60" height="80" fill="#1b1d22"/>' +
+    '<path d="M8 80 C10 52 18 44 30 44 C42 44 50 52 52 80 Z" fill="#7a1f2b"/>' +
+    '<circle cx="30" cy="27" r="12" fill="#a3a9b4" filter="url(#b)"/>' +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Stand-in camera still for the mock (the real one is the camera's latest face-blurred JPEG):
+ * the room in 16:9, each table drawn where its zone is, so zones line up when drawn over it.
+ */
+export function roomSketch(zones: Zone[]): string {
+  const W = 320;
+  const H = 180;
+  const shapes = zones.map((z) => {
+    const xs = z.polygon.map((p) => p[0] * W);
+    const ys = z.polygon.map((p) => p[1] * H);
+    const [x, y] = [Math.min(...xs), Math.min(...ys)];
+    const [w, h] = [Math.max(...xs) - x, Math.max(...ys) - y];
+    const r = (v: number) => v.toFixed(1);
+    if (z.tag === 'entrance') {
+      return `<rect x="${r(x + w * 0.2)}" y="${r(y)}" width="${r(w * 0.6)}" height="${r(h)}" fill="#2b2f37" stroke="#4a505c" stroke-width="2"/>`;
+    }
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    return (
+      `<ellipse cx="${r(cx)}" cy="${r(cy)}" rx="${r(w * 0.36)}" ry="${r(h * 0.3)}" fill="#2a2d34" stroke="#8a909c" stroke-width="1.5"/>` +
+      `<circle cx="${r(cx - w * 0.45)}" cy="${r(cy)}" r="${r(h * 0.12)}" fill="#33363e"/>` +
+      `<circle cx="${r(cx + w * 0.45)}" cy="${r(cy)}" r="${r(h * 0.12)}" fill="#33363e"/>`
+    );
+  });
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}">` +
+    `<rect width="${W}" height="${H}" fill="#1b1d22"/>` +
+    `<path d="M0 ${H * 0.36} L${W} ${H * 0.3}" stroke="#262930" stroke-width="2"/>` +
+    shapes.join('') +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function seedAlerts(): AlertView[] {
   const ev = (
     id: string,
     rule: string,
@@ -147,8 +325,123 @@ function seedAlerts(): AlertEvent[] {
     ev('e-2', 'r-neservit', 'z-masa-1', 'closed', 46, 'Masa 1: ospătarul a ajuns'),
     ev('e-3', 'r-mana', 'z-masa-2', 'opened', 21, 'Masa 2: un client a ridicat mâna'),
     ev('e-4', 'r-mana', 'z-masa-2', 'closed', 20, 'Masa 2: clientul a fost servit'),
+    // An object disappeared from a table, confirmed by the AI check (before/after snapshots).
+    // Closed, so the open alerts of the demo timeline stay the first "Preiau" on the page.
+    {
+      ...ev('e-5', 'r-pahar', 'z-masa-1', 'opened', 9, 'Masa 1: a dispărut paharul de vin'),
+      snapshot_url: tableSketch(false),
+      before_snapshot_url: tableSketch(true),
+      verification: {
+        status: 'confirmed',
+        summary_ro: 'Masa 1: a dispărut paharul de vin',
+        object_ro: 'pahar de vin',
+      },
+    },
+    ev('e-6', 'r-pahar', 'z-masa-1', 'closed', 7, 'Masa 1: masa a fost verificată'),
+    ...seedEarlierShift(ev),
   ];
 }
+
+/**
+ * A busy service earlier today: 30 closed alerts between 1 h and about 6 h ago, so Alerte has
+ * more than its first page (20) and the events need more than one API page (50).
+ */
+function seedEarlierShift(
+  ev: (
+    id: string,
+    rule: string,
+    zone: string,
+    state: AlertEvent['state'],
+    ago: number,
+    summary: string,
+  ) => AlertEvent,
+): AlertEvent[] {
+  const out: AlertEvent[] = [];
+  for (let i = 0; i < 30; i++) {
+    const zone = i % 2 === 0 ? 'z-masa-1' : 'z-masa-2';
+    const table = zone === 'z-masa-1' ? 'Masa 1' : 'Masa 2';
+    const hand = i % 3 === 0;
+    const opened = 60 + i * 11;
+    // Waits of 1–4 min, a few past the 1 min threshold of r-neservit.
+    const lasted = 1 + (i % 4);
+    out.push(
+      hand
+        ? ev(`e-s${i}`, 'r-mana', zone, 'opened', opened, `${table}: un client a ridicat mâna`)
+        : ev(`e-s${i}`, 'r-neservit', zone, 'opened', opened, `${table}: nimeni de la personal`),
+      ev(
+        `e-s${i}c`,
+        hand ? 'r-mana' : 'r-neservit',
+        zone,
+        'closed',
+        opened - lasted,
+        `${table}: servită`,
+      ),
+    );
+  }
+  return out;
+}
+
+const DEMO_VIDEO = 'a1b2c3d4';
+
+/** One analysed clip so the "Analiză video" page has something to show without an API. */
+function seedVideos(): { upload: VideoUpload; alerts: VideoAlert[] }[] {
+  const alert = (
+    n: number,
+    zone: [string, string],
+    summary: string,
+    at: number,
+    arrived: number | null,
+    closed: number,
+    reason: string | null = null,
+  ): VideoAlert => ({
+    event_id: `${DEMO_VIDEO}-e${n}`,
+    zone_id: zone[0],
+    zone_name: zone[1],
+    summary_ro: summary,
+    state: 'closed',
+    at_s: at,
+    arrived_at_s: arrived,
+    closed_at_s: closed,
+    wait_s: (arrived ?? closed) - at,
+    closed_reason: reason,
+    snapshot_url: null,
+  });
+  const masa1: [string, string] = ['z-masa-1', 'Masa 1'];
+  const masa2: [string, string] = ['z-masa-2', 'Masa 2'];
+  const alerts = [
+    alert(1, masa2, 'Masa 2: neservită de 1 min', 12, 41, 43),
+    alert(2, ['z-intrare', 'Intrare'], 'Intrare: 3 clienți așteaptă', 38, null, 50),
+    alert(3, masa1, 'Masa 1: un client a ridicat mâna', 61, 70, 72),
+    alert(4, masa1, 'Masa 1: neservită de 1 min', 80, null, 95, 'video_end'),
+  ];
+  return [
+    {
+      upload: {
+        id: DEMO_VIDEO,
+        location_id: 'demo',
+        camera_id: `video-${DEMO_VIDEO}`,
+        source_camera_id: 'cam-sala',
+        filename: 'sala-1.mp4',
+        size_bytes: 48_234_496,
+        rotate: 0,
+        status: 'done',
+        progress: 1,
+        duration_s: 95,
+        events: alerts.length,
+        error_ro: null,
+        created_at: minutesAgo(90),
+        started_at: minutesAgo(90),
+        finished_at: minutesAgo(88),
+        created_by: { id: 'u-manager', name: 'Mihai Ionescu' },
+      },
+      alerts,
+    },
+  ];
+}
+
+/** A new mock upload waits this long, then "analyses" for VIDEO_RUN_MS. */
+const VIDEO_QUEUE_MS = 1_500;
+const VIDEO_RUN_MS = 6_000;
 
 /** Very small Romanian keyword parser so the mock returns a plausible rule for any request. */
 export function mockRuleFromText(text: string, cameraId: string): Rule {
@@ -161,7 +454,19 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     { kind: 'present', role: 'guest', min_duration_s: seconds },
     { kind: 'absent', role: 'staff', min_duration_s: seconds },
   ];
-  if (/m[aâ]n[aă]|ridic/.test(t)) {
+  const present = PRESENT_RO.find(([re]) => re.test(t));
+  if (present) {
+    const [, coco, ro] = present;
+    name = `${ro.charAt(0).toLocaleUpperCase('ro')}${ro.slice(1)} în imagine`;
+    zoneTag = 'anywhere';
+    allOf = [
+      { kind: 'object_present', role: 'any', objects: [coco], min_duration_s: 2, label_ro: ro },
+    ];
+  } else if (/(^|[^a-zăâîșț])foc|incendi|fl[aă]c[aă]r/.test(t)) {
+    name = 'Foc în imagine';
+    zoneTag = 'anywhere';
+    allOf = [VISUAL_FIRE];
+  } else if (/m[aâ]n[aă]|ridic/.test(t)) {
     name = 'Clientul cheamă';
     allOf = [{ kind: 'pose', role: 'guest', pose: 'raised_hand' }];
   } else if (/coad|intrare|u[sș]/.test(t)) {
@@ -171,6 +476,16 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     allOf = [
       { kind: 'count', role: 'guest', min_count: Math.max(1, n) },
       { kind: 'absent', role: 'staff', min_duration_s: 0 },
+    ];
+  } else if (/dispar|dispăr|lipse[sș]te|ia cineva/.test(t) && /pahar|sticl|cea[sș]c/.test(t)) {
+    name = 'A dispărut un obiect';
+    allOf = [
+      {
+        kind: 'object_gone',
+        role: 'any',
+        objects: /vin/.test(t) ? ['wine glass'] : ['wine glass', 'cup'],
+        min_duration_s: 60,
+      },
     ];
   } else if (/debaras|pahar|farfur|sticl|strâns|strans/.test(t)) {
     name = 'Masă nedebarasată';
@@ -191,7 +506,7 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
     zone_tag: zoneTag,
     all_of: allOf,
     action: { type: 'telegram', target: null },
-    cooldown_s: 300,
+    cooldown_s: zoneTag === 'anywhere' ? 120 : 300,
     enabled: true,
   };
 }
@@ -199,6 +514,12 @@ export function mockRuleFromText(text: string, cameraId: string): Rule {
 /** Stand-in for the translator's `explanation_ro`: what the rule watches, in one sentence. */
 function mockExplanation(rule: Rule): string {
   const c = rule.all_of[0];
+  if (c.kind === 'visual') {
+    return `Vă anunț dacă se vede ${c.label_ro || 'situația'} oriunde în imagine cel puțin ${c.min_duration_s ?? 0} secunde; fiecare alertă e verificată încă o dată pe imagine înainte să fie trimisă.`;
+  }
+  if (c.kind === 'object_present') {
+    return `Vă anunț dacă apare un ${c.label_ro || 'obiect'} oriunde în imagine cel puțin ${c.min_duration_s ?? 0} secunde.`;
+  }
   if (c.kind === 'pose') return 'Vă anunț când un client ridică mâna la o masă.';
   if (c.kind === 'count') {
     return `Vă anunț când la intrare sunt cel puțin ${c.min_count ?? 1} clienți și nu e nimeni de la personal.`;
@@ -242,13 +563,17 @@ export class MockApi implements ApiClient {
   readonly kind = 'mock';
   private cameras = seedCameras();
   private rules = seedRules();
-  private alerts = seedAlerts();
-  private suggestions: StaffSuggestion[] = [];
+  private alerts: AlertView[] = seedAlerts();
+  private suggestions: SuggestionView[] = [];
+  private videos = seedVideos();
+  private staffProfiles: StaffProfile[] = [];
   private resolved = new Set<string>();
   private alertSubs = new Set<(e: AlertView) => void>();
-  private suggestionSubs = new Set<(s: StaffSuggestion) => void>();
+  private suggestionSubs = new Set<(s: SuggestionView) => void>();
   private timers: ReturnType<typeof setTimeout>[] = [];
   private readonly latency: number;
+  /** When each offline device went away (as the API's `last_seen`): 14 min before startup. */
+  private readonly offlineSince = minutesAgo(14);
 
   /** `latencyMs` simulates network delay; `autoplay` starts the demo timeline. */
   constructor(opts: { latencyMs?: number; autoplay?: boolean } = {}) {
@@ -272,7 +597,7 @@ export class MockApi implements ApiClient {
   }
 
   emitAlert(ruleId: string, zoneId: string, state: AlertEvent['state'], summary: string) {
-    const event: AlertEvent = {
+    const event: AlertView = {
       event_id: uid('e'),
       rule_id: ruleId,
       camera_id: 'cam-sala',
@@ -281,6 +606,8 @@ export class MockApi implements ApiClient {
       at: new Date().toISOString(),
       summary_ro: summary,
       snapshot: true,
+      // A stand-in snapshot on open, so the Alerte cards show one as with the real API.
+      ...(state === 'opened' ? { snapshot_url: tableSketch(true) } : {}),
     };
     this.alerts.push(event);
     this.alertSubs.forEach((cb) => cb(event));
@@ -289,12 +616,14 @@ export class MockApi implements ApiClient {
   emitSuggestion() {
     const id = 'sug-track-7';
     if (this.resolved.has(id) || this.suggestions.some((s) => s.suggestion_id === id)) return;
-    const s: StaffSuggestion = {
+    const s: SuggestionView = {
       suggestion_id: id,
       camera_id: 'cam-sala',
       track_id: 7,
       staff_score: 0.82,
       reason_ro: 'Se mișcă între mese, a vizitat 4 mese în 3 minute și stă rar pe loc.',
+      snapshot: true,
+      snapshot_url: personSketch(),
     };
     this.suggestions.push(s);
     this.suggestionSubs.forEach((cb) => cb(s));
@@ -304,26 +633,82 @@ export class MockApi implements ApiClient {
     return this.delay(this.cameras);
   }
 
-  listDevices(): Promise<DeviceStatus[]> {
+  listDevices(): Promise<DeviceView[]> {
     return this.delay(
       this.cameras.map((c) => ({
         device: c.device,
         state: c.online ? 'online' : 'offline',
         version: '0.1.0',
         cameras: [c.id],
+        site: 'demo',
+        // Online edges send metrics every ~5 s, so the last one is a couple of seconds old.
+        last_seen: c.online ? new Date(Date.now() - 2_000).toISOString() : this.offlineSince,
       })),
     );
   }
 
-  async saveZones(cameraId: string, zones: Zone[]) {
+  /** No connector in mock mode: the live view keeps its placeholder. */
+  liveMjpegUrl(): string | null {
+    return null;
+  }
+
+  /** Frames from the phone page go nowhere in mock mode; the camera must exist. */
+  async pushFrame(cameraId: string): Promise<void> {
+    await wait(this.latency);
+    if (!this.cameras.some((c) => c.id === cameraId)) {
+      throw new ApiError('Camera nu există.', 'not_found', 404);
+    }
+  }
+
+  async captureFrame(cameraId: string): Promise<CameraFrame> {
+    await wait(this.latency);
+    const cam = this.cameras.find((c) => c.id === cameraId);
+    if (!cam) throw new ApiError('Camera nu există.', 'not_found', 404);
+    return {
+      url: roomSketch(cam.zones ?? []),
+      at: cam.online ? new Date(Date.now() - 20_000).toISOString() : this.offlineSince,
+      release: () => undefined,
+    };
+  }
+
+  async saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones> {
     const cam = this.cameras.find((c) => c.id === cameraId);
     if (!cam) throw new Error(`Camera necunoscută: ${cameraId}`);
     cam.zones = structuredClone(zones);
-    return this.delay(zones);
+    return this.delay({ zones, warnings_ro: overlapWarnings(zones) });
+  }
+
+  async deleteCamera(id: string) {
+    if (!this.cameras.some((c) => c.id === id)) {
+      throw new ApiError(`Camera ${id} nu există.`, 'not_found', 404);
+    }
+    this.cameras = this.cameras.filter((c) => c.id !== id);
+    this.rules = this.rules.filter((r) => r.camera_id !== id);
+    await this.delay(undefined);
   }
 
   listRules() {
     return this.delay(this.rules);
+  }
+
+  getRuleStats(days = 7): Promise<RuleStats> {
+    const dates = Array.from({ length: days }, (_, i) =>
+      utcDay(new Date(Date.now() - (days - 1 - i) * 86_400_000)),
+    );
+    const today = dates[dates.length - 1];
+    return this.delay({
+      days: dates,
+      rules: this.rules.map((r) => {
+        const history = RULE_HISTORY[r.id] ?? [];
+        const now = this.alerts.filter(
+          (a) => a.rule_id === r.id && a.state === 'opened' && utcDay(a.at) === today,
+        ).length;
+        const per_day = dates.map((_, i) =>
+          i === days - 1 ? now : (history[history.length - (days - 1 - i)] ?? 0),
+        );
+        return { rule_id: r.id, total: per_day.reduce((a, b) => a + b, 0), per_day };
+      }),
+    });
   }
 
   async draftRuleFromText(text: string, cameraId: string): Promise<RuleDraft> {
@@ -351,14 +736,43 @@ export class MockApi implements ApiClient {
     return this.delay(saved);
   }
 
+  async updateRule(id: string, patch: RulePatch) {
+    const rule = this.rules.find((r) => r.id === id);
+    if (!rule) throw new ApiError('Regula nu mai există.', 'not_found', 404);
+    const saved: Rule = { ...rule, ...structuredClone(patch) };
+    this.rules = this.rules.map((r) => (r.id === id ? saved : r));
+    return this.delay(saved);
+  }
+
+  async deleteRule(id: string) {
+    if (!this.rules.some((r) => r.id === id)) {
+      throw new ApiError('Regula nu mai există.', 'not_found', 404);
+    }
+    this.rules = this.rules.filter((r) => r.id !== id);
+    await this.delay(undefined);
+  }
+
+  async updateCamera(id: string, patch: CameraPatch): Promise<CameraView> {
+    const cam = this.cameras.find((c) => c.id === id);
+    if (!cam) throw new ApiError(`Camera ${id} nu există.`, 'not_found', 404);
+    const saved: CameraView = { ...cam, ...patch };
+    this.cameras = this.cameras.map((c) => (c.id === id ? saved : c));
+    return this.delay(saved);
+  }
+
   async createCamera(camera: NewCamera): Promise<CameraView> {
     const view: CameraView = { ...camera, zones: [], online: false };
     this.cameras = [...this.cameras.filter((c) => c.id !== camera.id), view];
     return this.delay(view);
   }
 
-  listAlerts() {
-    return this.delay(this.alerts);
+  /** Like `GET /api/events`: newest first, strictly before `before`, at most `limit` (50). */
+  listAlerts(q: AlertPageQuery = {}) {
+    const page = [...this.alerts]
+      .filter((e) => !q.before || e.at < q.before)
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, q.limit ?? 50);
+    return this.delay(page);
   }
 
   subscribeAlerts(cb: (event: AlertView) => void): Unsubscribe {
@@ -370,7 +784,7 @@ export class MockApi implements ApiClient {
     return this.delay(this.suggestions);
   }
 
-  subscribeSuggestions(cb: (s: StaffSuggestion) => void): Unsubscribe {
+  subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe {
     this.suggestionSubs.add(cb);
     return () => this.suggestionSubs.delete(cb);
   }
@@ -383,11 +797,24 @@ export class MockApi implements ApiClient {
       const t = (Date.now() - start) / 1000;
       // Track 7 (staff) walks between the tables; two guests sit at table 2.
       const x = 0.42 + Math.sin(t / 4) * 0.3;
-      cb([
-        { track_id: 7, role: 'staff', box: [x, 0.22 + Math.cos(t / 3) * 0.04, 0.09, 0.4] },
-        { track_id: 12, role: 'guest', box: [0.44, 0.42, 0.09, 0.3] },
-        { track_id: 13, role: 'guest', box: [0.64, 0.43, 0.09, 0.29] },
-      ]);
+      // Shaped like the edge contract; guest 13 raises a hand now and then.
+      const y = 0.22 + Math.cos(t / 3) * 0.04;
+      const frame: Detections = {
+        camera_id: cameraId,
+        ts: new Date().toISOString(),
+        tracks: [
+          { track_id: 7, role: 'staff', staff_score: 0.86, bbox: [x, y, x + 0.09, y + 0.4] },
+          { track_id: 12, role: 'guest', staff_score: 0.1, bbox: [0.44, 0.42, 0.53, 0.72] },
+          {
+            track_id: 13,
+            role: 'guest',
+            staff_score: 0.08,
+            bbox: [0.64, 0.43, 0.73, 0.72],
+            raised_hand: Math.sin(t / 3) > 0.4,
+          },
+        ],
+      };
+      cb(fromContract(frame));
     };
     tick();
     const id = setInterval(tick, 400);
@@ -411,7 +838,71 @@ export class MockApi implements ApiClient {
 
   async uploadStaffPhoto(file: File) {
     if (!file.type.startsWith('image/')) throw new Error('Fișierul trebuie să fie o imagine');
+    const profile = this.staffProfiles[0];
+    if (profile) profile.examples += 1;
+    else
+      this.staffProfiles.push({
+        id: 'uniforma',
+        name: 'Uniformă',
+        description_ro: '',
+        examples: 1,
+        has_centroid: true,
+      });
     await this.delay(null);
+  }
+
+  private captures = new Map<string, number>();
+
+  async captureStaff(cameraId: string): Promise<StaffCapture> {
+    await wait(this.latency * 4);
+    if (!this.cameras.some((c) => c.id === cameraId))
+      throw new ApiError(`Camera ${cameraId} nu există.`, 'not_found', 404);
+    const token = uid('cap');
+    const candidates = [200, 210, 220, 205, 215, 30].map((hue, index) => ({
+      index,
+      thumbnail: silhouette(hue),
+    }));
+    this.captures.set(token, candidates.length);
+    return { token, camera_id: cameraId, frames: 12, candidates, expires_in_s: 600 };
+  }
+
+  async uploadStaffFrames(frames: Blob[]): Promise<StaffCapture> {
+    await wait(this.latency * 4);
+    if (frames.length === 0)
+      throw new ApiError('Nu am văzut pe nimeni în fața camerei.', 'invalid', 422);
+    const token = uid('cap');
+    const candidates = frames.slice(0, 8).map((_, index) => ({
+      index,
+      thumbnail: silhouette(200 + index * 5),
+    }));
+    this.captures.set(token, candidates.length);
+    return { token, camera_id: '', frames: frames.length, candidates, expires_in_s: 600 };
+  }
+
+  async confirmStaffCapture(token: string, input: StaffCaptureConfirm): Promise<StaffEnrolResult> {
+    await wait(this.latency);
+    if (!this.captures.has(token))
+      throw new ApiError('Captura a expirat sau nu există. Începe din nou.', 'not_found', 404);
+    if (input.keep.length === 0) throw new ApiError('Alege cel puțin o poză.', 'invalid', 422);
+    this.captures.delete(token);
+    let profile = this.staffProfiles.find((p) => p.id === input.profile_id);
+    if (profile) profile.examples += input.keep.length;
+    else {
+      profile = {
+        id: uid('staff'),
+        name: input.name?.trim() || 'Angajat',
+        description_ro: input.description_ro ?? '',
+        examples: input.keep.length,
+        has_centroid: true,
+      };
+      this.staffProfiles.push(profile);
+    }
+    return { profile: { ...profile }, examples_added: input.keep.length, published: true };
+  }
+
+  /** Empty until a photo is uploaded, so the setup checklist shows "Poze cu uniforma" to do. */
+  listStaffProfiles() {
+    return this.delay(this.staffProfiles);
   }
 
   getMetrics(): Promise<DashboardMetrics> {
@@ -432,4 +923,242 @@ export class MockApi implements ApiClient {
       alert_latency_ms: 850 + Math.round(Math.random() * 300),
     });
   }
+
+  // --- Video analysis: a new upload moves queued → running → done with the clock ---
+
+  async uploadVideo({ file, rotate = 0, copy_from_camera_id }: NewVideoUpload) {
+    if (!VIDEO_TYPES.includes(file.type)) {
+      throw new ApiError('Fișierul trebuie să fie un video MP4, MOV sau WebM.', 'invalid', 422);
+    }
+    if (file.size > MAX_VIDEO_BYTES) {
+      throw new ApiError('Clipul are mai mult de 200 MB.', 'too_large', 422);
+    }
+    const source = copy_from_camera_id ?? this.cameras[0]?.id ?? null;
+    if (source && !this.cameras.some((c) => c.id === source)) {
+      throw new ApiError(`Camera ${source} nu există.`, 'not_found', 404);
+    }
+    const id = Math.random().toString(16).slice(2, 10).padEnd(8, '0');
+    const demo = this.videos.find((v) => v.upload.id === DEMO_VIDEO)?.alerts ?? [];
+    const upload: VideoUpload = {
+      id,
+      location_id: this.location ?? 'demo',
+      camera_id: `video-${id}`,
+      source_camera_id: source,
+      filename: file.name,
+      size_bytes: file.size,
+      rotate,
+      status: 'queued',
+      progress: 0,
+      duration_s: null,
+      events: 0,
+      error_ro: null,
+      created_at: new Date().toISOString(),
+      started_at: null,
+      finished_at: null,
+      created_by: null,
+    };
+    const alerts = demo
+      .slice(0, 2)
+      .map((a, i) => ({ ...a, event_id: `${id}-e${i + 1}`, closed_reason: null }));
+    this.videos.unshift({ upload, alerts });
+    return this.delay(upload);
+  }
+
+  /** The upload as it would be now, given how long ago it was created. */
+  private videoNow(id: string): { upload: VideoUpload; alerts: VideoAlert[] } {
+    const v = this.videos.find((x) => x.upload.id === id);
+    if (!v) throw new ApiError('Clipul nu există.', 'not_found', 404);
+    const u = v.upload;
+    if (u.status === 'done' || u.status === 'failed') return v;
+    const elapsed = Date.now() - Date.parse(u.created_at) - VIDEO_QUEUE_MS;
+    if (elapsed < 0) return v;
+    const start = new Date(Date.parse(u.created_at) + VIDEO_QUEUE_MS).toISOString();
+    if (elapsed < VIDEO_RUN_MS) {
+      const progress = elapsed / VIDEO_RUN_MS;
+      const found = v.alerts.filter((a) => a.at_s / 60 <= progress).length;
+      return {
+        ...v,
+        upload: { ...u, status: 'running', started_at: start, progress, events: found },
+      };
+    }
+    v.upload = {
+      ...u,
+      status: 'done',
+      progress: 1,
+      duration_s: 60,
+      events: v.alerts.length,
+      started_at: start,
+      finished_at: new Date().toISOString(),
+    };
+    return v;
+  }
+
+  /** The mock runs everything. */
+  getCapabilities() {
+    return this.delay({ videos: true, enrol: true });
+  }
+
+  async listVideos() {
+    const here = this.location ?? 'demo';
+    const all = this.videos.map((v) => this.videoNow(v.upload.id).upload);
+    return this.delay(all.filter((u) => u.location_id === here));
+  }
+
+  async getVideo(id: string) {
+    return this.delay(this.videoNow(id).upload);
+  }
+
+  async videoEvents(id: string) {
+    const { upload, alerts } = this.videoNow(id);
+    return this.delay(alerts.slice(0, upload.events));
+  }
+
+  // --- Accounts, locations, audit, alert lifecycle (see ./mockAccounts.ts) ---
+
+  private location: string | null = null;
+  readonly accounts = new MockAccounts(
+    () => this.alerts,
+    (zoneId) =>
+      this.cameras.flatMap((c) => c.zones ?? []).find((z) => z.id === zoneId)?.name ?? zoneId,
+    (c: AlertCase) =>
+      this.emitAlert(
+        c.rule_id,
+        c.zone_id,
+        'arrived' as AlertEvent['state'],
+        `${c.zone_name}: ${c.acknowledged_by ?? 'personalul'} a ajuns`,
+      ),
+  );
+
+  /** Run a synchronous account call with the simulated latency; errors become rejections. */
+  private async call<T>(fn: () => T): Promise<T> {
+    await wait(this.latency);
+    return fn();
+  }
+
+  setLocation(locationId: string | null) {
+    this.location = locationId;
+  }
+
+  me() {
+    return this.call(() => this.accounts.me());
+  }
+
+  login(email: string, password: string) {
+    return this.call(() => this.accounts.login(email, password));
+  }
+
+  register(input: RegisterInput) {
+    return this.call(() => this.accounts.register(input));
+  }
+
+  logout() {
+    return this.call(() => this.accounts.logout());
+  }
+
+  getInvite(token: string) {
+    return this.call(() => this.accounts.getInvite(token));
+  }
+
+  acceptInvite(token: string, input: { name: string; password: string }) {
+    return this.call(() => this.accounts.acceptInvite(token, input));
+  }
+
+  listLocations() {
+    return this.call(() =>
+      this.accounts.listLocations().map((l) => {
+        const counts =
+          l.id === 'demo'
+            ? {
+                total: this.cameras.length,
+                online: this.cameras.filter((c) => c.online).length,
+              }
+            : (OTHER_CAMERAS[l.id] ?? { total: 0, online: 0 });
+        return { ...l, cameras_total: counts.total, cameras_online: counts.online };
+      }),
+    );
+  }
+
+  createLocation(location: Location) {
+    return this.call(() => this.accounts.createLocation(location));
+  }
+
+  updateLocation(id: string, patch: Partial<Omit<Location, 'id'>>) {
+    return this.call(() => this.accounts.updateLocation(id, patch));
+  }
+
+  deleteLocation(id: string) {
+    return this.call(() => this.accounts.deleteLocation(id));
+  }
+
+  createTelegramLink(locationId: string) {
+    return this.call(() => this.accounts.createTelegramLink(locationId));
+  }
+
+  getTelegramStatus(locationId: string) {
+    return this.call(() => this.accounts.getTelegramStatus(locationId));
+  }
+
+  listMembers(locationId: string) {
+    return this.call(() => this.accounts.listMembers(locationId));
+  }
+
+  updateMember(locationId: string, userId: string, role: Role) {
+    return this.call(() => this.accounts.updateMember(locationId, userId, role));
+  }
+
+  removeMember(locationId: string, userId: string) {
+    return this.call(() => this.accounts.removeMember(locationId, userId));
+  }
+
+  createInvite(input: { location_id: string; role: Role; email: string }) {
+    return this.call(() => this.accounts.createInvite(input));
+  }
+
+  listInvites(locationId: string) {
+    return this.call(() => this.accounts.listInvites(locationId));
+  }
+
+  revokeInvite(id: string) {
+    return this.call(() => this.accounts.revokeInvite(id));
+  }
+
+  listAudit(query: AuditQuery) {
+    return this.call(() => this.accounts.listAudit(query));
+  }
+
+  listAlertCases(query: { location_id: string; state?: string; limit?: number; before?: string }) {
+    return this.call(() => this.accounts.listAlertCases(query));
+  }
+
+  ackAlert(eventId: string) {
+    return this.call(() => this.accounts.ackAlert(eventId, this.location ?? 'demo'));
+  }
+
+  getServiceMetrics(query: { location_id: string; from?: string; to?: string }) {
+    return this.call(() => this.accounts.serviceMetrics(query));
+  }
+
+  getServiceHeatmap(query: { location_id: string; from?: string; to?: string }) {
+    return this.call(() => this.accounts.serviceHeatmap(query));
+  }
+}
+
+/** Like the API's `warnings=true`: zones whose bounding boxes overlap (a rough, demo-only check). */
+function overlapWarnings(zones: Zone[]): string[] {
+  const box = (z: Zone) => {
+    const xs = z.polygon.map((p) => p[0]);
+    const ys = z.polygon.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as const;
+  };
+  const out: string[] = [];
+  zones.forEach((a, i) =>
+    zones.slice(i + 1).forEach((b) => {
+      const [ax1, ay1, ax2, ay2] = box(a);
+      const [bx1, by1, bx2, by2] = box(b);
+      if (ax1 < bx2 && bx1 < ax2 && ay1 < by2 && by1 < ay2) {
+        out.push(`„${a.name}” și „${b.name}” se suprapun; o persoană poate fi numărată la ambele.`);
+      }
+    }),
+  );
+  return out;
 }

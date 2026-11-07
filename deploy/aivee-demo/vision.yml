@@ -1,0 +1,79 @@
+# Cloud vision workers (rules run on the server): one per colleague camera, analysing the JPEG
+# frames the connector posts to POST /api/ingest/frames/{camera}, which the api republishes on
+# the internal broker (aivee/{site}/{device}/frames/{camera}). Needs the cloud-frames change
+# (SOURCE=mqtt-frames://...) in the vision image; until it is on develop, do not deploy this.
+#
+# Deployed together with the main file, so they form one stack:
+#   TAG=<sha8> VISION_TAG=<sha8> docker stack deploy --with-registry-auth \
+#     -c stack.yml -c vision.yml aivee-demo
+#
+# Each worker publishes as a device account (the camera's "Dispozitiv" in the dashboard), so a
+# colleague does not also run a local edge with the same account (both would share one MQTT
+# client id and keep kicking each other off). Passwords: EDGE_COLEG_<n>_PASSWORD in aivee.env.
+# dev-worker-1 has 24 mostly idle CPUs; 5 fps detection + pose is roughly one core per camera.
+x-vision: &vision
+  image: docker-hub.gsd.com.ro/aivee/vision:${VISION_TAG:?set VISION_TAG}
+  env_file: aivee.env
+  networks: [internal]
+  deploy:
+    placement: { constraints: ["node.hostname == dev-worker-1"] }
+    resources: { limits: { memory: 2560m, cpus: "2" } }
+    restart_policy: { condition: any, delay: 5s }
+
+services:
+  vision-cam-coleg-1:
+    <<: *vision
+    environment: &vision-env-1
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      SITE: demo
+      MQTT_EDGE_USER: edge-coleg-1
+      CAMERA_ID: cam-coleg-1
+      SOURCE: mqtt-frames://cam-coleg-1
+      TARGET_FPS: "5"
+      ROTATE: "0"
+      APPEARANCE: "true"  # staff recognised by uniform (CLIP vs the enrolled profiles)
+      HF_HOME: /tmp/hf  # CLIP weights (uniform + visual rules) download here on first use
+      DETECTOR_MODEL: /app/models/yolo11n_int8_openvino_model
+      POSE_MODEL: /app/models/yolo11n-pose_int8_openvino_model
+      YUNET_MODEL: /app/models/face_detection_yunet_2023mar.onnx
+    # The device password comes from aivee.env without putting it into the service spec twice.
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_COLEG_1_PASSWORD" exec python -m aivee_edge']
+
+  vision-cam-coleg-2:
+    <<: *vision
+    environment:
+      <<: *vision-env-1
+      MQTT_EDGE_USER: edge-coleg-2
+      CAMERA_ID: cam-coleg-2
+      SOURCE: mqtt-frames://cam-coleg-2
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_COLEG_2_PASSWORD" exec python -m aivee_edge']
+
+  vision-cam-coleg-3:
+    <<: *vision
+    environment:
+      <<: *vision-env-1
+      MQTT_EDGE_USER: edge-coleg-3
+      CAMERA_ID: cam-coleg-3
+      SOURCE: mqtt-frames://cam-coleg-3
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_COLEG_3_PASSWORD" exec python -m aivee_edge']
+
+  # Phone slot 1: the camera "Telefon 1" fed by the dashboard's /telefon page.
+  vision-cam-telefon-1:
+    <<: *vision
+    environment:
+      <<: *vision-env-1
+      MQTT_EDGE_USER: edge-telefon-1
+      CAMERA_ID: cam-telefon-1
+      SOURCE: mqtt-frames://cam-telefon-1
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_TELEFON_1_PASSWORD" exec python -m aivee_edge']
+
+  # Phone slot 2: the camera "Telefon 2" fed by the dashboard's /telefon page.
+  vision-cam-telefon-2:
+    <<: *vision
+    environment:
+      <<: *vision-env-1
+      MQTT_EDGE_USER: edge-telefon-2
+      CAMERA_ID: cam-telefon-2
+      SOURCE: mqtt-frames://cam-telefon-2
+    entrypoint: ["sh", "-c", 'MQTT_EDGE_PASSWORD="$$EDGE_TELEFON_2_PASSWORD" exec python -m aivee_edge']
