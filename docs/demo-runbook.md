@@ -38,7 +38,7 @@ The laptop stack shares the bot, so its `.env` has `TELEGRAM_POLL=false`: only o
 | # | Who | Action | Pass if |
 |---|---|---|---|
 | T1 | — | nobody in front of the camera | Live: no open alerts |
-| T2 | presenter | Reguli → mic: „Anunță-mă dacă apare un urs” → Confirmă | rule active within 5 s |
+| T2 | presenter | with **no alert open**: Reguli → mic: „Anunță-mă dacă apare un urs” → Confirmă; then delete it, again with no alert open | rule active within 5 s |
 | T3 | Radu (guest) | sits at Masa 1, nobody comes | „Masa 1 așteaptă de 10 s” on Live **and** in AiveeAlerts within ~15 s; only the „Vezi în aplicație” button, no Preiau |
 | T3b | — | nobody comes for 60 s more | „⏰ Încă neservit: Masa 1, de 1 min” as a reply to the alert, then again every 60 s („de 2 min”, …) |
 | T4 | Marius (staff) | walks to Masa 1 and stays ≥ 5 s | labelled „angajat”; „Un angajat a ajuns la Masa 1 după …”; the original alert now starts with „✅ Rezolvat · un angajat a ajuns după …” and has no buttons; reminders stop |
@@ -64,9 +64,14 @@ After T5, delete the test profile (no delete button yet: ask the developer on du
 - „Adaugă cameră” on a second location: the server serves one location (`SITE=demo`).
 - „Testează pe un clip” on the server: video analysis is off there (503).
 - The staff profile list: profiles are global, not per company yet.
+- **Rule changes while an alert is open** on that camera: creating, editing, enabling or disabling a rule
+  reloads the rules and restarts the camera's engine; the open alert is then never closed and its ⏰ reminders
+  keep coming. Change rules only when Live shows no open alert (step 2 of the script is fine: nothing is open
+  yet). Fix after the hackathon.
 
 ## Known limits (say them as the roadmap)
 
 One location per server; each cloud camera needs a provisioned device account and vision worker;
-staff profiles are global; invites are links (no email). Next: pairing codes, one vision worker for
+staff profiles are global; invites are links (no email); a rule reload while an alert is open leaves that
+alert open (see "Do not show"). Next: pairing codes, one vision worker for
 all cameras, per-location profiles.

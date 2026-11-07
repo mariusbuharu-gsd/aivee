@@ -25,9 +25,14 @@ and closes the alert on its own.
 - Two rules already created and confirmed on Reguli for Laptop Radu (not live):
   - „Client neservit (demo 10 s)” on Masa 1 (present guest 10 s ∧ absent staff 10 s) → Telegram;
   - „Foc în imagine” (threshold 0.8, minimum 5 s, lamp glare as a negative; cooldown 30 s).
-- The raised-hand rule is **not** created yet: it is the one written live in step 2.
+- The bear rule is **not** created yet: it is the one written live in step 2 (delete it after the rehearsal).
 - Marius, in the purple hoodie, is enrolled as staff through `/angajat-nou`, so Live labels him „angajat”.
 - Ingest runs with `REMIND_S=60`: while nobody has arrived, a ⏰ reminder every 60 s.
+
+> **Warning: do not create, edit, enable or disable rules while an alert is open on Laptop Radu.** A rule
+> reload restarts the camera's engine: the open alert is never closed and its ⏰ reminders keep coming
+> (seen in rehearsal; the fix is after the hackathon). Step 2 is safe because no alert is open yet. Change
+> rules only when Live shows no open alert.
 
 ## Timeline (total 4:00)
 
@@ -63,12 +68,13 @@ and closes the alert on its own.
 ### 2. A rule in Romanian (0:20–0:55)
 
 - **Presenter:** **Reguli** → type (or dictate with the microphone button):
-  "Dacă cineva ridică mâna la masă, cheamă ospătarul" → **Creează regula**.
+  „Anunță-mă dacă apare un urs” → **Creează regula**.
 - **Expected:** after a few seconds ("Se analizează…") the box **Ce am înțeles** with the rule name, the
   pill "ciornă" and the plain-Romanian description; "Vezi regula JSON" shows the typed rule.
-  (Eval: this exact request → `pose guest raised_hand`, 3.6 s; all 20 eval requests median 2.4 s.)
+  (A bear is an `object_present` rule; all 20 eval requests: median 2.4 s.) It never fires by accident in the room.
 - **Presenter:** **Confirmă și salvează**. The rule appears in the list and is pushed to the camera's worker.
 - **Say:** "The model only proposes; the owner confirms. Ask it to recognise a person and it refuses."
+- **Only here:** this is the one rule change in the demo, made while no alert is open (see the warning above).
 - **Fallback:** no internet / Claude error (Romanian error message) → say "creating rules needs the internet;
   rules that already exist keep running", and show the two pre-created rules.
 
@@ -147,8 +153,8 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
       Nobody sitting at a table zone before the demo (no stale alerts); Alerte has no open alert.
 - [ ] Server ingest has `REMIND_S=60`; a rehearsal alert got its ⏰ reply 60 s after it opened.
 - [ ] Rules created (`make seed` creates accounts only, not rules): „Client neservit (demo 10 s)” and
-      „Foc în imagine” on Laptop Radu, confirmed and shown as "activă" on Reguli; the hand rule **not**
-      created yet.
+      „Foc în imagine” on Laptop Radu, confirmed and shown as "activă" on Reguli; the bear rule **not**
+      there (if the rehearsal created it, delete it while no alert is open).
 - [ ] Telegram group "AiveeAlerts" open on a visible screen; `TELEGRAM_PREFIX` empty.
 - [ ] Notifications allowed in the laptop browser too.
 - [ ] Backup clips present and playing: `ls recordings/` — one clip per scene, made with
