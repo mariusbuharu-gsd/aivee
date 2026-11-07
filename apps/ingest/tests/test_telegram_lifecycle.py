@@ -86,16 +86,14 @@ async def test_resolved_edits_the_original_and_drops_the_buttons() -> None:
     n, seen, sent = _notifier()
     await sent.save("e1", SentMessage("-100", 42, False))
     v = view(acknowledged_by="Ana", acknowledged_at=AT)
-    await n.alert_resolved(v, "✅ Rezolvat · un angajat a ajuns după 25 s · preluată de Ana")
+    await n.alert_resolved(v, "✅ Rezolvat · un angajat a ajuns după 25 s")
     (req,) = seen
     assert req.url.path == "/botTOKEN/editMessageText"
     p = json.loads(req.content)
     assert (p["chat_id"], p["message_id"]) == ("-100", 42)
     assert p["reply_markup"] == {"inline_keyboard": []}
-    assert p["text"].startswith(
-        "<b>✅ Rezolvat · un angajat a ajuns după 25 s · preluată de Ana</b>"
-    )
-    assert "Masa 1" in p["text"] and "✋ Preluată de Ana" in p["text"]
+    assert p["text"].startswith("<b>✅ Rezolvat · un angajat a ajuns după 25 s</b>")
+    assert "Masa 1" in p["text"] and "Preluată" not in p["text"]
 
 
 async def test_resolved_photo_alert_edits_the_caption() -> None:
@@ -118,7 +116,7 @@ async def test_resolved_twice_is_not_an_error() -> None:
     await n.alert_resolved(view(), "✅ Rezolvat")
 
 
-async def test_reminder_replies_to_the_alert_with_the_same_buttons() -> None:
+async def test_reminder_replies_to_the_alert_with_only_the_app_link() -> None:
     n, seen, sent = _notifier()
     await sent.save("e1", SentMessage("-100", 42, True))
     await n.alert_reminder(view(state="opened"), "⏰ Încă neservit: Masa 1, de 4 min")
@@ -128,8 +126,7 @@ async def test_reminder_replies_to_the_alert_with_the_same_buttons() -> None:
     assert p["text"] == "⏰ Încă neservit: Masa 1, de 4 min"
     assert p["reply_parameters"] == {"message_id": 42, "allow_sending_without_reply": True}
     buttons = [b["text"] for b in p["reply_markup"]["inline_keyboard"][0]]
-    assert buttons == ["Preiau ✋", "Vezi în aplicație"]
-    assert p["reply_markup"]["inline_keyboard"][0][0]["callback_data"] == "ack:e1"
+    assert buttons == ["Vezi în aplicație"]
 
 
 async def test_reminder_without_the_original_still_goes_to_the_chat() -> None:

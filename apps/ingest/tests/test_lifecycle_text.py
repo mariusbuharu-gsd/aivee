@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from aivee_api.alerts.schemas import AlertView
 from aivee_contracts.rules import Condition
 from aivee_ingest.lifecycle import (
+    arrived_ro,
     closed_line,
     is_guest_rule,
     left_ro,
@@ -29,11 +30,18 @@ def view(**kw: object) -> AlertView:
     return AlertView.model_validate({**data, **kw})
 
 
-def test_resolved_line_names_the_wait_and_who_took_it() -> None:
+def test_resolved_line_names_the_wait_but_not_who_took_it() -> None:
     assert resolved_line(view(wait_s=25)) == "✅ Rezolvat · un angajat a ajuns după 25 s"
     assert (
         resolved_line(view(wait_s=130, acknowledged_by="Ana"))
-        == "✅ Rezolvat · un angajat a ajuns după 2 min 10 s · preluată de Ana"
+        == "✅ Rezolvat · un angajat a ajuns după 2 min 10 s"
+    )
+
+
+def test_arrived_text_does_not_name_who_took_it() -> None:
+    assert (
+        arrived_ro(view(wait_s=25, acknowledged_by="Ana"))
+        == "Un angajat a ajuns la Masa 1 după 25 s"
     )
 
 

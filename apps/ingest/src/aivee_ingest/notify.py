@@ -23,8 +23,8 @@ class Notifier(Protocol):
     async def send_text(
         self, text: str, tag: str | None = None, *, title: str | None = None, kind: PushKind
     ) -> None:
-        """A follow-up message, e.g. "Un angajat a ajuns la Masa 4 după 2 min 10 s ·
-        preluată de Ana". `tag` is the alert's id (Web Push uses it to replace the alert's
+        """A follow-up message, e.g. "Un angajat a ajuns la Masa 4 după 2 min 10 s".
+        `tag` is the alert's id (Web Push uses it to replace the alert's
         notification); `title` is the push title where the channel has one; `kind` tells
         the dashboard's service worker whether the replaced notification rings again."""
         ...

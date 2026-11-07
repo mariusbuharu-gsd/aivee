@@ -3,10 +3,11 @@
 The chat is the alert's location's `telegram_chat_id` (via `chat_for(event_id)`), else
 TELEGRAM_CHAT_ID. Follow-ups (`send_text`) go to the same chat through the alert id tag.
 
-The alert itself is HTML (`alert_message.render`) with an inline keyboard: "Preiau ✋"
-(handled by the getUpdates poller, `telegram_ack.py`) and, when PUBLIC_DASHBOARD_URL is a
-public https URL, "Vezi în aplicație". A 400 on that send (a caption, markup or button
-Telegram refuses) is retried once as plain text without a keyboard: an alert is never lost.
+The alert itself is HTML (`alert_message.render`) with, when PUBLIC_DASHBOARD_URL is a
+public https URL, a "Vezi în aplicație" button. "Preiau ✋" is no longer offered: the
+camera closes alerts; the callback handler (`telegram_ack.py`) stays for old messages.
+A 400 on that send (a caption, markup or button Telegram refuses) is retried once as
+plain text without a keyboard: an alert is never lost.
 """
 
 import html
@@ -21,7 +22,7 @@ from aivee_api.alerts.schemas import AlertView
 from aivee_api.push.sender import PushKind
 from aivee_contracts.events import AlertEvent
 
-from aivee_ingest.alert_message import AlertContext, ack_line, basic_context, keyboard, render
+from aivee_ingest.alert_message import AlertContext, basic_context, keyboard, render
 from aivee_ingest.notify import with_prefix
 from aivee_ingest.sent import SentMessage, SentMessages
 from aivee_ingest.telegram_ack import event_of
@@ -79,7 +80,8 @@ class TelegramNotifier:
             return
         ctx = await self._context(event)
         text = render(ctx, prefix=self._prefix)
-        markup = keyboard(event.event_id, self._dashboard_url)
+        # "Preiau" is no longer offered (old messages' buttons still work, telegram_ack.py).
+        markup = keyboard(event.event_id, self._dashboard_url, with_ack=False)
         rich: dict[str, object] = {"chat_id": chat_id, "parse_mode": "HTML"}
         if markup is not None:
             rich["reply_markup"] = markup
@@ -126,12 +128,7 @@ class TelegramNotifier:
         if sent is None:
             return
         ctx = await self._context(event_of(view))
-        extra = (
-            [ack_line(view.acknowledged_by, view.acknowledged_at)]
-            if view.acknowledged_by and view.acknowledged_at
-            else []
-        )
-        body = f"<b>{html.escape(line)}</b>\n\n" + render(ctx, prefix=self._prefix, extra=extra)
+        body = f"<b>{html.escape(line)}</b>\n\n" + render(ctx, prefix=self._prefix)
         payload: dict[str, Any] = {
             "chat_id": sent.chat_id,
             "message_id": sent.message_id,
@@ -152,7 +149,7 @@ class TelegramNotifier:
         if not chat_id:
             return
         payload: dict[str, Any] = {"chat_id": chat_id, "text": with_prefix(self._prefix, text)}
-        markup = keyboard(view.event_id, self._dashboard_url)
+        markup = keyboard(view.event_id, self._dashboard_url, with_ack=False)
         if markup is not None:
             payload["reply_markup"] = markup
         if sent is not None:

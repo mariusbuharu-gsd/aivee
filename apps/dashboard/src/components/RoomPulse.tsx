@@ -45,7 +45,7 @@ export function RoomPulse({
       </span>
       <span className="pulse-meta">
         <span className="mono">{tick(s)}</span>
-        <span>{taken ? `${taken} merge` : 'nimeni nu a preluat'}</span>
+        <span>{taken ? `${taken} merge` : 'nimeni nu a ajuns'}</span>
       </span>
     </Link>
   );

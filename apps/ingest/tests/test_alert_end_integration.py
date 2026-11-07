@@ -122,8 +122,8 @@ async def test_arrival_keeps_the_follow_up_and_resolves_the_original(
     await _publish(h, _event("closed", at=NOW + timedelta(seconds=5)))
     await h.drain()
 
-    assert [t[0] for t in n.texts] == ["Un angajat a ajuns la Masa 1 după 25 s · preluată de Ana"]
-    assert n.resolved == [("a1", "✅ Rezolvat · un angajat a ajuns după 25 s · preluată de Ana")]
+    assert [t[0] for t in n.texts] == ["Un angajat a ajuns la Masa 1 după 25 s"]
+    assert n.resolved == [("a1", "✅ Rezolvat · un angajat a ajuns după 25 s")]
     async with sessions() as s:
         view = await AlertRepository(s).view("a1")
     assert view is not None and view.closed_at is not None  # "Preiau" never closed it

@@ -1,9 +1,11 @@
 """How an alert ends, in Romanian: the line that replaces its buttons, and the follow-ups.
 
-    ✅ Rezolvat · un angajat a ajuns după 25 s · preluată de Ana
+    ✅ Rezolvat · un angajat a ajuns după 25 s
     ⚪ Închisă · clientul a plecat
     👋 Clientul a plecat de la Masa 1 fără să fie servit (a așteptat 3 min 10 s)
     ⏰ Încă neservit: Masa 1, de 4 min
+
+"Preiau" is no longer offered: the camera closes alerts, so no text names who took one.
 
 Pure: no IO. "Clientul" only makes sense for a waiting guest; an object or visual rule
 (a missing glass, a fire) gets neutral wording.
@@ -34,8 +36,13 @@ def _waited(view: AlertView) -> str:
 
 def resolved_line(view: AlertView) -> str:
     after = f" după {_waited(view)}" if view.wait_s is not None else ""
-    taken = f" · preluată de {view.acknowledged_by}" if view.acknowledged_by else ""
-    return f"✅ Rezolvat · un angajat a ajuns{after}{taken}"
+    return f"✅ Rezolvat · un angajat a ajuns{after}"
+
+
+def arrived_ro(view: AlertView) -> str:
+    """ "Un angajat a ajuns la Masa 4 după 2 min 10 s" (nobody "takes" alerts any more)."""
+    after = f" după {_waited(view)}" if view.wait_s is not None else ""
+    return f"Un angajat a ajuns la {view.zone_name}{after}"
 
 
 def closed_line(*, guest: bool) -> str:

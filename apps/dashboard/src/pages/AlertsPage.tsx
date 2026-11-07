@@ -61,7 +61,7 @@ function groupByDay(items: AlertItem[]): { label: string; items: AlertItem[] }[]
 }
 
 export function AlertsPage() {
-  const { alerts, cameras, rules, suggestions, dropSuggestion, cases, ack, hasOlder, loadOlder } =
+  const { alerts, cameras, rules, suggestions, dropSuggestion, cases, hasOlder, loadOlder } =
     useLiveData();
   const { can, me, location } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
@@ -153,7 +153,6 @@ export function AlertsPage() {
                     showSnapshot
                     cases={cases}
                     ruleName={(id) => ruleById.get(id)?.name}
-                    onAck={can('alerts.ack') ? ack : undefined}
                   />
                 </section>
               )}

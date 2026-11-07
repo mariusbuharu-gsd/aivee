@@ -12,7 +12,6 @@ from pathlib import Path
 from aivee_api.alerts.audit import (
     AuditWriter,
     LoggingAuditWriter,
-    arrival_ro,
     device_entry,
     system_closed_entry,
 )
@@ -29,7 +28,13 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from aivee_ingest.lifecycle import closed_line, is_guest_rule, left_ro, resolved_line
+from aivee_ingest.lifecycle import (
+    arrived_ro,
+    closed_line,
+    is_guest_rule,
+    left_ro,
+    resolved_line,
+)
 from aivee_ingest.locations import rule_conditions
 from aivee_ingest.notify import LifecycleNotifier, Notifier
 from aivee_ingest.verify import UNAVAILABLE, AlertVerification, wait_for_file
@@ -150,7 +155,7 @@ class IngestHandler:
                 log.exception("notifier failed for event %s", event.event_id)
         elif event.state == "arrived" and view is not None:
             try:
-                await self._notifier.send_text(arrival_ro(view), view.event_id, kind="arrived")
+                await self._notifier.send_text(arrived_ro(view), view.event_id, kind="arrived")
             except Exception:
                 log.exception("notifier failed for event %s", event.event_id)
             await self._resolved(view, resolved_line(view))

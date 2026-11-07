@@ -44,7 +44,7 @@ describe('Live', () => {
     expect(await screen.findByText('O masă așteaptă.')).toBeInTheDocument();
     const band = screen.getByRole('list', { name: 'Alerte deschise' });
     expect(within(band).getByText('Masa 2: nimeni de la personal de 1 minut')).toBeInTheDocument();
-    expect(within(band).getByText('Nimeni nu a preluat încă')).toBeInTheDocument();
+    expect(within(band).getByText('Nimeni nu a ajuns încă')).toBeInTheDocument();
     expect(within(band).getByRole('timer')).toBeInTheDocument();
     const room = await screen.findByRole('article', { name: 'Camera Sala principală' });
     expect(within(room).getByText(/^Masa 2 · \d+:\d{2}$/)).toBeInTheDocument();
@@ -92,15 +92,10 @@ describe('Live', () => {
     expect(within(first).getByRole('list', { name: 'Desfășurarea alertei' })).toBeVisible();
   });
 
-  it('"Preiau" on the band tells colleagues who goes, the alert stays open', async () => {
-    const user = userEvent.setup();
+  it('offers no "Preiau" on the band: the camera closes the alert when someone arrives', async () => {
     renderLive('staff@aivee.demo');
-    await user.click(await screen.findByRole('button', { name: 'Preiau Masa 2' }));
-    const band = screen.getByRole('list', { name: 'Alerte deschise' });
-    await waitFor(() =>
-      expect(within(band).getByText('Ana Dumitru merge la Masa 2')).toBeInTheDocument(),
-    );
-    expect(within(band).queryByRole('button', { name: /Preiau/ })).toBeNull();
-    expect(screen.getByText('Ai preluat Masa 2')).toBeInTheDocument();
+    const band = await screen.findByRole('list', { name: 'Alerte deschise' }, { timeout: 5000 });
+    expect(within(band).getByText('Nimeni nu a ajuns încă')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Preiau/ })).toBeNull();
   });
 });

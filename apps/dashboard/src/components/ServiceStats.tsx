@@ -20,10 +20,9 @@ import { Banner } from '../ui/Banner';
 import { LookingEyes } from '../ui/Eyes';
 import { useToast } from '../ui/toast';
 
-const TILES: { key: 'reaction' | 'travel'; label: string; hint: string }[] = [
-  { key: 'reaction', label: 'Reacție', hint: 'de la alertă până apasă cineva „Preiau”' },
-  { key: 'travel', label: 'Drum', hint: 'de la „Preiau” până ajunge cineva' },
-];
+/** Reaction and travel needed "Preiau", which is no longer offered: only waits (opened →
+ * arrived or closed) are measured now. */
+const TILES: { key: 'reaction' | 'travel'; label: string; hint: string }[] = [];
 
 const fmt = (s: number | null) => (s === null ? '—' : duration(s));
 const based = (s: DurationStat | undefined) =>

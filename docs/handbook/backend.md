@@ -84,7 +84,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | POST | `/api/ingest/frames/{camera_id}` | HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time); body one JPEG ≤ 500 KB, or (no Authorization header) the session cookie with `devices.manage` at the camera's location, only for a cloud camera (`source` = `mqtt-frames://<id>`, else 409; 403 without the permission) — the dashboard's `/telefon` page → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
 | GET | `/api/cameras/{id}/live.mjpg` | `alerts.view`; `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
-| POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed |
+| POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed. Kept for old clients; the dashboard no longer offers it |
 | GET | `/api/metrics/verification` | `alerts.view`; `?location_id` → `{location_id, counts: [{rule_id, status, alerts}]}` |
 | GET | `/api/metrics/service` | `alerts.view`; `?from&to` → wait / reaction / travel `{count, median_s, p90_s}` |
 | GET | `/api/metrics` | `alerts.view`; FPS, CPU, verified ratio, events today, alert latency |
@@ -160,7 +160,7 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
   "Conectează Telegram" instead, or set `TELEGRAM_POLL=false` and restart ingest first.
 - A manual chat id (PATCH `telegram_chat_id`) clears the stored title.
 
-## Telegram alert message and "Preiau ✋"
+## Telegram alert message and how it ends
 
 `aivee_ingest/alert_message.py` (pure) + `telegram.py` + `telegram_ack.py`.
 - Format (photo caption, or text without a snapshot), `parse_mode=HTML`, every name escaped:
@@ -172,34 +172,37 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
   client cheamă"), objects_unattended ("Masa 3 e nedebarasată de 3 min"), count ("Bar: 4 persoane
   așteaptă"), absent ("Masa 1 așteaptă de 1 min" / "Nu a venit nimeni la client."), present; no
   rule → the edge's `summary_ro`. A confirmed vision check's `summary_ro` is the explanation.
-- Inline keyboard: `Preiau ✋` (`callback_data` `ack:<alert id>`) and, only when
-  `PUBLIC_DASHBOARD_URL` is https with a public host, `Vezi în aplicație` → `<url>/alerte`.
+- Inline keyboard: only when `PUBLIC_DASHBOARD_URL` is https with a public host,
+  `Vezi în aplicație` → `<url>/alerte`.
 - A 400 on the rich send is retried once as plain `sendMessage` without keyboard or parse mode.
-- The getUpdates poller (`allowed_updates` = message, my_chat_member, callback_query) hands a
-  button press to `AlertCallbacks`: only from the chat the alert went to (the location's chat,
+- Not offered any more: the owner dropped "Preiau ✋" (the camera closes alerts). Alerts and
+  reminders carry only `Vezi în aplicație`; no text names who took an alert. The callback handler
+  below stays so the buttons on messages sent before the change still answer.
+- Old messages' `Preiau ✋` (`callback_data` `ack:<alert id>`): the getUpdates poller
+  (`allowed_updates` = message, my_chat_member, callback_query) hands a button press to `AlertCallbacks`: only from the chat the alert went to (the location's chat,
   else `TELEGRAM_CHAT_ID`); `AlertRepository.acknowledge` with the sender's first name
   (`acknowledged_by_id` empty: no AiVee account) and audit `alert.acknowledged` (actor
   `telegram:<user id>`, `after.via = telegram`). Toasts: "Preluată ✓" (the message gets
   "✋ Preluată de Ana · 16:58" and loses the button), "Deja preluată de X", "Alerta s-a închis"
   (button removed). No "X merge la" Web Push for a Telegram ack (that one is sent by the API).
-- Not done: editing the message to "✅ Rezolvată" on close needs the sent message id stored
-  per alert (a migration); closed events are split between replicas, so memory will not do.
+- How an alert ends (`lifecycle.py`): on `arrived` the follow-up "Un angajat a ajuns la Masa 1
+  după 25 s" goes out and the original is edited to "✅ Rezolvat · un angajat a ajuns după 25 s"
+  without buttons; a `closed` with no arrival (re-checked after 3 s, in case the `arrived` is still
+  on its way) sends "👋 Clientul a plecat de la Masa 1 fără să fie servit (a așteptat 3 min 10 s)"
+  and edits the original to "⚪ Închisă · clientul a plecat" (object/visual rules get neutral
+  wording); a device going offline edits its open alerts the same way. The chat and message id are
+  kept on the opened row (`events.telegram_chat_id`, `telegram_message_id`, `telegram_photo`), so
+  any replica can edit.
+- Reminders: while an alert is open and nobody arrived, every `REMIND_S` (default 120, 0 = off) the
+  location gets "⏰ Încă neservit: Masa 1, de 4 min" (Telegram: a reply to the alert with
+  `Vezi în aplicație`; Web Push: kind `realert`), claimed atomically on `events.reminded_at` so it
+  goes out once per period whatever the replica count, and survives restarts.
 
 ## Video analysis (uploaded clips)
 
 Design: [plans/2026-11-06-video-upload-design.md](../plans/2026-11-06-video-upload-design.md). The API queues
 clips (one at a time) and runs `python -m aivee_edge --clip-epoch …` as the device `MQTT_UPLOAD_USER`
 (`upload-01`, `%u` ACL) on camera `video-<id>`, which carries a copy of a live camera's zones and rules.
-How an alert ends (ingest, `lifecycle.py`): on `arrived` the follow-up "Un angajat a ajuns…" goes out and
-the original Telegram alert is edited to "✅ Rezolvat · un angajat a ajuns după 25 s · preluată de Ana" without
-buttons; a `closed` with no arrival (re-checked after 3 s, in case the `arrived` is still on its way) sends
-"👋 Clientul a plecat de la Masa 1 fără să fie servit (a așteptat 3 min 10 s)" and edits the original to
-"⚪ Închisă · clientul a plecat" (object/visual rules get neutral wording); a device going offline edits its
-open alerts the same way. The Telegram chat and message id are kept on the opened row
-(`events.telegram_chat_id`, `telegram_message_id`, `telegram_photo`). While an alert is open and nobody
-arrived, every `REMIND_S` the location gets "⏰ Încă neservit: Masa 1, de 4 min" (Telegram: a reply to the
-alert with the same buttons; Web Push: kind `realert`), claimed atomically on `events.reminded_at` so it goes
-out once per period whatever the replica count, and survives restarts. "Preiau" never closes an alert.
 
 Event time = clip epoch + clip position. Ingest never notifies, verifies, re-alerts or audits alerts from
 an `upload-*` device or a `video-*` camera, and the device going offline closes nothing; the API closes what
