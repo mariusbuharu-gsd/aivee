@@ -11,7 +11,7 @@ flowchart LR
     staff(["Staff<br/>phone (PWA)"])
     guests(["Guests<br/>in front of the camera"])
     cam["Existing camera<br/>RTSP / MJPEG"]
-    aivee["AiVee<br/>edge + backend on site"]
+    aivee["AiVee<br/>cloud server, or edge + backend on site"]
     claude["Claude API<br/>request → rule"]
     tg["Telegram<br/>location group"]
     wp["Web Push service<br/>(browser vendor)"]
@@ -19,16 +19,18 @@ flowchart LR
     guests -. seen by .-> cam
     cam -- video --> aivee
     owner -- "zones, rules in Romanian,<br/>confirms staff, team, history" --> aivee
-    staff -- "Merg eu" --> aivee
+    staff -. "walks to the table<br/>(seen by the camera)" .-> cam
     aivee -- "draft rule (text only)" --> claude
-    aivee -- "alert + blurred snapshot<br/>arrival follow-up" --> tg
+    aivee -- "alert + blurred snapshot, ⏰ reminders,<br/>✅ Rezolvat / 👋 clientul a plecat" --> tg
     aivee -- "encrypted push (VAPID)" --> wp
     tg --> staff
     wp --> staff
 ```
 
-Only text and blurred snapshots leave the site: the rule request to Claude, the alert to Telegram
-and an encrypted push message. Video never does.
+In edge mode only text and blurred snapshots leave the site: the rule request to Claude, the alert to
+Telegram and an encrypted push message; video never does. In cloud mode (live on the shared server) the
+camera's frames go to the AiVee server over HTTPS, are analysed in memory and discarded, never stored
+([ADR 11](adr/0011-cloud-or-edge-analysis.md), [cloud-mode handbook](handbook/cloud-mode.md)).
 
 ## 2. Containers
 
@@ -75,7 +77,7 @@ flowchart LR
 | mosquitto | `infra/mosquitto` | broker, auth and per-device ACL |
 | postgres | `infra/postgres` | source of truth; Alembic migrations (`migrate` service) |
 | mediamtx | `infra/mediamtx` | live video for the dashboard |
-| dashboard | `apps/dashboard` | live with detection overlay, zones, rules, alerts with "Merg eu", metrics, history, team, locations; installable PWA with push |
+| dashboard | `apps/dashboard` | live with detection overlay, zones, rules, alerts with their timeline (opened → arrived → closed), wait metrics, history, team, locations, `/telefon` (phone as camera), `/angajat-nou` (staff enrolment); installable PWA with push |
 | contracts | `packages/contracts` | Pydantic models + topic builder → JSON Schema → TS types ([ADR 4](adr/0004-contracts-single-source-of-truth.md)) |
 
 ## 3. Tenancy
@@ -144,14 +146,14 @@ and `TRUNCATE` are revoked, and triggers reject them for owners and superusers t
 
 | Writer | Kinds |
 |---|---|
-| API (actor = user) | `auth.login`, `auth.login_failed`, `auth.logout`, `user.invited`, `user.joined`, `member.role_changed`, `member.removed`, `location.created|updated|deleted`, `camera.created`, `camera.updated`, `zones.updated`, `rule.created|updated|deleted`, `staff.confirmed`, `staff.rejected`, `staff.enrolled`, `alert.acknowledged` |
+| API (actor = user) | `auth.login`, `auth.login_failed`, `auth.logout`, `user.invited`, `user.joined`, `member.role_changed`, `member.removed`, `location.created|updated|deleted`, `camera.created`, `camera.updated`, `zones.updated`, `rule.created|updated|deleted`, `staff.confirmed`, `staff.rejected`, `staff.enrolled`, `alert.acknowledged` (legacy, see §6) |
 | Ingest (actor = device) | `alert.opened`, `alert.arrived`, `alert.closed` (same transaction as the event row), `device.online`, `device.offline` |
 
 Configuration changes carry `before` / `after` JSON; every entry has a Romanian `summary_ro`.
 `GET /api/audit`: owner → whole organization, manager → own location, staff → own actions.
 The dashboard shows it on **Istoric** (`/istoric`).
 
-## 6. An alert, end to end: opened → acknowledged → arrived → closed
+## 6. An alert, end to end: opened → arrived → closed
 
 ```mermaid
 sequenceDiagram
@@ -175,25 +177,33 @@ sequenceDiagram
     I->>N: message + blurred photo / push to the location's subscribed users
     A->>P: poll (1 s)
     A-->>S: WS alert (AlertView)
-    S->>A: "Merg eu" → POST /api/alerts/{id}/ack
-    A->>P: acknowledged_at, acknowledged_by + audit alert.acknowledged (409 if taken)
-    A-->>S: WS alert acknowledged
+    loop every REMIND_S while nobody has arrived
+        I->>P: claim the reminder (atomic UPDATE on reminded_at: one replica wins)
+        I->>N: "⏰ Încă neservit: Masa 4, de 2 min" (Telegram: a reply to the alert)
+    end
     Note over E: staff foot point in the zone ≥ ARRIVE_S (5 s)
     E->>M: events: AlertEvent arrived
     M->>I: arrived
     I->>P: arrived_at on the alert + audit alert.arrived
-    I->>N: "Ana a ajuns la Masa 4 după 2 min 10 s"
+    I->>N: "Un angajat a ajuns la Masa 4 după 2 min 10 s"<br/>original edited to "✅ Rezolvat · un angajat a ajuns după 2 min 10 s"
     Note over E: rule no longer holds (staff present)
     E->>M: events: AlertEvent closed
     M->>I: closed
     I->>P: closed_at + audit alert.closed
-    A-->>S: WS alert closed, with wait / reaction / travel
+    A-->>S: WS alert closed, with the wait
+    opt closed with no arrival (re-checked after 3 s)
+        I->>N: "👋 Clientul a plecat de la Masa 4 fără să fie servit (a așteptat …)"<br/>original edited to "⚪ Închisă · clientul a plecat"
+    end
 ```
 
-[ADR 10](adr/0010-arrival-detected-on-edge.md): arrival comes from the camera, not from a button.
-Times: wait = arrived (or closed) − opened, reaction = acknowledged − opened, travel = arrived − acknowledged.
-`GET /api/metrics/service` returns the median and p90 of each; the **Metrici** page shows them.
-`arrived` without an acknowledgement is shown as "fără preluare".
+[ADR 10](adr/0010-arrival-detected-on-edge.md): arrival comes from the camera, not from a button. Nobody
+"takes" an alert: the camera closes it. The Telegram chat and message id are kept on the alert row, so any
+ingest replica can edit or reply to it.
+Times: wait = arrived (or closed) − opened. `GET /api/metrics/service` returns its median and p90; the
+**Metrici** page shows them (the response still carries reaction and travel, which stay empty without
+"Preiau"; Metrici hides them).
+Legacy: `POST /api/alerts/{id}/ack` and the Telegram "Preiau ✋" callback still answer, for messages sent
+before "Preiau" was removed; nothing offers them any more.
 
 ## 7. A Romanian request becomes a rule
 

@@ -4,7 +4,6 @@
 
 <p align="center">
   <a href="https://github.com/mariusbuharu-gsd/aivee/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/mariusbuharu-gsd/aivee/actions/workflows/ci.yml/badge.svg?branch=develop" /></a>
-  <a href="https://github.com/mariusbuharu-gsd/aivee/actions/workflows/pages.yml"><img alt="pages" src="https://github.com/mariusbuharu-gsd/aivee/actions/workflows/pages.yml/badge.svg" /></a>
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-14161B" /></a>
 </p>
 
@@ -15,30 +14,33 @@ plug in the cameras you already have**, draw the tables, write a rule in Romania
 waiters on their phone when a guest waits too long. It tells staff from guests by uniform and behaviour,
 never by face.
 
-- **Cloud (standard).** Cameras stream to one shared AiVee cloud with servers in the EU. Video is
-  analysed and discarded, never stored.
+- **Cloud (standard, live).** Cameras send frames to one shared AiVee server, where a vision worker per
+  camera analyses them and discards them; video is never stored. It runs today at
+  <https://app-aivee.earth.sv.gsd.com.ro>: a laptop webcam or an IP camera joins through the connector script
+  (`apps/connector`, Windows, Linux, macOS), a phone through the `/telefon` page.
 - **Edge (option).** The same pipeline runs on the customer's own PC or on our edge box, for maximum
   privacy or offline use: video never leaves the location. It runs on a plain laptop CPU
   ([measured](#measured-performance)).
 
-Decision: [D25](docs/decisions.md), [ADR 0011](docs/adr/0011-cloud-or-edge-analysis.md). In the demo the
-laptop plays both roles: it is the "cloud" server, and it shows edge mode on its own CPU.
+Decision: [D25](docs/decisions.md), [ADR 0011](docs/adr/0011-cloud-or-edge-analysis.md). The demo runs in
+cloud mode on that server, with a laptop on the table as the camera; the laptop stack (`make up`) is the
+edge mode and the fallback.
 
 Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
-
-<!-- TODO(team): replace with docs/media/demo.gif once the demo is recorded. -->
-> **Demo GIF:** coming after code freeze. Presentation site: `apps/site` (GitHub Pages).
 
 ## Features
 
 | | |
 |---|---|
-| **Four events** | unattended table · guest raises a hand · queue at the entrance · table not cleared. All four come from one situation engine (present / absent / count / pose / objects + duration). |
+| **Situations** | unattended table · guest raises a hand · queue at the entrance · table not cleared · an object appears or goes missing. One situation engine (present / absent / count / pose / objects + duration). |
+| **Visual rules (fire, smoke, …)** | A `visual` condition scores CLIP prompts ("a photo of fire") against negative prompts ("a photo of a normal room") above a threshold for a minimum time: „Foc în imagine” → „…: posibil foc”. |
 | **Rules in Romanian** | "Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut" → a typed `Rule` draft the owner confirms, edits or discards. Vague or out-of-scope requests get a question back. |
-| **Staff by appearance + behaviour** | CLIP embedding of uniform photos plus movement (tables visited, distance per minute). Suggested staff are confirmed with one tap: "Pare angajat — confirmi?". |
+| **Staff by appearance + behaviour** | CLIP embedding of the staff's look plus movement (tables visited, distance per minute). Suggested staff are confirmed with one tap: "Pare angajat — confirmi?". |
+| **Staff enrolment in 20 s** | A guided 20 s capture from a live camera (Dispozitive), or the `/angajat-nou` page on a phone: name, film the colleague, save. No photo sorting. |
 | **Privacy by design** | No face recognition, faces blurred in every snapshot. Cloud: video analysed and discarded, never stored, EU servers. Edge: video never leaves the location. See [Privacy](#privacy-by-design). |
-| **Alert lifecycle with service times** | opened → acknowledged ("Merg eu" on the phone) → arrived (the edge sees staff in the zone for ≥ 5 s) → closed. Each alert shows wait, reaction and travel time; Metrici shows the median and p90. |
-| **Alerts on the phone** | Telegram message with a blurred snapshot, plus a second one when staff arrive. Installable PWA with Web Push: the notification opens the alert. |
+| **Alerts that close themselves** | opened → arrived (the camera sees staff in the zone for ≥ 5 s) → closed. Nobody presses a button. While nobody has arrived, a ⏰ reminder every `REMIND_S` („⏰ Încă neservit: Masa 1, de 2 min”); if the guest leaves first, „👋 Clientul a plecat … fără să fie servit”. Each alert shows the wait; Metrici shows the median and p90. |
+| **Alerts on the phone** | Telegram message with a blurred snapshot; on arrival it is edited to „✅ Rezolvat · un angajat a ajuns după …” and reminders are replies to it. Installable PWA with Web Push: the notification opens the alert. |
+| **Any camera, three ways in** | An RTSP / IP camera or a laptop webcam through the connector script (`apps/connector`, Python + ffmpeg, Windows / Linux / macOS); a phone through the `/telefon` page (no app); or a local edge on the same machine. |
 | **Live detection overlay** | Live video with a box per person, light blue for staff and white for guests, streamed from the edge at up to 5 Hz. |
 | **Accounts and roles per location** | Owner (every location), manager and staff per location, a fixed permission matrix enforced in the API, invites by link, sessions in an HttpOnly cookie. |
 | **Multi-location** | Organization → locations (restaurant, terrace, event, shop, other) → devices. Each location has its own team, rules, alerts and Telegram chat. |
@@ -71,9 +73,32 @@ flowchart LR
     wp --> dash
 ```
 
-The diagram shows the pipeline as built today, running on one machine (edge mode). In cloud mode the same
-pipeline runs in our cloud, fed by the cameras or a small connector on site; that is in progress on
-`feature/cloud-mode` (see [ADR 0011](docs/adr/0011-cloud-or-edge-analysis.md)).
+The diagram above is edge mode: everything on one machine. Cloud mode, live on the server, runs the same
+pipeline behind HTTPS ([ADR 0011](docs/adr/0011-cloud-or-edge-analysis.md),
+[cloud-mode handbook](docs/handbook/cloud-mode.md)):
+
+```mermaid
+flowchart LR
+    subgraph venue["Restaurant"]
+        cam["IP camera / laptop webcam"] --> con["connector script<br/>640 px · 5 fps JPEG"]
+        phone["Phone<br/>/telefon page"]
+    end
+    subgraph cloud["AiVee server (HTTPS only)"]
+        api["API<br/>POST /api/ingest/frames/&lt;camera&gt;<br/>newest frame in memory"]
+        mq[("Mosquitto")]
+        vis["vision worker<br/>one per camera<br/>(the edge pipeline)"]
+        ing["ingest"]
+        pg[("Postgres")]
+    end
+    con -- HTTPS --> api
+    phone -- HTTPS --> api
+    api -- "frames/&lt;camera&gt; (QoS 0)" --> mq --> vis
+    vis -- "events · metrics · snapshots" --> mq --> ing --> pg
+    ing --> tg["Telegram · Web Push"]
+    api -- "live.mjpg" --> dash["Dashboard"]
+```
+
+Frames are never written to disk: the API keeps only the newest one per camera.
 
 More: [docs/architecture.md](docs/architecture.md) (context and containers, tenancy, auth and permissions,
 audit, alert lifecycle and request → rule sequences, MQTT topics, scalability) and the [ADRs](docs/adr/):
@@ -125,7 +150,14 @@ Open `http://localhost:5173/intra` and log in as `owner@aivee.demo`.
 With a real camera: `uv run python tools/download_models.py`, then
 `make edge SOURCE=http://<phone>:8080/video ROTATE=90` (Android IP Webcam stream). Backup clip:
 `make record SOURCE=http://<phone>:8080/video SECONDS=60 ROTATE=90 NAME=sala-1`, replay with
-`make edge SOURCE=recordings/sala-1.mp4`. The 4-minute demo: [docs/demo-script.md](docs/demo-script.md).
+`make edge SOURCE=recordings/sala-1.mp4`. The 4-minute demo: [docs/demo-script.md](docs/demo-script.md)
+(operations: [docs/demo-runbook.md](docs/demo-runbook.md)).
+
+### Cloud deploy
+
+The shared server runs the stack `aivee-demo` on Docker Swarm: images, services, env names, migrations
+and one vision worker per camera are in [deploy/aivee-demo/README.md](deploy/aivee-demo/README.md). To add a
+camera from anywhere: [cloud-mode handbook](docs/handbook/cloud-mode.md) (connector script or `/telefon`).
 All commands: [backend handbook](docs/handbook/backend.md) · [frontend handbook](docs/handbook/frontend.md).
 
 ## Repository map
@@ -133,38 +165,43 @@ All commands: [backend handbook](docs/handbook/backend.md) · [frontend handbook
 ```
 apps/
   edge/        camera → detection, tracking, pose, role, situation engine, arrival, blur → MQTT
-               domain/ is pure (no IO) behind Protocol ports; adapters/ for YOLO, CLIP, MQTT, blur
-  ingest/      shared-subscription worker → Postgres (alert times, audit) → Telegram + Web Push
+               domain/ is pure (no IO) behind Protocol ports; adapters/ for YOLO, CLIP, MQTT, blur;
+               also the cloud vision worker (SOURCE=mqtt-frames://<camera>)
+  connector/   restaurant side of cloud mode: camera / webcam → HTTPS frames or RTSP (stdlib + ffmpeg)
+  ingest/      shared-subscription worker → Postgres (alert times, audit) → Telegram + Web Push,
+               alert lifecycle (✅ edit, reminders, client left)
   api/         FastAPI: REST + WS, accounts, roles per location, invites, audit, alert lifecycle,
                retained edge state, request → rule, staff enrolment, push, Alembic
   dashboard/   React 19 dashboard + PWA (Romanian UI)
-  site/        static presentation site (GitHub Pages)
+  site/        static presentation site (served from our server)
 packages/
   contracts/   Pydantic models + MQTT topic builder → JSON Schema → TS types
 infra/         mosquitto, postgres, mediamtx config
 evals/         nl_to_rule: 20 Romanian requests → expected rules
 tools/         fake_edge.py, record_clip.py, bench_edge.py, download_models.py, gen_vapid.py, setup scripts
-docs/          architecture, ADRs, decisions log, handbooks, plans, demo script, brand
+deploy/        aivee-demo: the Docker Swarm stack of the shared server
+docs/          architecture, ADRs, decisions log, handbooks, plans, demo script and runbook, brand
 ```
 
 ## How we test
 
-| Suite | Command | Result (2026-11-06) |
+| Suite | Command | Result (2026-11-07) |
 |---|---|---|
-| Python unit | `uv sync --all-packages -q && uv run pytest -q` | 362 passed |
-| Python integration (testcontainers: Mosquitto, Postgres + pgvector) | `uv run pytest -q -m integration` | 105 passed, 2 skipped ¹ |
-| Dashboard (Vitest) | `cd apps/dashboard && npm ci && npx vitest run` | 100 passed (13 files) |
-| Request → rule eval (real API calls) | `make eval` | 20/20, median 2.4 s, max 4.0 s |
+| Python unit | `uv sync --all-packages -q && uv run pytest -q` | 706 passed ¹ |
+| Python integration (testcontainers: Mosquitto, Postgres + pgvector) | `uv run pytest -q -m integration` | 189 passed, 3 skipped |
+| Dashboard (Vitest) | `cd apps/dashboard && npm ci && npx vitest run` | 356 passed (47 files) |
+| Request → rule eval (real API calls) | `make eval` | not rerun; last run 2026-11-06: 20/20, median 2.4 s, max 4.0 s |
 
-¹ One test, `test_fake_edge_alert_is_acknowledged_arrives_and_closes`, is timing-sensitive: on 2026-11-06 it
-failed in 2 of 3 full runs and passed alone and in the third run.
+¹ One test, `test_background_scorer_keeps_one_frame_in_flight`, is timing-sensitive: on 2026-11-07 it failed
+in the first full run (705 passed, 1 failed), then passed in a second full run and 3 of 3 runs alone.
 
 Unit tests cover the situation engine on simulated timelines (cooldown, arrival after `ARRIVE_S`, close),
 behaviour and role scoring, zone geometry, the permission matrix cell by cell, sessions and the login rate
-limit, alert lifecycle times and percentiles, and push. Integration tests cover MQTT → Postgres (duplicates
+limit, alert lifecycle times and percentiles, the lifecycle texts, the connector, and push. Integration tests cover MQTT → Postgres (duplicates
 ignored), LWT → offline, retained state on reconnect, pgvector lookups, login and invites, scoping between
-locations and organizations, the audit log rejecting UPDATE / DELETE, and the fake edge → ack → arrived →
-closed lifecycle. CI runs lint, mypy, all Python tests with coverage,
+locations and organizations, the audit log rejecting UPDATE / DELETE, the fake edge → arrived → closed
+lifecycle, the ✅ / 👋 Telegram edits, reminders claimed once across two replicas, and HTTPS camera frames
+through the real Mosquitto ACL. CI runs lint, mypy, all Python tests with coverage,
 contract drift checks (JSON Schema and TS types), the dashboard lint/tests/build, the site build and a
 gitleaks scan of the full history.
 
@@ -207,7 +244,7 @@ Logo, colours, type and voice: [docs/brand/README.md](docs/brand/README.md) (tok
 
 ## Team
 
-Marius Buharu · Vasi Dancu · Radu Nedela
+Marius Buharu · Radu Nedela · Vasi Dancu
 
 <!-- TODO(team): add roles. -->
 

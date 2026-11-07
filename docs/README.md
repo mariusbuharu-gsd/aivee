@@ -10,9 +10,13 @@ Every new session (human or tool) reads this page first, then the handbook for i
 | Dashboard, PWA, presentation site, design | [handbook/frontend.md](handbook/frontend.md) |
 | Edge, MQTT, API, ingest, Postgres | [handbook/backend.md](handbook/backend.md) |
 | Architecture diagrams, alert and rule flows, scalability | [architecture.md](architecture.md) |
-| Architecture decision records | [ADR 1 edge CPU inference](adr/0001-edge-first-cpu-inference.md) · [ADR 2 MQTT](adr/0002-mqtt-acl-lwt-retained-shared.md) · [ADR 3 Postgres + pgvector](adr/0003-postgres-pgvector.md) · [ADR 4 contracts](adr/0004-contracts-single-source-of-truth.md) · [ADR 5 staff without faces](adr/0005-staff-by-appearance-and-behaviour.md) · [ADR 6 request → rule](adr/0006-llm-request-to-rule.md) · [ADR 7 cookie sessions, not JWT](adr/0007-session-cookie-not-jwt.md) · [ADR 8 roles per location](adr/0008-roles-per-location-fixed-matrix.md) · [ADR 9 append-only audit log](adr/0009-append-only-audit-log-in-db.md) · [ADR 10 arrival on the edge](adr/0010-arrival-detected-on-edge.md) |
+| Architecture decision records | [ADR 1 edge CPU inference](adr/0001-edge-first-cpu-inference.md) · [ADR 2 MQTT](adr/0002-mqtt-acl-lwt-retained-shared.md) · [ADR 3 Postgres + pgvector](adr/0003-postgres-pgvector.md) · [ADR 4 contracts](adr/0004-contracts-single-source-of-truth.md) · [ADR 5 staff without faces](adr/0005-staff-by-appearance-and-behaviour.md) · [ADR 6 request → rule](adr/0006-llm-request-to-rule.md) · [ADR 7 cookie sessions, not JWT](adr/0007-session-cookie-not-jwt.md) · [ADR 8 roles per location](adr/0008-roles-per-location-fixed-matrix.md) · [ADR 9 append-only audit log](adr/0009-append-only-audit-log-in-db.md) · [ADR 10 arrival on the edge](adr/0010-arrival-detected-on-edge.md) · [ADR 11 cloud or edge analysis](adr/0011-cloud-or-edge-analysis.md) |
+| Cloud mode: connector, HTTPS frames, phone and laptop cameras | [handbook/cloud-mode.md](handbook/cloud-mode.md) |
+| Edge modes: customer PC and edge box | [handbook/edge-modes.md](handbook/edge-modes.md) |
+| The shared server (Docker Swarm stack `aivee-demo`) | [../deploy/aivee-demo/README.md](../deploy/aivee-demo/README.md) |
 | Accounts, roles, audit, alert lifecycle (spec) | [plans/2026-11-06-auth-roles-audit.md](plans/2026-11-06-auth-roles-audit.md) |
 | 4-minute demo, checklist, pitch, jury Q&A | [demo-script.md](demo-script.md) |
+| Demo operations: what runs where, rehearsal, fallbacks, what not to show | [demo-runbook.md](demo-runbook.md) |
 | Ideas and open questions (not scheduled) | [backlog/ideas.md](backlog/ideas.md) |
 | Logo, mark, icon, favicon | [brand/](brand/) |
 | Session rules (TDD, commits, no AI attribution) | [../CLAUDE.md](../CLAUDE.md) |
