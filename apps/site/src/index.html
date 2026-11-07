@@ -38,6 +38,7 @@
     <script type="module" src="contact.js"></script>
     <script type="module" src="sections.js"></script>
     <script type="module" src="form.js"></script>
+    <script type="module" src="planuri.js"></script>
   </head>
   <body>
     <a class="skip" href="#continut">Sari la conținut</a>
@@ -54,6 +55,7 @@
             <li><a href="#cum">Cum funcționează</a></li>
             <li><a href="#confidentialitate">Confidențialitate</a></li>
             <li><a href="#demo">Demo</a></li>
+            <li><a href="#planuri">Prețuri</a></li>
             <li><a href="#arhitectura">Tehnic</a></li>
           </ul>
         </nav>
@@ -479,6 +481,125 @@
             />
             <figcaption>Pagina Live din dashboard, cu datele demo. Videoclipul demo vine curând.</figcaption>
           </figure>
+        </div>
+      </section>
+
+      <!-- Plans and the price configurator. Launch prices live only in pricing.js and in the copy below;
+           planuri.js renders the quote. The HTML receipt is the default set-up (1 locație, 4 camere, cloud). -->
+      <section id="planuri" class="section plans" aria-labelledby="planuri-titlu">
+        <div class="wrap">
+          <div class="plans__head">
+            <p class="eyebrow">Planuri</p>
+            <h2 id="planuri-titlu">Plătești pe locație. Camerele le ai deja.</h2>
+            <p class="lead">Începi cu 30 de zile gratuite pe sala ta. Dacă rămâi, planul îl alegi după câte locații ai.</p>
+            <p class="plans__vat">Prețuri de lansare, fără TVA</p>
+          </div>
+
+          <ul class="tiers" data-play>
+            <li class="tier tier--pilot" style="--i: 0">
+              <h3 class="tier__name">Pilot</h3>
+              <p class="tier__price"><b>Gratuit</b><span>30 de zile</span></p>
+              <p class="tier__for">Ca să vezi AiVee pe sala ta, înainte să plătești ceva.</p>
+              <ul class="tier__list">
+                <li>1 locație</li>
+                <li>până la 2 camere</li>
+                <li>toate funcțiile</li>
+              </ul>
+              <a class="btn btn--line tier__cta" href="#pilot">Începe pilotul</a>
+            </li>
+            <li class="tier" style="--i: 1">
+              <h3 class="tier__name">Standard</h3>
+              <p class="tier__price"><b class="num">249</b><span>lei / lună<br />pe locație</span></p>
+              <p class="tier__for">1 locație, până la 4 camere incluse.</p>
+              <ul class="tier__list">
+                <li>alerte „client neservit” pe Telegram</li>
+                <li>reamintiri</li>
+                <li>închidere automată când ajunge un angajat</li>
+                <li>foc și alte reguli vizuale</li>
+                <li>reguli scrise în română</li>
+                <li>angajați recunoscuți fără fețe</li>
+                <li>Metrici și Istoric</li>
+                <li>echipă cu roluri</li>
+              </ul>
+              <a class="btn tier__cta" href="#calculator">Calculează</a>
+            </li>
+            <li class="tier tier--pro" style="--i: 2">
+              <p class="tier__badge">Pentru lanțuri</p>
+              <h3 class="tier__name">Pro</h3>
+              <p class="tier__price"><b class="num">549</b><span>lei / lună<br />pe locație</span></p>
+              <p class="tier__for">De la 2 locații, până la 10 camere incluse pe locație.</p>
+              <p class="tier__plus">Tot ce e în Standard, plus:</p>
+              <ul class="tier__list">
+                <li>mai multe locații într-un singur cont</li>
+                <li>notificări push pe telefon</li>
+                <li>comparații între locații</li>
+              </ul>
+              <a class="btn btn--coral tier__cta" href="#calculator">Calculează pentru lanț</a>
+            </li>
+          </ul>
+
+          <div class="addons">
+            <h3 class="addons__title">Opțiuni</h3>
+            <ul class="addons__list">
+              <li><span class="mode__tag">+49 lei / lună</span><b>Cameră în plus</b><span>peste camerele incluse în plan</span></li>
+              <li><span class="mode__tag">+99 lei / lună pe locație</span><b>Edge pe cutia noastră</b><span>video-ul nu pleacă din local, merge și offline · contract 12 luni</span></li>
+              <li><span class="mode__tag">+49 lei / lună pe locație</span><b>Edge pe PC-ul clientului</b><span>analiza rulează pe calculatorul din locație</span></li>
+            </ul>
+          </div>
+
+          <div class="calc" id="calculator">
+            <form class="calc__in" id="calc-form" aria-labelledby="calc-titlu">
+              <h3 class="calc__title" id="calc-titlu">Calculează-ți abonamentul</h3>
+              <div class="stepper">
+                <label for="calc-loc">Locații</label>
+                <div class="stepper__ctl">
+                  <button type="button" class="stepper__btn" data-step="-1" aria-controls="calc-loc" aria-label="O locație mai puțin">−</button>
+                  <input id="calc-loc" name="locations" class="num" type="number" inputmode="numeric" min="1" max="20" step="1" value="1" aria-describedby="calc-loc-h" />
+                  <button type="button" class="stepper__btn" data-step="1" aria-controls="calc-loc" aria-label="O locație în plus">+</button>
+                </div>
+                <span class="stepper__hint" id="calc-loc-h">între 1 și 20</span>
+              </div>
+              <div class="stepper">
+                <label for="calc-cam">Camere pe locație</label>
+                <div class="stepper__ctl">
+                  <button type="button" class="stepper__btn" data-step="-1" aria-controls="calc-cam" aria-label="O cameră mai puțin">−</button>
+                  <input id="calc-cam" name="cameras" class="num" type="number" inputmode="numeric" min="1" max="16" step="1" value="4" aria-describedby="calc-cam-h" />
+                  <button type="button" class="stepper__btn" data-step="1" aria-controls="calc-cam" aria-label="O cameră în plus">+</button>
+                </div>
+                <span class="stepper__hint" id="calc-cam-h">între 1 și 16</span>
+              </div>
+              <fieldset class="modes">
+                <legend>Unde se face analiza</legend>
+                <label class="modes__opt"><input type="radio" name="mode" value="cloud" checked /><span><b>Cloud (standard)</b><small>nu instalezi nimic în afară de camere</small></span></label>
+                <label class="modes__opt"><input type="radio" name="mode" value="edge-box" /><span><b>Edge pe cutia noastră</b><small>+99 lei pe locație · video-ul rămâne local, merge și offline</small></span></label>
+                <label class="modes__opt"><input type="radio" name="mode" value="edge-pc" /><span><b>Edge pe PC-ul tău</b><small>+49 lei pe locație · rulează pe calculatorul tău</small></span></label>
+              </fieldset>
+              <!-- Phones: the receipt is a screen below, so the running total rides along with the inputs. -->
+              <a class="calc__sum" href="#calc-out" aria-hidden="true" tabindex="-1"><span>Total pe lună</span><b><span class="num" id="calc-sum">249</span> lei</b></a>
+            </form>
+
+            <div class="receipt" id="calc-out">
+              <div class="receipt__head">
+                <img data-eyes src="brand/aivee-mark-white.svg" alt="" width="40" height="22" />
+                <span>Abonamentul tău</span>
+                <span class="receipt__plan" id="calc-plan">Standard</span>
+              </div>
+              <div class="fleet" id="calc-fleet" aria-hidden="true"></div>
+              <p class="fleet__cap" id="calc-fleet-cap" aria-hidden="true"><span class="num" id="calc-fleet-txt">1 locație · 4 camere</span><span class="fleet__key"><i></i>inclusă</span><span class="fleet__key fleet__key--x"><i></i>în plus</span></p>
+              <dl class="receipt__lines" id="calc-lines">
+                <div><dt>Standard<small>1 locație × 249 lei · 4 camere incluse</small></dt><dd class="num">249 lei</dd></div>
+              </dl>
+              <div class="receipt__total">
+                <span>Total pe lună</span>
+                <p aria-hidden="true"><b class="num" id="calc-total">249</b> lei</p>
+                <span class="receipt__year">pe an: <b class="num" id="calc-year">2.988</b> lei</span>
+              </div>
+              <p class="receipt__hint" id="calc-hint" hidden></p>
+              <p class="sr-only" id="calc-live" role="status" aria-live="polite">Plan recomandat: Standard. Total 249 lei pe lună, 2.988 lei pe an.</p>
+              <a class="btn btn--coral receipt__cta" href="#pilot">Începe pilotul gratuit</a>
+              <p class="receipt__fine">Prețuri fără TVA. Pilotul de 30 de zile nu costă nimic.</p>
+            </div>
+          </div>
         </div>
       </section>
 
