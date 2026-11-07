@@ -20,7 +20,7 @@ const RECENT_CLOSED = 5;
 
 /** What is happening now. Writing rules lives on Reguli, device numbers on Dispozitive. */
 export function LivePage() {
-  const { cameras, rules, alerts, suggestions, metrics, loading, dropSuggestion, cases, ack } =
+  const { cameras, rules, alerts, suggestions, metrics, loading, dropSuggestion, cases } =
     useLiveData();
   const { can } = useAuth();
   // Open alerts lead the page as bands; the side column keeps the last few closed ones, in the
@@ -62,7 +62,6 @@ export function LivePage() {
         cases={cases}
         zoneName={(id) => zoneName(cameras, id)}
         cameraName={(id) => cameras.find((c) => c.id === id)?.name ?? id}
-        onAck={can('alerts.ack') ? ack : undefined}
       />
       <SetupChecklist />
       <div className="live-grid">

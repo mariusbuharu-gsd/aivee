@@ -241,22 +241,35 @@ function AckButton({
   );
 }
 
-/** opened → preluată → ajuns → închisă, with the time between steps. */
+/**
+ * opened → ajuns → închisă, with the time between steps. "Preluată" shows only for an alert
+ * someone took (older alerts; the button is no longer offered).
+ */
 export function Timeline({ c }: { c: AlertCase }) {
-  const skippedAck = c.unacknowledged_arrival;
+  const taken = c.acknowledged_at !== null;
   const steps: { label: string; at: string | null; note?: string; gap?: string }[] = [
     { label: 'Deschisă', at: c.opened_at },
-    {
-      label: 'Preluată',
-      at: c.acknowledged_at,
-      note: skippedAck ? 'fără preluare' : (c.acknowledged_by ?? undefined),
-      gap: c.reaction_s !== null ? `reacție ${duration(c.reaction_s)}` : undefined,
-    },
+    ...(taken
+      ? [
+          {
+            label: 'Preluată',
+            at: c.acknowledged_at,
+            note: c.acknowledged_by ?? undefined,
+            gap: c.reaction_s !== null ? `reacție ${duration(c.reaction_s)}` : undefined,
+          },
+        ]
+      : []),
     {
       label: 'Ajuns',
       at: c.arrived_at,
       note: c.realerted_at ? 'reamintire trimisă' : undefined,
-      gap: c.travel_s !== null ? `drum ${duration(c.travel_s)}` : undefined,
+      gap: taken
+        ? c.travel_s !== null
+          ? `drum ${duration(c.travel_s)}`
+          : undefined
+        : c.wait_s !== null && c.arrived_at
+          ? `după ${duration(c.wait_s)}`
+          : undefined,
     },
     {
       label: 'Închisă',

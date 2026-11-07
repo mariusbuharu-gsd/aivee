@@ -234,7 +234,7 @@ async def test_fake_edge_alert_is_acknowledged_arrives_and_closes(
 
     texts = [t for n in notifiers for t in n.texts]
     wait = round(closed["wait_s"])
-    assert texts == [f"Un angajat a ajuns la Masa 1 după {wait} s · preluată de Ana"]
+    assert texts == [f"Un angajat a ajuns la Masa 1 după {wait} s"]
     assert sum(len(n.opened) for n in notifiers) == 1
     kinds = sorted(e.kind for e in audit.entries)
     assert kinds == ["alert.acknowledged", "alert.arrived", "alert.closed", "alert.opened"]

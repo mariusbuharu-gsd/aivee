@@ -48,7 +48,7 @@ export function OpenAlerts({
               </span>
               <strong>{a.summary_ro}</strong>
               <span className="open-alert-who">
-                {taken ? `${taken} merge la ${zone}` : 'Nimeni nu a preluat încă'}
+                {taken ? `${taken} merge la ${zone}` : 'Nimeni nu a ajuns încă'}
               </span>
             </div>
             {onAck && !taken && <GoButton zone={zone} onAck={() => onAck(a.key)} />}

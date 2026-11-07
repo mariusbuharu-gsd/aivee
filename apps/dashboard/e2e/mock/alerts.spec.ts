@@ -3,24 +3,13 @@ import { MOCK_PASSWORD, signIn } from '../helpers';
 
 // The mock opens "Masa 2" about 4 s after the page loads and closes it after 32 s.
 
-test('staff take an open alert with "Preiau" and the timeline shows who and how fast', async ({
-  page,
-}) => {
+test('an open alert offers no "Preiau": the camera closes it on its own', async ({ page }) => {
   await signIn(page, 'staff', MOCK_PASSWORD, '/alerte');
-  const go = page.getByRole('button', { name: /^Preiau / }).first();
-  await expect(go).toBeVisible({ timeout: 20_000 });
-  // The button disappears once taken, so pin the card itself before clicking.
-  await go.evaluate((el) => el.closest('li')?.setAttribute('data-e2e', 'taken'));
-  const card = page.locator('li[data-e2e="taken"]');
-  await go.click();
-  await expect(page.getByText('Ai preluat Masa 2')).toBeVisible();
-  await expect(card.getByRole('button', { name: /Preiau/ })).toHaveCount(0);
-  const timeline = card.getByRole('list', { name: 'Desfășurarea alertei' });
-  await expect(timeline).toContainText('Preluată');
-  await expect(timeline).toContainText('Ana Dumitru');
-  await expect(timeline).toContainText(/reacție \d+/);
-  // The mock lets Ana "arrive" 4 s after she pressed the button.
-  await expect(timeline).toContainText(/drum \d+/, { timeout: 10_000 });
+  const open = page.getByRole('list', { name: 'Alerte deschise' });
+  await expect(open).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: /Preiau/ })).toHaveCount(0);
+  // The mock closes "Masa 2" after 32 s by itself.
+  await expect(open).toHaveCount(0, { timeout: 40_000 });
 });
 
 test('the history filters by kind and keeps the period', async ({ page }) => {
@@ -35,12 +24,14 @@ test('the history filters by kind and keeps the period', async ({ page }) => {
   await expect(page.getByText(/a confirmat că #7/)).toHaveCount(0);
 });
 
-test('metrics show wait, reaction and travel with how many alerts they cover', async ({ page }) => {
+test('metrics show the wait and how many alerts it covers, no Preiau-based tiles', async ({
+  page,
+}) => {
   await signIn(page, 'manager', MOCK_PASSWORD, '/metrici');
   await expect(page.locator('.service-headline')).toContainText(/Clienții au așteptat de obicei/);
   await expect(page.locator('.service-lead')).toContainText(/Așteptare: .*din \d+ alert/);
   for (const label of ['Reacție', 'Drum']) {
-    await expect(page.locator('.service-cell', { hasText: label })).toContainText(/din \d+ alert/);
+    await expect(page.locator('.service-cell', { hasText: label })).toHaveCount(0);
   }
   await expect(page.getByText(/ținta ta · 1 min/)).toBeVisible();
 });

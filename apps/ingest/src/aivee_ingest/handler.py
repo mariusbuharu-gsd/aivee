@@ -12,7 +12,6 @@ from pathlib import Path
 from aivee_api.alerts.audit import (
     AuditWriter,
     LoggingAuditWriter,
-    arrival_ro,
     device_entry,
     system_closed_entry,
 )
@@ -29,12 +28,27 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from aivee_ingest.notify import Notifier
+from aivee_ingest.lifecycle import (
+    arrived_ro,
+    closed_line,
+    is_guest_rule,
+    left_ro,
+    resolved_line,
+)
+from aivee_ingest.locations import rule_conditions
+from aivee_ingest.notify import LifecycleNotifier, Notifier
 from aivee_ingest.verify import UNAVAILABLE, AlertVerification, wait_for_file
 
 log = logging.getLogger(__name__)
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+LEFT_TITLE = "AiVee · Client plecat"
+SYSTEM_CLOSED_LINE = {
+    "device_offline": "⚪ Închisă · dispozitivul s-a deconectat",
+    "device_restarted": "⚪ Închisă · dispozitivul a repornit",
+}
 
 
 def snapshot_name(event_id: str) -> str:
@@ -50,7 +64,9 @@ class IngestHandler:
         snapshot_wait_s: float = 2.0,
         audit: AuditWriter | None = None,
         verification: AlertVerification | None = None,
+        close_grace_s: float = 3.0,
     ) -> None:
+        self._close_grace_s = close_grace_s
         self._sessions = sessions
         self._audit = audit or LoggingAuditWriter()
         self._snapshots = snapshot_dir
@@ -139,9 +155,45 @@ class IngestHandler:
                 log.exception("notifier failed for event %s", event.event_id)
         elif event.state == "arrived" and view is not None:
             try:
-                await self._notifier.send_text(arrival_ro(view), view.event_id, kind="arrived")
+                await self._notifier.send_text(arrived_ro(view), view.event_id, kind="arrived")
             except Exception:
                 log.exception("notifier failed for event %s", event.event_id)
+            await self._resolved(view, resolved_line(view))
+        elif event.state == "closed" and view is not None and view.arrived_at is None:
+            # Off the MQTT loop: the `arrived` may still be on its way (another replica).
+            task = asyncio.create_task(self._closed_unserved(view.event_id))
+            self._verifying.add(task)
+            task.add_done_callback(self._verifying.discard)
+
+    async def _closed_unserved(self, alert_id: str) -> None:
+        """Nobody arrived and the situation ended: for a table, the guest left unserved.
+        Waits `close_grace_s` first, so an `arrived` processed late is not mistaken for it."""
+        try:
+            if self._close_grace_s > 0:
+                await asyncio.sleep(self._close_grace_s)
+            async with self._sessions() as s:
+                view = await AlertRepository(s).view(alert_id)
+            if view is None or view.arrived_at is not None:
+                return
+            guest = is_guest_rule(await rule_conditions(self._sessions, view.rule_id))
+            try:
+                await self._notifier.send_text(
+                    left_ro(view, guest=guest), view.event_id, title=LEFT_TITLE, kind="arrived"
+                )
+            except Exception:
+                log.exception("notifier failed for the close of %s", alert_id)
+            await self._resolved(view, closed_line(guest=guest))
+        except Exception:
+            log.exception("close follow-up of %s failed", alert_id)
+
+    async def _resolved(self, view: AlertView, line: str) -> None:
+        """Edit the original alert (Telegram): how it ended, no buttons."""
+        if not isinstance(self._notifier, LifecycleNotifier):
+            return
+        try:
+            await self._notifier.alert_resolved(view, line)
+        except Exception:
+            log.exception("could not mark alert %s as resolved", view.event_id)
 
     async def _verify(self, event: AlertEvent) -> None:
         assert self._verification is not None
@@ -151,7 +203,7 @@ class IngestHandler:
             log.exception("verification task failed for event %s", event.event_id)
 
     async def drain(self) -> None:
-        """Wait for the verifications in flight (tests, shutdown)."""
+        """Wait for the verifications and close follow-ups in flight (tests, shutdown)."""
         while self._verifying:
             await asyncio.gather(*self._verifying, return_exceptions=True)
 
@@ -206,6 +258,9 @@ class IngestHandler:
                 )
             except Exception:
                 log.exception("notifier failed for the %s note of %s", reason, t.device)
+            line = SYSTEM_CLOSED_LINE.get(reason, "⚪ Închisă")
+            for view in closed:
+                await self._resolved(view, line)
 
     async def _on_suggestion(self, t: Topics, suggestion: StaffSuggestion) -> None:
         async with self._sessions() as s:

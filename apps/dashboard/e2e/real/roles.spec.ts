@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { MANAGER_NAV, OWNER_NAV, STAFF_NAV, navLinks, signIn } from '../helpers';
 
 // Against a running API seeded with `make seed`. Run with `npm run e2e:real`.
-// Read-only on purpose except "Preiau", which only writes the audit log (no Telegram).
+// Read-only on purpose. "Preiau" is no longer offered: the camera closes alerts.
 
 const password = process.env.DEMO_PASSWORD ?? '';
 test.skip(!password, 'DEMO_PASSWORD is not set');
@@ -46,7 +46,7 @@ test('a manager gets rules and team but not locations', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('staff load alerts without forbidden calls and can take an open one', async ({ page }) => {
+test('staff load alerts without forbidden calls and are not offered "Preiau"', async ({ page }) => {
   const errors = apiErrors(page);
   await signIn(page, 'staff', password, '/alerte');
   expect(await navLinks(page)).toEqual(STAFF_NAV);
@@ -54,14 +54,6 @@ test('staff load alerts without forbidden calls and can take an open one', async
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(errors).toEqual([]);
 
-  const go = page.getByRole('button', { name: /^Preiau / }).first();
-  if (!(await go.isVisible().catch(() => false))) {
-    test.info().annotations.push({ type: 'note', description: 'no open alert to take' });
-    return;
-  }
-  await go.evaluate((el) => el.closest('li')?.setAttribute('data-e2e', 'taken'));
-  const card = page.locator('li[data-e2e="taken"]');
-  await go.click();
-  await expect(card.getByRole('list', { name: 'Desfășurarea alertei' })).toContainText('Preluată');
+  await expect(page.getByRole('button', { name: /Preiau/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

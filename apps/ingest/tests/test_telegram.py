@@ -155,9 +155,7 @@ async def test_alert_is_html_with_names_and_the_preiau_button() -> None:
         "🔴 <b>Masa 1 așteaptă de 1 min</b>\nNu a venit nimeni la client.\n\n"
         "📍 Terasa &lt;demo&gt; · Sala principală · 14:30"
     )
-    assert payload["reply_markup"] == {
-        "inline_keyboard": [[{"text": "Preiau ✋", "callback_data": "ack:e1"}]]
-    }
+    assert "reply_markup" not in payload  # no "Preiau ✋" any more, and no public dashboard
     assert "cam1" not in payload["text"] and "masa-1" not in payload["text"]
 
 
@@ -175,10 +173,9 @@ async def test_photo_caption_carries_the_keyboard_and_the_dashboard_link(tmp_pat
     assert 'name="parse_mode"' in body
     assert "<b>Masa 1 așteaptă de 1 min</b>" in body
     markup = body.split('name="reply_markup"')[1].split("\r\n\r\n", 1)[1].split("\r\n")[0]
-    assert json.loads(markup)["inline_keyboard"][0][1] == {
-        "text": "Vezi în aplicație",
-        "url": "https://aivee.example.com/alerte",
-    }
+    assert json.loads(markup)["inline_keyboard"] == [
+        [{"text": "Vezi în aplicație", "url": "https://aivee.example.com/alerte"}]
+    ]
 
 
 async def test_a_refused_rich_send_is_retried_once_as_plain_text(tmp_path: Path) -> None:

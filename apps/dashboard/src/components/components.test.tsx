@@ -332,7 +332,11 @@ describe('AlertFeed', () => {
       within(card).getByRole('heading', { name: 'Masa 2: nimeni de la personal' }),
     ).toBeVisible();
     expect(within(card).getByText(/regula „Masă neservită”/)).toBeInTheDocument();
-    expect(within(card).getByText(/^00:\d\d$/)).toBeInTheDocument();
+    // The running clock; between 00:00 and 00:59 the opened-at <time> matches too.
+    const clocks = within(card)
+      .getAllByText(/^00:\d\d$/)
+      .filter((el) => el.tagName !== 'TIME');
+    expect(clocks).toHaveLength(1);
     expect(within(card).getByRole('img', { name: 'Captură cu fețele estompate' })).toHaveAttribute(
       'src',
       'http://api/api/snapshots/e-2',

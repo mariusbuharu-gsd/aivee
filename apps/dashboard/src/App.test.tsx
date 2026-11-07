@@ -73,8 +73,7 @@ describe('App with the mock API', () => {
     expect(within(nav).getByRole('link', { name: /Locații/ })).toBeInTheDocument();
   });
 
-  it('takes an open alert with "Preiau" and shows the timeline', async () => {
-    const user = userEvent.setup();
+  it('offers no "Preiau" (the camera closes alerts) and still shows the timeline', async () => {
     const api = new MockApi({ latencyMs: 0, autoplay: false });
     api.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut');
     api.accounts.login('staff@aivee.demo', MOCK_PASSWORD);
@@ -87,12 +86,9 @@ describe('App with the mock API', () => {
         </AuthProvider>
       </ApiContext.Provider>,
     );
-    await user.click(await screen.findByRole('button', { name: 'Preiau Masa 2' }));
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Preiau Masa 2' })).toBeNull());
-    // Taken now by Ana (timeline), plus the seeded alert she took earlier (row + timeline).
-    expect(screen.getAllByText(/· Ana Dumitru/)).toHaveLength(2);
-    expect(screen.getByText('preluată de Ana Dumitru')).toBeInTheDocument();
-    // The seeded closed alert shows its full lifecycle with durations.
+    expect(await screen.findByRole('list', { name: 'Alerte deschise' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Preiau/ })).toBeNull();
+    // An older alert someone took keeps its full lifecycle with durations.
     expect(screen.getAllByText(/reacție 30 s/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/drum 1 min 18 s/).length).toBeGreaterThan(0);
   });
@@ -100,7 +96,10 @@ describe('App with the mock API', () => {
   it('puts open alerts on top, closed ones as rows, and asks about staff with Da/Nu', async () => {
     const user = userEvent.setup();
     const api = renderApp('/alerte');
-    expect(await screen.findByRole('list', { name: 'Alerte închise' })).toBeInTheDocument();
+    // One list per day: after midnight the seeded alerts can span two.
+    expect((await screen.findAllByRole('list', { name: 'Alerte închise' })).length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByRole('button', { name: 'Deschise' })).toBeInTheDocument();
     api.emitAlert('r-neservit', 'z-masa-2', 'opened', 'Masa 2: nimeni de la personal de 1 minut');
     api.emitSuggestion();

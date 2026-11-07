@@ -41,10 +41,6 @@ export function MetricsPage() {
             De la alertă până ajunge cineva de la personal la masă (sau până se închide alerta).
             Clienții așteptau deja de dinainte, cât spune regula.
           </dd>
-          <dt>Reacție</dt>
-          <dd>De la alertă până apasă cineva „Preiau”.</dd>
-          <dt>Drum</dt>
-          <dd>De la „Preiau” până ajunge omul la masă.</dd>
         </dl>
         <p className="small muted">
           Mediana: jumătate din alerte au fost mai rapide, jumătate mai lente. p90: 9 din 10 alerte
