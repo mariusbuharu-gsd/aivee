@@ -4,6 +4,10 @@ The shared test server: colleagues open the dashboard from their own laptops, ge
 connect their laptop webcam as a camera. Approved by Marius for the develop swarm; it shares the
 cluster with every other dev project, so touch only `aivee-demo_*` services and volumes.
 
+Internal names are placeholders here: `REGISTRY` (the image registry), `SWARM_MANAGER` (ssh host of
+the swarm manager), `DB_NODE` (the node the stateful services are pinned to), `OTHER_NODE`. The real
+values are in the team's infrastructure notes.
+
 ## URLs and services
 
 | URL | Service | What |
@@ -21,12 +25,12 @@ cluster with every other dev project, so touch only `aivee-demo_*` services and 
 | `dashboard`, `site` | `aivee/dashboard`, `aivee/site` | nginx:alpine |
 | `vision-cam-coleg-1..3`, `vision-cam-telefon-1..2` | `aivee/vision` | `vision.yml`: cloud vision workers, see "Rules on the server" |
 
-All pinned to `dev-worker-1`: the database, the broker's retained state and the snapshots volume
-(shared by api and ingest) live there, and dev-worker-2 crashes now and then. Traefik routes by the
+All pinned to `DB_NODE`: the database, the broker's retained state and the snapshots volume
+(shared by api and ingest) live there, and OTHER_NODE crashes now and then. Traefik routes by the
 `traefik.http.routers.aivee-demo-*` labels on `traefik-network`; the stack's own overlay is
 `aivee-demo_internal`. MediaMTX is not deployed (see Known limits).
 
-Registry: `docker-hub.gsd.com.ro/aivee/<image>:<git sha8>`. Images are built on a laptop (the
+Registry: `REGISTRY/aivee/<image>:<git sha8>`. Images are built on a laptop (the
 manager has no GitHub key).
 
 ## Files
@@ -56,7 +60,7 @@ deploy/aivee-demo/build.sh                    # all images; or: build.sh api das
 df -h /mnt/data                               # on the manager first, if pushing a lot (Nexus blobs)
 
 # 2. Manager: copy the stack files if they changed
-scp deploy/aivee-demo/{stack.yml,vision.yml,run-once.sh} gsd-manager:aivee-demo/
+scp deploy/aivee-demo/{stack.yml,vision.yml,run-once.sh} SWARM_MANAGER:aivee-demo/
 
 # 3. Manager, ~/aivee-demo:
 TAG=<sha8> ./run-once.sh migrate              # when a migration was added (before the api update)
@@ -66,7 +70,7 @@ TAG=<sha8> docker stack deploy --with-registry-auth -c stack.yml aivee-demo
 `docker stack deploy` sets every `aivee/*` image to `TAG`. To move a single service instead:
 
 ```bash
-docker service update --with-registry-auth --image docker-hub.gsd.com.ro/aivee/api:<sha8> aivee-demo_api
+docker service update --with-registry-auth --image REGISTRY/aivee/api:<sha8> aivee-demo_api
 docker service inspect aivee-demo_api --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}'
 ```
 
@@ -84,7 +88,7 @@ docker service update --force aivee-demo_api && docker service update --force ai
 ```
 
 `run-once.sh` starts `aivee-demo_once-<name>` from the api image on `aivee-demo_internal`
-(dev-worker-1, `--restart-condition none`), waits, prints its log and removes it. A one-off task
+(DB_NODE, `--restart-condition none`), waits, prints its log and removes it. A one-off task
 rather than migrating on api start: one run, a clear exit code, never two replicas migrating.
 
 ## Logs, status, rollback, teardown
@@ -97,11 +101,11 @@ docker service rollback aivee-demo_api                # previous spec (image) of
 TAG=<previous sha8> docker stack deploy --with-registry-auth -c stack.yml aivee-demo   # all of them
 ```
 
-Teardown (removes the services and the network; the data stays in the volumes on dev-worker-1):
+Teardown (removes the services and the network; the data stays in the volumes on DB_NODE):
 
 ```bash
 docker stack rm aivee-demo
-# Data too, after the tasks are gone (ssh dev-worker-1). Only these four, never a prune:
+# Data too, after the tasks are gone (ssh DB_NODE). Only these four, never a prune:
 docker volume rm aivee-demo_pg-data aivee-demo_mosquitto-data aivee-demo_snapshots aivee-demo_videos
 ```
 
@@ -128,7 +132,7 @@ Same via the API (what the end-to-end check did): `POST /api/cameras?location_id
 ### 2. Rules on the server (option A, main flow once cloud frames are on develop)
 
 The colleague runs only the connector, which posts JPEG frames over HTTPS to the api; a
-`vision-cam-coleg-<n>` service on dev-worker-1 runs the rules, and the dashboard shows the live
+`vision-cam-coleg-<n>` service on DB_NODE runs the rules, and the dashboard shows the live
 view (MJPEG). Deploy the workers with the vision image:
 
 ```bash
