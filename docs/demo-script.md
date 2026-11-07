@@ -1,4 +1,4 @@
-# Demo script — 4 minutes, 3 people
+# Demo script — 4 minutes
 
 Judging Saturday 7 November, 11:30–15:00. Code freeze 10:30. Everything below uses what is on `develop`:
 screen names, button labels and alert texts are copied from the code.
@@ -7,24 +7,32 @@ screen names, button labels and alert texts are copied from the code.
 
 | Who | Plays | Holds |
 |---|---|---|
-| **Marius** | narrator, drives the dashboard | laptop (owner, `owner@aivee.demo`), projector |
-| **Radu** | the guest | 2–3 cups, sits at **Masa 1** |
-| **Vasi** | the staff member, wearing the black jacket | phone logged in as `staff@aivee.demo` (Ana Ospătar), Alerte page open |
+| **Presenter** | drives the dashboard and narrates | presenter laptop (owner, `owner@aivee.demo`), projector |
+| **Radu** | the guest | **his laptop on the table** (the camera, **Laptop Radu**); sits at **Masa 1** |
+| **Marius** | the staff member, in the **purple hoodie** | phone logged in as `staff@aivee.demo`, Alerte open |
+
+Nobody presses anything to "take" an alert: there is no "Preiau" any more. The camera sees staff arrive
+and closes the alert on its own.
 
 ## Set-up the demo assumes
 
-- **The laptop plays both roles.** The standard offer is cloud-first (D25): cameras stream to our EU cloud,
-  video is analysed and discarded. In the demo, the laptop stands in for that cloud server, and the fact
-  that it runs on a plain laptop CPU is the edge option. Say this once, in step 1; don't claim a real cloud.
-- Location `demo` ("Terasa demo"), camera `cam-01` on device `edge-01` (D15), zones **Masa 1**, **Masa 2**
-  (tag `table`) and **Intrare** (tag `entrance`) drawn on the camera still.
-- Two rules already created and confirmed on Reguli (created the evening before, not live):
-  - "Anunță ospătarul dacă la o masă nu a venit nimeni de 1 minut" (eval case 1 → present guest 60 s ∧ absent staff 60 s);
-  - "Anunță dacă o masă rămâne nedebarasată un minut după ce au plecat clienții" — check that "Ce am înțeles"
-    shows 1 minute before confirming (the eval's default for this kind of request is 5 min).
-- The raised-hand rule is **not** created yet: it is the one written live in step 2.
-- Vasi, in the black jacket, is enrolled as the staff profile (photos on the profile) and/or has been confirmed once
-  through "Pare angajat — confirmi?", so the edge already tags him as staff (light blue box).
+- **The server plays the cloud.** The standard offer is cloud-first (D25): cameras stream to our EU cloud,
+  video is analysed and discarded. In the demo the GSD server (`https://app-aivee.earth.sv.gsd.com.ro`) is
+  that cloud, and Radu's laptop is just a camera on the table. Say this once, in step 1.
+- Camera **Laptop Radu** (`cam-coleg-2`): Radu's laptop on the table, webcam facing the guest's seat and the
+  way staff come in. Zones **Masa 1** (tag `table`) and **Intrare** (tag `entrance`) drawn on today's view.
+  **Laptop coleg 1** (`cam-coleg-1`) is not used: all its rules are off.
+- Two rules already created and confirmed on Reguli for Laptop Radu (not live):
+  - „Client neservit (demo 10 s)” on Masa 1 (present guest 10 s ∧ absent staff 10 s) → Telegram;
+  - „Foc în imagine” (threshold 0.8, minimum 5 s, lamp glare as a negative; cooldown 30 s).
+- The bear rule is **not** created yet: it is the one written live in step 2 (delete it after the rehearsal).
+- Marius, in the purple hoodie, is enrolled as staff through `/angajat-nou`, so Live labels him „angajat”.
+- Ingest runs with `REMIND_S=60`: while nobody has arrived, a ⏰ reminder every 60 s.
+
+> **Warning: do not create, edit, enable or disable rules while an alert is open on Laptop Radu.** A rule
+> reload restarts the camera's engine: the open alert is never closed and its ⏰ reminders keep coming
+> (seen in rehearsal; the fix is after the hackathon). Step 2 is safe because no alert is open yet. Change
+> rules only when Live shows no open alert.
 
 ## Timeline (total 4:00)
 
@@ -32,129 +40,121 @@ screen names, button labels and alert texts are copied from the code.
 |---|---|---|---|
 | 1 | 0:00 | Login → location → live camera with boxes | 0:20 |
 | 2 | 0:20 | Write a rule in Romanian → "Ce am înțeles" → confirm | 0:35 |
-| 3 | 0:55 | Guest has been sitting since 0:15 → alert at ~1:15 on Telegram + push | 0:25 |
-| 4 | 1:20 | "Preiau" on the phone → walk → arrived → closed, with times | 0:40 |
-| 5 | 2:00 | Guest raises a hand → alert | 0:20 |
-| 6 | 2:20 | Both leave Masa 1, cups stay → wait 1 min | (runs in background) |
-| 7 | 2:20 | Istoric shows everything | 0:30 |
-| 8 | 2:50 | Metrici: wait / reaction / travel | 0:30 |
-| 6b | 3:20 | "Masa 1: nedebarasată de 1 min" arrives | 0:20 |
+| 3 | 0:55 | Radu sits at Masa 1 → alert after 10 s → ⏰ reminder at +60 s | 1:10 |
+| 4 | 2:05 | Marius walks over → "✅ Rezolvat" (or Radu leaves → "👋 clientul a plecat") | 0:25 |
+| 5 | 2:30 | Radu holds a lighter ≥ 5 s → „posibil foc” + Telegram | 0:20 |
+| 6 | 2:50 | Istoric shows everything | 0:25 |
+| 7 | 3:15 | Metrici: wait times | 0:25 |
 | — | 3:40 | Close: one sentence + team | 0:20 |
-
-The two 1-minute waits overlap with talking: Radu sits down during step 1, and the cups are left before
-Istoric and Metrici.
 
 ### 1. Login → location → live (0:00–0:20)
 
-- **Marius:** open `http://localhost:5173/intra` → Email `owner@aivee.demo`, Parolă → **Intră în cont**.
-- **Marius:** in the sidebar, the location shows **Terasa demo** (a dropdown when the owner has more than one
-  location) → **Live**.
-- **Radu:** at 0:15, walk into the frame and sit at Masa 1.
-- **Expected:** the camera tile with the live video, the zone outlines, a white box on Radu (guest) and a light
-  blue box on Vasi (staff) standing near the bar.
-- **Say:** "A normal camera, nothing to buy. In the demo this laptop stands in for our cloud server. And because
-  it is just a laptop CPU, the same software can run on the customer's own PC: that is the edge option. AiVee
-  sees roles, not faces."
-- **Fallback:** no video or no boxes → in a second terminal `make edge SOURCE=recordings/sala-1.mp4`
-  (the recorded clip, already upright). Still nothing → `make fake-edge SCENARIO=unattended SPEED=2`
-  and say "this is the same pipeline fed by a scripted scene". Login fails → `make seed` was not run or
-  `DEMO_PASSWORD` changed; run `make seed` (it resets the three demo users).
-- **Fallback without a live camera at all:** Analiză video (`/video`) → upload `recordings/sala-1.mp4`, copy
-  zones and rules from cam-01 → the timeline lists each alert at its mm:ss with the blurred snapshot. Say:
-  "the same pipeline and the same rules, on a recording, as fast as the laptop can go; it does not ring the
+- **Presenter:** open `https://app-aivee.earth.sv.gsd.com.ro/intra` → Email `owner@aivee.demo`, Parolă → **Intră în cont**.
+- **Presenter:** the sidebar shows the location → **Live** → **Laptop Radu**.
+- **Expected:** the camera tile with the live video and the zone outlines; Marius, standing away from the table,
+  labelled „angajat”.
+- **Say:** "A normal camera, nothing to buy: here, a laptop on the table. The video goes to our cloud, is
+  analysed and discarded. The same software can run on the customer's own PC: that is the edge option.
+  AiVee sees roles, not faces."
+- **Fallback:** no image ("fără imagine" on Camere) → Radu restarts the camera script. Server or Wi-Fi down →
+  the backup laptop stack (`make up`, api, dashboard, `make edge-usb` with the phone on USB), same scenario;
+  no camera at all → `make fake-edge SCENARIO=unattended SPEED=2` on the backup stack and say "this is the same
+  pipeline fed by a scripted scene".
+- **Fallback without a live camera at all:** Analiză video (`/video`) on the backup stack → upload
+  `recordings/sala-1.mp4`, copy zones and rules from a live camera → the timeline lists each alert at its mm:ss
+  with the blurred snapshot. Say: "the same pipeline and the same rules, on a recording; it does not ring the
   staff's phones".
 
 ### 2. A rule in Romanian (0:20–0:55)
 
-- **Marius:** **Reguli** → type (or dictate with the microphone button):
-  "Dacă cineva ridică mâna la masă, cheamă ospătarul" → **Creează regula**.
+- **Presenter:** **Reguli** → type (or dictate with the microphone button):
+  „Anunță-mă dacă apare un urs” → **Creează regula**.
 - **Expected:** after a few seconds ("Se analizează…") the box **Ce am înțeles** with the rule name, the
   pill "ciornă" and the plain-Romanian description; "Vezi regula JSON" shows the typed rule.
-  (Eval: this exact request → `pose guest raised_hand`, 3.6 s; all 20 eval requests median 2.4 s.)
-- **Marius:** **Confirmă și salvează**. The rule appears in the list and is pushed to the edge (retained MQTT).
+  (A bear is an `object_present` rule; all 20 eval requests: median 2.4 s.) It never fires by accident in the room.
+- **Presenter:** **Confirmă și salvează**. The rule appears in the list and is pushed to the camera's worker.
 - **Say:** "The model only proposes; the owner confirms. Ask it to recognise a person and it refuses."
+- **Only here:** this is the one rule change in the demo, made while no alert is open (see the warning above).
 - **Fallback:** no internet / Claude error (Romanian error message) → say "creating rules needs the internet;
-  rules that already exist keep running here", and show the two pre-created rules. Step 5 then has no hand rule: use
-  `uv run python tools/fake_edge.py --scenario hand --speed 2 --demo` (built-in demo rules, ignores the
-  retained ones).
+  rules that already exist keep running", and show the two pre-created rules.
 
-### 3. The guest waits → alert (0:55–1:20)
+### 3. The guest waits → alert → reminder (0:55–2:05)
 
-- **Marius:** go back to **Live** (or **Alerte**). Talk about the minute while it runs: "Radu sat down at 0:15.
-  Nobody from staff has come. At one minute AiVee raises it."
-- **Expected at ~1:15:** in the dashboard a coral alert **"Masa 1: neservită de 1 min"** with a **Preiau**
-  button; in the Telegram group a message with the blurred snapshot; on Vasi's phone a push notification.
-- **Vasi:** show the phone notification to the jury.
-- **Fallback:** no alert after 1:30 → check Dispozitive (device online?) and that Vasi is not inside Masa 1.
-  Still nothing → `make fake-edge SCENARIO=unattended SPEED=2` (opens after ~30 s, staff arrives at ~48 s).
-  Telegram silent but dashboard OK → carry on; Telegram is a notifier, not the pipeline. Push silent →
-  carry on with Telegram (push needs HTTPS on the phone).
+- **Radu:** sit at Masa 1. **Marius:** stay away from the table.
+- **Expected after ~10 s:** in the dashboard a coral alert **"Masa 1 așteaptă de 10 s"**; in the Telegram group
+  **AiveeAlerts** the same alert with the blurred snapshot and one button, **Vezi în aplicație**; on Marius's
+  phone a push notification.
+- **Say:** "Nobody came for ten seconds, so AiVee raises it. In a real restaurant this would be a minute or two."
+- **While the minute runs:** show the alert card on Live and the Telegram message; explain that the camera, not
+  a button, will close it.
+- **Expected 60 s after the alert:** a reply to that Telegram alert **"⏰ Încă neservit: Masa 1, de 1 min"**,
+  and again every 60 s while nobody comes.
+- **Say:** "If nobody reacts, it keeps reminding, without anyone pressing anything."
+- **Fallback:** no alert 30 s after Radu sat down → check Dispozitive (camera online?) and that Marius is not inside Masa 1.
+  Telegram silent but dashboard OK → carry on; Telegram is a notifier, not the pipeline. Push silent → carry on
+  with Telegram (push needs HTTPS and permission on the phone).
 
-### 4. "Preiau" → arrived → closed (1:20–2:00)
+### 4. Staff arrives → "✅ Rezolvat" (2:05–2:30)
 
-- **Vasi:** tap the notification (opens **Alerte**) → **Preiau**.
-- **Expected:** the timeline under the alert: **Deschisă** → **Preluată** (Ana Ospătar, "reacție …").
-- **Vasi:** walk to Masa 1 and **stay at least 5 s** (`ARRIVE_S`); serve Radu.
-- **Expected:** **Ajuns** ("drum …"), a second Telegram message "Ana Ospătar a ajuns la Masa 1 după …", then
-  **Închisă** with "așteptare …".
-- **Say:** "Arrival is what the camera saw, not a button a busy waiter forgets. Wait, reaction and travel are
-  measured, per alert."
-- **Fallback:** no "Ajuns" → Vasi is probably tagged as guest: stand still, fully in the zone, 5 s more. If the
-  alert closes without arrival, show the "fără preluare" / closed state and move on. "Preiau" returns an error
-  → someone already took it (409); refresh.
+- **Marius:** walk to Masa 1 and **stay at least 5 s** (`ARRIVE_S`); serve Radu.
+- **Expected:** on Live Marius is „angajat”; in Telegram a follow-up **"Un angajat a ajuns la Masa 1 după …"**,
+  and the original alert is edited: it now starts with **"✅ Rezolvat · un angajat a ajuns după …"** and has no
+  buttons. The reminders stop. In Alerte, the timeline **Deschisă** → **Ajuns** ("după …") → **Închisă**.
+- **Say:** "Arrival is what the camera saw, not a button a busy waiter forgets. The alert closes itself, and the
+  wait is measured, per alert."
+- **If Radu leaves instead** (nobody came in time, or as a second run): Radu gets up and leaves the frame.
+  **Expected ~10 s later:** **"👋 Clientul a plecat de la Masa 1 fără să fie servit (a așteptat …)"**, and the
+  original alert becomes **"⚪ Închisă · clientul a plecat"**. **Say:** "And when a guest gives up, the owner
+  knows that too."
+- **Fallback:** no "a ajuns" → Marius is probably labelled guest: stand still, fully in the zone, 5 s more.
 
-### 5. The guest raises a hand (2:00–2:20)
+### 5. Fire in the picture (2:30–2:50)
 
-- **Vasi:** step out of Masa 1. **Radu:** raise a hand clearly above the shoulder, 2–3 s.
-- **Expected:** alert **"Masa 1: un client cheamă"** within a few seconds, Telegram + push.
-- **Say:** "That is the rule we wrote two minutes ago, already running."
-- **Fallback:** `make fake-edge SCENARIO=hand SPEED=2` (the scripted guest is at Masa 2). Pose only runs inside
-  table zones: Radu must be fully in Masa 1.
+- **Marius:** step out of Masa 1. **Radu:** hold the lit lighter in front of the camera, still, for **at least
+  5 s** (the „Foc în imagine” rule: threshold 0.8, minimum 5 s, lamp glare listed as a negative).
+- **Expected within a few seconds:** an alert **„…: posibil foc”** („Verifică imediat locul.”) on Live and in
+  AiveeAlerts, with the blurred snapshot.
+- **Say:** "Not only guests: the same camera watches for what must never be missed."
+- **Fallback:** no alert → hold the flame closer and steadier, another 5 s; still nothing → move on.
 
-### 6. Cups left → "masă nedebarasată" (2:20, result at ~3:20)
+### 6. Istoric (2:50–3:15)
 
-- **Radu and Vasi:** leave Masa 1 and the frame; the cups stay on the table.
-- **Expected after ~1 min:** **"Masa 1: nedebarasată de 1 min"** in Alerte and on Telegram.
-- **Fallback:** cups not detected (small objects, top-down angle) → `make fake-edge SCENARIO=uncleared SPEED=4`
-  (opens after 60 simulated seconds, ~15 s at speed 4).
-
-### 7. Istoric (2:20–2:50)
-
-- **Marius:** **Istoric**.
-- **Expected, newest first:** the hand rule created by Olga Proprietar (with before/after), the alert opened by
-  `edge-01`, acknowledged by Ana Ospătar, arrived, closed, the login. Filter by kind **Alerte** to narrow it.
+- **Presenter:** **Istoric**.
+- **Expected, newest first:** the rule created by the owner in step 2 (with before/after), the alerts opened by the
+  camera, arrived, closed, the login. Filter by kind **Alerte** to narrow it.
 - **Say:** "Append-only, enforced in Postgres: not even the app can rewrite it. Staff see only their own actions."
 
-### 8. Metrici (2:50–3:20)
+### 7. Metrici (3:15–3:40)
 
-- **Marius:** **Metrici**.
-- **Expected:** **Așteptare**, **Reacție**, **Drum** (median and p90) including the alert from step 4; below,
-  FPS, CPU and verified frames per device.
-- **Say:** "This is the owner's question: how long do guests wait, and how fast do we react."
-- Then back to **Alerte** for 6b.
+- **Presenter:** **Metrici**.
+- **Expected:** **Așteptare** (median and p90), from the arrival times, including the alert from step 4, and the
+  alert count; below, FPS, CPU and verified frames per device.
+- **Say:** "This is the owner's question: how long do guests wait before someone gets to them."
 
 ### Close (3:40–4:00)
 
 "AiVee: the staff's extra pair of eyes, configured in Romanian, private by design, with the cameras you already
-have. In our EU cloud as standard, or on your own PC if the video must never leave. Marius, Radu, Vasi — thank you."
+have. In our EU cloud as standard, or on your own PC if the video must never leave. Marius, Radu — thank you."
 
 ## Pre-demo checklist (T−30 min)
 
 - [ ] Camera phone on USB to the laptop, USB debugging allowed ("Allow USB debugging" accepted), IP Webcam
       started (**Start server**) with FPS limit 15 and quality 50. USB, because the venue Wi-Fi stalls the stream.
 - [ ] Camera phone charging, screen kept on (no sleep, no lock).
-- [ ] Vasi's phone charged, logged in as `staff@aivee.demo`, Alerte open, **Notificări pe telefon** = active,
+- [ ] Marius's phone charged, logged in as `staff@aivee.demo`, Alerte open, **Notificări pe telefon** = active,
       **Trimite un test** received. Do not disturb off, volume up.
 - [ ] `make up` healthy; `make seed` run; `make edge-usb` running (adb forward to port 28080, ROTATE=90,
       APPEARANCE=true, TARGET_FPS=30); Dispozitive shows `edge-01` online.
-- [ ] Staff profile enrolled with 8–10 photos of Vasi in the black jacket (front, side, back), uploaded on the
-      Alerte page or with `POST /api/staff/photos`; Live shows Vasi with the light blue (staff) box.
-- [ ] Arrival rehearsed: Vasi walks to Masa 1 and stands still 3–4 s by the table, so "a ajuns" fires
+- [ ] Marius enrolled as staff in the purple hoodie through `/angajat-nou` (20 s capture); Live labels him
+      „angajat”. No other staff profiles.
+- [ ] Arrival rehearsed: Marius walks to Masa 1 and stands still 3–4 s by the table, so "a ajuns" fires
       (`ARRIVE_S` = 5 s counts from entering the zone).
-- [ ] Zones clean: Masa 1, Masa 2, Intrare drawn on today's camera position (the camera did not move).
+- [ ] Zones clean: Masa 1, Intrare drawn on Laptop Radu on today's camera position (the camera did not move).
       Nobody sitting at a table zone before the demo (no stale alerts); Alerte has no open alert.
-- [ ] Rules created (`make seed` creates accounts only, not rules): unattended 1 min and uncleared 1 min
-      confirmed and shown as "activă" on Reguli; the hand rule **not** created yet.
+- [ ] Server ingest has `REMIND_S=60`; a rehearsal alert got its ⏰ reply 60 s after it opened.
+- [ ] Rules created (`make seed` creates accounts only, not rules): „Client neservit (demo 10 s)” and
+      „Foc în imagine” on Laptop Radu, confirmed and shown as "activă" on Reguli; the bear rule **not**
+      there (if the rehearsal created it, delete it while no alert is open).
 - [ ] Telegram group "AiveeAlerts" open on a visible screen; `TELEGRAM_PREFIX` empty.
 - [ ] Notifications allowed in the laptop browser too.
 - [ ] Backup clips present and playing: `ls recordings/` — one clip per scene, made with
@@ -166,8 +166,8 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
       to show even if there is no time to wait for a new run. It never rings the staff's phones.
 - [ ] Wi-Fi fallback (USB fails): laptop hotspot configured; phone and camera phone know it;
       `ROTATE=90 APPEARANCE=true TARGET_FPS=30 make edge SOURCE=http://<phone>:8080/video`, and update the
-      dashboard URL on Vasi's phone.
-- [ ] Vasi in the black jacket; Radu has the cups.
+      dashboard URL on Marius's phone.
+- [ ] Marius in the purple hoodie; Radu's laptop on the table runs the camera script.
 - [ ] Laptop on power, screen sleep off, browser zoom so the alert card is readable from the back.
 
 ## Elevator pitch (60 s, Romanian)
@@ -179,9 +179,9 @@ have. In our EU cloud as standard, or on your own PC if the video must never lea
 > iar imaginea e analizată în cloud-ul nostru, cu servere în UE, și aruncată, nu e salvată niciodată. În demo,
 > laptopul ține locul serverului din cloud. Desenezi mesele, scrii o regulă în română — „Anunță ospătarul dacă
 > la o masă nu a venit nimeni de un minut" — și AiVee o transformă într-o regulă pe care tu o confirmi. Când
-> clientul așteaptă, ospătarul primește alerta pe telefon, apasă „Preiau", iar camera vede când a ajuns la
-> masă. Proprietarul vede cât au așteptat clienții, cât de repede a reacționat echipa și tot istoricul, care
-> nu poate fi modificat.
+> clientul așteaptă, ospătarul primește alerta pe telefon și AiVee îi reamintește până vine cineva; camera vede
+> când a ajuns la masă și închide alerta singură. Proprietarul vede cât au așteptat clienții, care au plecat
+> neserviți și tot istoricul, care nu poate fi modificat.
 >
 > AiVee recunoaște rolul, nu persoana: angajat sau client, după uniformă și comportament. Fețele sunt
 > blurate în orice poză. Și pentru că totul merge pe procesorul unui laptop obișnuit, cine vrea ca video-ul
