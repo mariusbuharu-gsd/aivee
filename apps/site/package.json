@@ -5,7 +5,8 @@
   "type": "module",
   "description": "AiVee presentation site: static HTML + CSS, no runtime dependencies.",
   "scripts": {
-    "build": "node build.mjs",
+    "test": "node --test",
+    "build": "node --test && node build.mjs",
     "preview": "node build.mjs && python3 -m http.server 4173 --directory dist"
   },
   "engines": {
