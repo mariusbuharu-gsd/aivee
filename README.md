@@ -28,8 +28,6 @@ edge mode and the fallback.
 
 Built at Astra Hack, Innovation Week Sibiu, 6–7 November 2026.
 
-> **Live:** presentation site https://aivee.earth.sv.gsd.com.ro · app https://app-aivee.earth.sv.gsd.com.ro (demo accounts on request; the demo is the 4-minute run in [docs/demo-script.md](docs/demo-script.md)).
-
 ## Features
 
 | | |
