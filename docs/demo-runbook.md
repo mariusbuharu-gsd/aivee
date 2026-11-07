@@ -8,7 +8,8 @@ where, the rehearsal checklist, fallbacks, and what not to show.
 | Piece | Where | Who starts it |
 |---|---|---|
 | Dashboard, api, ingest, vision workers | GSD swarm, `https://app-aivee.earth.sv.gsd.com.ro` (stack `aivee-demo`) | always on |
-| Demo camera **Laptop coleg 1** (`cam-coleg-1`) | **Radu's laptop on the table**, webcam on Masa 1 → connector script → server | Radu, in **his own terminal** (not an agent session) |
+| Demo camera **Laptop Radu** (`cam-coleg-2`) | **Radu's laptop on the table**, webcam on Masa 1 → connector script → server | Radu, in **his own terminal** (not an agent session) |
+| **Laptop coleg 1** (`cam-coleg-1`) | not used in the demo | all its rules **off** |
 | Phone camera **Telefon 1** (`cam-telefon-1`) | any phone → `/telefon?camera=cam-telefon-1`, held **landscape** | the phone holder |
 | Telegram | bot `@aivee_sibiu_bot`, group **AiveeAlerts**, polled by the **server** ingest | always on |
 | Backup | laptop stack (`make up`, api, dashboard, `make edge-usb`) with the phone on USB | presenter, only if the server or Wi-Fi fails |
@@ -21,12 +22,12 @@ The laptop stack shares the bot, so its `.env` has `TELEGRAM_POLL=false`: only o
 ## Before 10:30 (setup, ~15 min)
 
 1. Put Radu's laptop on the table, webcam facing the guest's seat and the way staff come in; start the
-   camera script; check **Live → Laptop coleg 1** shows the room.
-2. **Camere → Laptop coleg 1 → Editează zonele**: draw **Masa 1** (table) and **Intrare** on the real view.
-3. **Reguli** on Laptop coleg 1: keep only the demo rules enabled:
-   - „Masă neservită” **10 s** on Masa 1 → Telegram
+   camera script; check **Live → Laptop Radu** shows the room.
+2. **Camere → Laptop Radu → Editează zonele**: draw **Masa 1** (table) and **Intrare** on the real view.
+3. **Reguli** on Laptop Radu: keep only the demo rules enabled:
+   - „Client neservit (demo 10 s)” on Masa 1 → Telegram
    - „Foc în imagine” (cooldown 30 s)
-   - turn off „Masă ocupată” and anything noisy.
+   - turn off „Masă ocupată” and anything noisy; on **Laptop coleg 1** every rule stays off.
 4. Staff: only **Marius** is enrolled (via `/angajat-nou`, in the **purple hoodie** he wears for the demo).
    Live labels him „angajat”.
 5. Server env: `REMIND_S=30` on ingest (a ⏰ reminder every 30 s while nobody arrived).
