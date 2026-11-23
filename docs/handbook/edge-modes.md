@@ -26,13 +26,14 @@ on-site compose file (`infra/edge/compose.yml`). Only the machine differs.
 3. Load the image: `docker load < aivee-edge.tar` (built with
    `docker build -f apps/edge/Dockerfile -t aivee-edge:dev .` and `docker save`), until we
    publish it to a registry.
-4. `cp edge.env.example edge.env` and fill in the broker address, this device's MQTT credential,
-   the location id, and the cameras: `CAMERAS=cam-01=rtsp://…;cam-02=rtsp://…` (all cameras
-   of the device in one process; see [ip-cameras.md](ip-cameras.md)), or `SOURCE` for one.
-5. `docker compose -f compose.yml up -d --remove-orphans`, then `docker compose -f compose.yml
-   logs -f` should show one `edge started` line per camera and `metrics fps=…`. The device
-   appears online on the dashboard's **Dispozitive** page. Check cameras first with
-   `make camera-check` from a checkout on the same network.
+4. `cp edge.env.example edge.env` and fill in the broker address, this device's MQTT credential
+   and the location id. No cameras: they are added in the dashboard (**Camere → Caută camere**,
+   password, **Testează**; see [ip-cameras.md](ip-cameras.md)). `CAMERAS` or `SOURCE` in
+   `edge.env` are dev overrides that win over the dashboard.
+5. `docker compose -f compose.yml up -d --remove-orphans` (host networking, for discovery), then
+   `docker compose -f compose.yml logs -f` should show `edge box started`, then one
+   `camera_started` line per camera added in the dashboard and `metrics fps=…`. The device
+   appears online on the dashboard's **Dispozitive** page.
 
 ## INT8 calibration on venue frames
 
