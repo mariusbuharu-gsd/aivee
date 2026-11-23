@@ -8,6 +8,10 @@
   `camera_id`, else the first one) over the camera given at construction.
 - `commands` (not retained) are queued; the pipeline drains them with `take_commands()` on
   its own thread, so the network thread never touches pipeline state.
+- Several cameras, one device (one MQTT connection, one client id): `for_camera()` gives each
+  camera's pipeline a `CameraClient` view. Its `camera()` is that camera, its commands are the
+  ones naming that camera, and its metrics are combined into one `Metrics` per device
+  (`DeviceMetrics`). `DeviceStatus.cameras` lists every camera.
 - Transport: plain TCP by default; `transport="websockets"` (+ `ws_path`) and `tls=True` let a
   remote edge reach the broker as `wss://host:443/path` through an HTTPS reverse proxy.
 """
@@ -38,6 +42,8 @@ from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 from pydantic import ValidationError
 
+from aivee_edge.metrics import DeviceMetrics
+
 log = logging.getLogger(__name__)
 
 SESSION_EXPIRY_S = 3600
@@ -64,6 +70,7 @@ class MqttEdgeClient:
         transport: str = "tcp",
         tls: bool = False,
         ws_path: str = "/mqtt",
+        metrics_interval_s: float = 5.0,
     ) -> None:
         if transport not in TRANSPORTS:
             raise ValueError(f"MQTT transport must be one of {TRANSPORTS}, not {transport!r}")
@@ -77,6 +84,9 @@ class MqttEdgeClient:
         self._rules: RuleSet | None = None
         self._profiles: StaffProfiles | None = None
         self._commands: deque[EdgeCommand] = deque(maxlen=MAX_PENDING_COMMANDS)
+        self._views: dict[str, CameraClient] = {}
+        self._metrics_interval_s = metrics_interval_s
+        self._device_metrics: DeviceMetrics | None = None
         self.connected = threading.Event()
 
         self._client = mqtt.Client(
@@ -91,10 +101,27 @@ class MqttEdgeClient:
             # System CA bundle, hostname checked: the server presents a public certificate.
             self._client.tls_set_context(ssl.create_default_context())
         self._client.username_pw_set(user, password)
-        self._client.will_set(self.topics.status, self._status("offline"), qos=1, retain=True)
+        self._set_will()
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._client.reconnect_delay_set(min_delay=1, max_delay=30)
+
+    def _set_will(self) -> None:
+        self._client.will_set(self.topics.status, self._status("offline"), qos=1, retain=True)
+
+    def for_camera(self, camera: CameraConfig) -> "CameraClient":
+        """Register one camera of this device and return its pipeline's view. Call before
+        `start()`, so the status and the last will list every camera."""
+        with self._lock:
+            if camera.id in self._views:
+                raise ValueError(f"camera {camera.id!r} is already registered")
+            view = CameraClient(self, camera)
+            self._views[camera.id] = view
+            self._device_metrics = DeviceMetrics(
+                self._device, list(self._views), self._metrics_interval_s
+            )
+        self._set_will()
+        return view
 
     # -- lifecycle -----------------------------------------------------------------
 
@@ -150,6 +177,15 @@ class MqttEdgeClient:
     def publish_metrics(self, metrics: Metrics) -> None:
         self._client.publish(self.topics.metrics, metrics.model_dump_json(), qos=0)
 
+    def publish_camera_metrics(self, camera_id: str, metrics: Metrics) -> None:
+        """One camera's sample; the device's combined Metrics goes out when it is due."""
+        with self._lock:
+            combined = (
+                self._device_metrics.add(camera_id, metrics) if self._device_metrics else None
+            )
+        if combined is not None:
+            self.publish_metrics(combined)
+
     # -- ConfigSource --------------------------------------------------------------
 
     def rules(self) -> list[Rule]:
@@ -162,6 +198,13 @@ class MqttEdgeClient:
         if camera is None:
             raise LookupError("no camera config set for this device")
         return camera
+
+    def configured_camera(self, camera_id: str) -> CameraConfig | None:
+        """`camera_id` from the retained `DeviceConfig`, None until it lists it."""
+        with self._lock:
+            if self._config is None:
+                return None
+            return next((c for c in self._config.cameras if c.id == camera_id), None)
 
     def device_config(self) -> DeviceConfig | None:
         with self._lock:
@@ -210,8 +253,11 @@ class MqttEdgeClient:
 
     def _status(self, state: str) -> str:
         with self._lock:
-            camera = self._configured_camera() or self._camera
-            cameras = [camera.id] if camera else []
+            if self._views:
+                cameras = list(self._views)
+            else:
+                camera = self._configured_camera() or self._camera
+                cameras = [camera.id] if camera else []
         return DeviceStatus.model_validate(
             {"device": self._device, "state": state, "version": self._version, "cameras": cameras}
         ).model_dump_json()
@@ -255,8 +301,76 @@ class MqttEdgeClient:
                     self._config = config
             elif msg.topic == self.topics.commands:
                 command = EdgeCommand.model_validate_json(msg.payload)
-                with self._lock:
-                    self._commands.append(command)
-                log.info("command received command_id=%s kind=%s", command.command_id, command.kind)
+                self._route(command)
         except ValidationError:
             log.exception("ignoring invalid payload on %s", msg.topic)
+
+    def _route(self, command: EdgeCommand) -> None:
+        """Queue a command for the pipeline of its camera (or the single pipeline)."""
+        with self._lock:
+            view = self._views.get(command.camera_id)
+            if view is not None:
+                view._commands.append(command)
+            elif not self._views:
+                self._commands.append(command)
+        if self._views and view is None:
+            log.info(
+                "command_ignored command_id=%s kind=%s camera=%s: not a camera of this device",
+                command.command_id,
+                command.kind,
+                command.camera_id,
+            )
+            return
+        log.info(
+            "command received command_id=%s kind=%s camera=%s",
+            command.command_id,
+            command.kind,
+            command.camera_id,
+        )
+
+
+class CameraClient:
+    """One camera's view of the shared `MqttEdgeClient`: the `EventPublisher`,
+    `ConfigSource` and `CommandSource` of that camera's pipeline."""
+
+    def __init__(self, client: MqttEdgeClient, camera: CameraConfig) -> None:
+        self._client = client
+        self._fallback = camera
+        self._commands: deque[EdgeCommand] = deque(maxlen=MAX_PENDING_COMMANDS)
+
+    @property
+    def camera_id(self) -> str:
+        return self._fallback.id
+
+    # EventPublisher
+    def publish_alert(
+        self, event: AlertEvent, snapshot_jpeg: bytes | None, before_jpeg: bytes | None = None
+    ) -> None:
+        self._client.publish_alert(event, snapshot_jpeg, before_jpeg)
+
+    def publish_suggestion(self, suggestion: StaffSuggestion, snapshot_jpeg: bytes | None) -> None:
+        self._client.publish_suggestion(suggestion, snapshot_jpeg)
+
+    def publish_detections(self, detections: Detections) -> None:
+        self._client.publish_detections(detections)
+
+    def publish_metrics(self, metrics: Metrics) -> None:
+        self._client.publish_camera_metrics(self.camera_id, metrics)
+
+    # ConfigSource
+    def rules(self) -> list[Rule]:
+        return self._client.rules()
+
+    def camera(self) -> CameraConfig:
+        """This camera from the retained config (zones), else the one given at start."""
+        return self._client.configured_camera(self.camera_id) or self._fallback
+
+    def profiles(self) -> StaffProfiles | None:
+        return self._client.profiles()
+
+    # CommandSource
+    def take_commands(self) -> list[EdgeCommand]:
+        with self._client._lock:
+            out = list(self._commands)
+            self._commands.clear()
+        return out

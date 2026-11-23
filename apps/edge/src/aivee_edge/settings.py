@@ -1,22 +1,62 @@
 """Edge configuration from the environment (and `.env` when run from the repo root)."""
 
+import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from aivee_edge.redact import redact_url
+
 ROTATIONS = (0, 90, 180, 270)
+
+CAMERA_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+"""Same rule as the API's camera ids, so every CAMERAS id can be added in the dashboard."""
+
+
+@dataclass(frozen=True)
+class CameraSpec:
+    """One camera this device reads: the id the dashboard and rules use, and its URL."""
+
+    id: str
+    source: str
+
+
+def parse_cameras(text: str) -> list[CameraSpec]:
+    """`cam-01=rtsp://…;cam-02=rtsp://…` → specs. Entries are separated by `;` or
+    whitespace (newlines too), so a password must not contain a raw `;` or space:
+    percent-encode it (`%3B`, `%20`). Errors never show a password."""
+    specs: list[CameraSpec] = []
+    for raw in re.split(r"[;\s]+", re.sub(r"\s*=\s*", "=", text.strip())):
+        if not raw:
+            continue
+        camera_id, sep, source = raw.partition("=")
+        if not sep or not CAMERA_ID.match(camera_id):
+            raise ValueError(
+                f"CAMERAS entry {redact_url(raw)!r}: expected <camera id>=<url>, the id made of "
+                "letters, digits, '-' and '_'"
+            )
+        if not source:
+            raise ValueError(f"CAMERAS entry {camera_id!r} has no URL")
+        if any(s.id == camera_id for s in specs):
+            raise ValueError(f"CAMERAS lists camera {camera_id!r} twice")
+        specs.append(CameraSpec(camera_id, source))
+    return specs
 
 
 class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_TRANSPORT, MQTT_TLS, MQTT_WS_PATH, MQTT_EDGE_USER,
-    MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, TARGET_FPS, ROTATE, ARRIVE_S, GRACE_S,
-    DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH,
+    MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, CAMERAS, TARGET_FPS, ROTATE, ARRIVE_S,
+    GRACE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH,
     STAFF_W_APPEARANCE, STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE,
     CONFIG_WAIT_S, VISUAL_HZ."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
+    # hide_input_in_errors: a bad value may be a camera URL or a password.
+    model_config = SettingsConfigDict(
+        env_file=".env", extra="ignore", env_ignore_empty=True, hide_input_in_errors=True
+    )
 
     mqtt_host: str = "localhost"
     mqtt_port: int = 1883
@@ -35,6 +75,10 @@ class EdgeSettings(BaseSettings):
     source: str = "0"
     """Camera URL (RTSP/HTTP), a webcam index ("0"), a video file path, or
     `mqtt-frames://<camera_id>` (cloud mode: JPEGs the API relays over MQTT)."""
+    cameras: str = ""
+    """Several cameras on this device, one process: `cam-01=rtsp://…;cam-02=rtsp://…` (see
+    `parse_cameras`). Used only when SOURCE is not given (env or --source), so the cloud
+    vision worker, `make edge SOURCE=…` and clip runs keep their single camera."""
     target_fps: float = 10.0
     loop_file: bool = False
     rotate: int = 0
@@ -99,3 +143,28 @@ class EdgeSettings(BaseSettings):
         if not self.device:
             self.device = self.mqtt_edge_user
         return self
+
+    @field_validator("cameras")
+    @classmethod
+    def _cameras_parse(cls, text: str) -> str:
+        parse_cameras(text)
+        return text
+
+    @model_validator(mode="after")
+    def _cameras_are_live(self) -> "EdgeSettings":
+        if self.multi_camera and (self.clip_epoch is not None or self.progress_file):
+            raise ValueError(
+                "CAMERAS runs live cameras; an offline clip run takes SOURCE (or --source)"
+            )
+        return self
+
+    @property
+    def multi_camera(self) -> bool:
+        """CAMERAS is set and SOURCE was not given: run every camera in one process."""
+        return bool(parse_cameras(self.cameras)) and "source" not in self.model_fields_set
+
+    def camera_specs(self) -> list[CameraSpec]:
+        """The cameras this run reads: CAMERAS, or the single CAMERA_ID/SOURCE."""
+        if self.multi_camera:
+            return parse_cameras(self.cameras)
+        return [CameraSpec(self.camera_id, self.source)]
