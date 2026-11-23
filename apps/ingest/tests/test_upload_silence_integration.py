@@ -138,7 +138,7 @@ class NeverVerify:
     def __init__(self) -> None:
         self.runs: list[str] = []
 
-    async def run(self, event: AlertEvent) -> None:
+    async def run(self, event: AlertEvent, folder: str = "") -> None:
         self.runs.append(event.event_id)
 
 

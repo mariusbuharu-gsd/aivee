@@ -248,9 +248,12 @@ class SuggestionRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.s = session
 
-    async def insert_if_new(self, suggestion: StaffSuggestion, device_id: str = "") -> bool:
-        # The snapshot itself is a file in SNAPSHOT_DIR named after the suggestion id.
-        path = f"{suggestion.suggestion_id}.jpg" if suggestion.snapshot else None
+    async def insert_if_new(
+        self, suggestion: StaffSuggestion, device_id: str = "", snapshot_path: str | None = None
+    ) -> bool:
+        """`snapshot_path`: where the crop is, relative to SNAPSHOT_DIR (ingest passes
+        `snapshot_key`); without one, the flat `<suggestion_id>.jpg`."""
+        path = (snapshot_path or f"{suggestion.suggestion_id}.jpg") if suggestion.snapshot else None
         stmt = (
             insert(SuggestionRow)
             .values(

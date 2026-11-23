@@ -55,6 +55,11 @@ def _event(event_id: str, camera_id: str) -> AlertEvent:
     )
 
 
+def keyed(site: str, device: str, snapshot_id: str) -> str:
+    """Where ingest stores a device's image (S4); `far` keeps the old flat `<id>.jpg`."""
+    return f"{site}/{device}/{snapshot_id}.jpg" if site == "test" else f"{snapshot_id}.jpg"
+
+
 async def seed_world(sessions: Any, tenancy_factory: Any) -> None:
     """`test`: edge-01, cam1, rule r-test, event ev-test, suggestion s-test.
     `far` (org-x): edge-far, camfar, rule r-far, event ev-far, suggestion s-far."""
@@ -84,12 +89,23 @@ async def seed_world(sessions: Any, tenancy_factory: Any) -> None:
                     action=Action(type="telegram"),
                 )
             )
-            await EventRepository(s).insert_if_new(_event(ev, cam), device, f"{ev}.jpg")
+            await EventRepository(s).insert_if_new(
+                _event(ev, cam),
+                device,
+                keyed(site, device, ev),
+                keyed(site, device, f"{ev}-before"),
+            )
             await SuggestionRepository(s).insert_if_new(
                 StaffSuggestion(
-                    suggestion_id=sugg, camera_id=cam, track_id=1, staff_score=0.8, reason_ro="x"
+                    suggestion_id=sugg,
+                    camera_id=cam,
+                    track_id=1,
+                    staff_score=0.8,
+                    reason_ro="x",
+                    snapshot=True,
                 ),
                 device,
+                keyed(site, device, sugg),
             )
         await s.commit()
 
@@ -185,8 +201,10 @@ async def test_staff_is_403_on_rules_and_config(
 async def test_snapshots_follow_the_event_location(
     world: None, client_factory: Any, login: Any, settings: Any
 ) -> None:
-    (settings.snapshot_dir / "ev-test.jpg").write_bytes(JPEG)
-    (settings.snapshot_dir / "s-test.jpg").write_bytes(JPEG)
+    own = settings.snapshot_dir / "test" / "edge-01"
+    own.mkdir(parents=True)
+    (own / "ev-test.jpg").write_bytes(JPEG)
+    (own / "s-test.jpg").write_bytes(JPEG)
     staff = await _client(client_factory, login, "staff@t.ro")
     manager = await _client(client_factory, login, "manager@t.ro")
     r = await staff.get("/api/snapshots/ev-test")
@@ -196,7 +214,9 @@ async def test_snapshots_follow_the_event_location(
     assert (await manager.get("/api/snapshots/s-test")).status_code == 200
     # The "before" image of an object change follows its event too.
     assert (await staff.get("/api/snapshots/ev-test-before")).status_code == 404  # no file yet
-    (settings.snapshot_dir / "ev-test-before.jpg").write_bytes(JPEG)
+    (settings.snapshot_dir / "ev-test-before.jpg").write_bytes(b"flat")  # not the row's path
+    assert (await staff.get("/api/snapshots/ev-test-before")).status_code == 404
+    (own / "ev-test-before.jpg").write_bytes(JPEG)
     assert (await staff.get("/api/snapshots/ev-test-before")).content == JPEG
     for bad in ("missing", "..%2F..%2Fetc%2Fpasswd", "a.b"):
         assert (await staff.get(f"/api/snapshots/{bad}")).status_code == 404
@@ -207,7 +227,8 @@ async def test_snapshots_follow_the_event_location(
 async def test_camera_frame_follows_the_camera_location(
     world: None, client_factory: Any, login: Any, settings: Any
 ) -> None:
-    (settings.snapshot_dir / "ev-test.jpg").write_bytes(JPEG)
+    (settings.snapshot_dir / "test" / "edge-01").mkdir(parents=True)
+    (settings.snapshot_dir / "test" / "edge-01" / "ev-test.jpg").write_bytes(JPEG)
     (settings.snapshot_dir / "ev-far.jpg").write_bytes(JPEG)
     staff = await _client(client_factory, login, "staff@t.ro")
     r = await staff.get("/api/cameras/cam1/frame")

@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import os
-import re
 import uuid
 from collections import deque
 from datetime import UTC, datetime
@@ -21,6 +20,7 @@ from aivee_api.alerts.schemas import AlertView
 from aivee_api.audit.repository import Actor, AuditRepository, Target
 from aivee_api.db.models import Device, Site
 from aivee_api.db.repositories import DeviceRepository, EventRepository, SuggestionRepository
+from aivee_api.events.service import snapshot_key
 from aivee_api.videos.kind import is_upload, is_upload_device
 from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion, before_snapshot_id
 from aivee_contracts.topics import ROOT, Topics
@@ -41,18 +41,11 @@ from aivee_ingest.verify import UNAVAILABLE, AlertVerification, wait_for_file
 
 log = logging.getLogger(__name__)
 
-_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-
-
 LEFT_TITLE = "AiVee · Client plecat"
 SYSTEM_CLOSED_LINE = {
     "device_offline": "⚪ Închisă · dispozitivul s-a deconectat",
     "device_restarted": "⚪ Închisă · dispozitivul a repornit",
 }
-
-
-def snapshot_name(event_id: str) -> str:
-    return f"{event_id}.jpg"
 
 
 class IngestHandler:
@@ -93,7 +86,7 @@ class IngestHandler:
             elif topic == t.metrics:
                 await self._on_metrics(t)
             elif topic.startswith(t.snapshot("")):
-                self._on_snapshot(topic.removeprefix(t.snapshot("")), payload)
+                self._on_snapshot(t, topic.removeprefix(t.snapshot("")), payload)
         except ValidationError as e:
             log.warning("invalid payload on %s: %s", topic, e.errors()[:3])
 
@@ -102,10 +95,11 @@ class IngestHandler:
         # An uploaded clip is stored and folded like any alert, but it must never ring the
         # staff's phones, and its alerts stay out of the history.
         upload = is_upload(t.device, event.camera_id)
-        path = snapshot_name(event.event_id) if event.snapshot else None
+        # The images this event's own device sent (S4): `<site>/<device>/<id>.jpg`.
+        path = snapshot_key(t.site, t.device, event.event_id) if event.snapshot else None
         change = event.object_change
         before = (
-            snapshot_name(before_snapshot_id(event.event_id))
+            snapshot_key(t.site, t.device, before_snapshot_id(event.event_id))
             if change is not None and change.before_snapshot
             else None
         )
@@ -144,7 +138,7 @@ class IngestHandler:
         )
         if event.state == "opened" and self._verification is not None:
             # Verify, then notify, off the MQTT loop: never block the handler on the model.
-            task = asyncio.create_task(self._verify(event))
+            task = asyncio.create_task(self._verify(event, f"{t.site}/{t.device}"))
             self._verifying.add(task)
             task.add_done_callback(self._verifying.discard)
         elif event.state == "opened":
@@ -195,10 +189,10 @@ class IngestHandler:
         except Exception:
             log.exception("could not mark alert %s as resolved", view.event_id)
 
-    async def _verify(self, event: AlertEvent) -> None:
+    async def _verify(self, event: AlertEvent, folder: str) -> None:
         assert self._verification is not None
         try:
-            await self._verification.run(event)
+            await self._verification.run(event, folder)
         except Exception:
             log.exception("verification task failed for event %s", event.event_id)
 
@@ -264,7 +258,8 @@ class IngestHandler:
 
     async def _on_suggestion(self, t: Topics, suggestion: StaffSuggestion) -> None:
         async with self._sessions() as s:
-            await SuggestionRepository(s).insert_if_new(suggestion, t.device)
+            path = snapshot_key(t.site, t.device, suggestion.suggestion_id)
+            await SuggestionRepository(s).insert_if_new(suggestion, t.device, path)
             await s.commit()
 
     async def _on_metrics(self, t: Topics) -> None:
@@ -272,11 +267,13 @@ class IngestHandler:
             await DeviceRepository(s).touch(t.device)
             await s.commit()
 
-    def _on_snapshot(self, event_id: str, payload: bytes) -> None:
-        if not _SAFE_ID.match(event_id):
-            log.warning("ignoring snapshot with unsafe id %r", event_id)
+    def _on_snapshot(self, t: Topics, snapshot_id: str, payload: bytes) -> None:
+        key = snapshot_key(t.site, t.device, snapshot_id)
+        if key is None:
+            log.warning("ignoring snapshot with unsafe topic %r", t.snapshot(snapshot_id))
             return
-        final = self._snapshots / snapshot_name(event_id)
+        final = self._snapshots / key
+        final.parent.mkdir(parents=True, exist_ok=True)
         # Replicas share the dir and may all be pid 1: the temp name must be unique per write.
         tmp = final.with_suffix(f".{uuid.uuid4().hex}.tmp")
         tmp.write_bytes(payload)
