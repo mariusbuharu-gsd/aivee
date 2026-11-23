@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { CameraView, Detection } from '../api/client';
 import { useApi } from '../api/context';
-import { useAuth } from '../auth/context';
+import { canWatchLive, useAuth } from '../auth/context';
 import { detectionLabel, detectionTitle } from '../live/detections';
 import { plural } from '../ui/plural';
 import { LivePlayer } from '../live/LivePlayer';
@@ -27,12 +27,15 @@ export function CameraTile({
   const { can } = useAuth();
   const [detections, setDetections] = useState<Detection[]>([]);
 
+  const video = canWatchLive(can);
   useEffect(() => {
-    if (!camera.online) return;
+    if (!camera.online || !video) return;
     return api.subscribeDetections(camera.id, setDetections);
-  }, [api, camera.id, camera.online]);
+  }, [api, camera.id, camera.online, video]);
 
   const shown = camera.online ? detections : [];
+  // Belt and braces: Live never renders a tile for staff, and the live picture is not blurred.
+  if (!video) return null;
 
   if (!camera.online) {
     return (

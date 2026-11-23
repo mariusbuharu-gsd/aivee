@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { CameraView } from '../api/client';
 import { Link } from 'react-router';
 import { limitsFor } from '../alerts/limit';
 import { AlertFeed } from '../components/AlertFeed';
@@ -8,7 +9,7 @@ import { OpenAlerts } from '../components/OpenAlerts';
 import { RoomStatus } from '../components/RoomStatus';
 import { SetupChecklist } from '../components/SetupChecklist';
 import { SuggestionCard } from '../components/SuggestionCard';
-import { useAuth } from '../auth/context';
+import { canWatchLive, useAuth } from '../auth/context';
 import { useLiveData } from '../state/context';
 import { openAlerts, elapsed, tick } from '../live/room';
 import { useNow } from '../live/useNow';
@@ -23,6 +24,7 @@ export function LivePage() {
   const { cameras, rules, alerts, suggestions, metrics, loading, dropSuggestion, cases, zoneName } =
     useLiveData();
   const { can } = useAuth();
+  const video = canWatchLive(can);
   // Open alerts lead the page as bands; the side column keeps the last few closed ones, in the
   // same rows as Alerte, which has the rest.
   const open = openAlerts(alerts);
@@ -40,8 +42,6 @@ export function LivePage() {
     Object.fromEntries(
       open.filter((a) => a.camera_id === cameraId).map((a) => [a.zone_id, tick(elapsed(a, now))]),
     );
-  // Cameras that see come first; an offline one is a single row after them.
-  const ordered = [...cameras].sort((a, b) => Number(b.online) - Number(a.online));
   return (
     <div className="page page-live">
       <header className="page-head">
@@ -57,35 +57,36 @@ export function LivePage() {
         cameras={cameras}
         alertsToday={metrics ? metrics.events_today : null}
       />
-      <OpenAlerts
-        items={open}
-        cases={cases}
-        zoneName={zoneName}
-        cameraName={(id) => cameras.find((c) => c.id === id)?.name ?? id}
-      />
+      {video && (
+        <OpenAlerts
+          items={open}
+          cases={cases}
+          zoneName={zoneName}
+          cameraName={(id) => cameras.find((c) => c.id === id)?.name ?? 'Cameră'}
+        />
+      )}
       <SetupChecklist />
       <div className="live-grid">
-        <section aria-label="Camere" className="cameras">
-          {loading && cameras.length === 0 && <Skeleton rows={2} label="Se încarcă camerele" />}
-          {!loading && cameras.length === 0 && (
-            <EmptyState
-              icon="devices"
-              title="Nicio cameră încă"
-              action={
-                can('devices.manage') && (
-                  <Link to="/dispozitive" className="btn btn-primary btn-sm">
-                    Adaugă prima cameră
-                  </Link>
-                )
+        {video ? (
+          <CameraGrid cameras={cameras} loading={loading} hotFor={hotFor} />
+        ) : (
+          // Staff never get the live picture: the open alerts as cards, with the blurred
+          // snapshot the edge took when each one opened.
+          <section aria-label="Alerte" className="staff-open">
+            <AlertFeed
+              variant="hero"
+              items={open}
+              zoneName={zoneName}
+              cases={cases}
+              showSnapshot
+              empty={
+                <EmptyState icon="alerts" title="Nicio masă nu așteaptă">
+                  Când cineva așteaptă prea mult, alerta apare aici și pe telefon.
+                </EmptyState>
               }
-            >
-              Leagă o cameră din sală, apoi desenează mesele pe imagine.
-            </EmptyState>
-          )}
-          {ordered.map((c) => (
-            <CameraTile key={c.id} camera={c} hot={hotFor(c.id)} />
-          ))}
-        </section>
+            />
+          </section>
+        )}
         <aside className="side-col live-side" aria-labelledby="recent-h">
           <div className="side-head">
             <h2 id="recent-h">Alerte recente</h2>
@@ -107,6 +108,7 @@ export function LivePage() {
             zoneName={zoneName}
             cases={cases}
             limit={limit}
+            showSnapshot={!video}
             empty={
               <EmptyState icon="alerts" title="Nicio alertă închisă încă">
                 Când cineva așteaptă prea mult, alerta apare sus și pe telefoanele echipei.
@@ -121,5 +123,42 @@ export function LivePage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/** The location's cameras, those that see first; an offline one is a single row after them. */
+function CameraGrid({
+  cameras,
+  loading,
+  hotFor,
+}: {
+  cameras: CameraView[];
+  loading: boolean;
+  hotFor: (cameraId: string) => Record<string, string>;
+}) {
+  const { can } = useAuth();
+  const ordered = [...cameras].sort((a, b) => Number(b.online) - Number(a.online));
+  return (
+    <section aria-label="Camere" className="cameras">
+      {loading && cameras.length === 0 && <Skeleton rows={2} label="Se încarcă camerele" />}
+      {!loading && cameras.length === 0 && (
+        <EmptyState
+          icon="devices"
+          title="Nicio cameră încă"
+          action={
+            can('devices.manage') && (
+              <Link to="/dispozitive" className="btn btn-primary btn-sm">
+                Adaugă prima cameră
+              </Link>
+            )
+          }
+        >
+          Leagă o cameră din sală, apoi desenează mesele pe imagine.
+        </EmptyState>
+      )}
+      {ordered.map((c) => (
+        <CameraTile key={c.id} camera={c} hot={hotFor(c.id)} />
+      ))}
+    </section>
   );
 }
