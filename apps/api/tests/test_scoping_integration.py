@@ -274,6 +274,7 @@ async def test_config_changes_are_audited_with_before_and_after(
     assert [z["id"] for z in rows[3].before] == ["t1"] and [z["id"] for z in rows[3].after] == [
         "e1"
     ]
+    assert rows[5].after["id"] == "cam2" and "stream_state" not in rows[5].after  # edge-reported
     assert rows[0].summary_ro == "Mihai a creat regula „Mâna ridicată”"
     assert rows[4].summary_ro == "Mihai a respins o sugestie de personal pe camera Cam test"
     await manager.aclose()

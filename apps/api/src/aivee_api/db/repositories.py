@@ -31,13 +31,17 @@ class DeviceRepository:
         await self.s.execute(insert(Site).values(id=site_id, name=site_id).on_conflict_do_nothing())
 
     async def apply_status(self, site_id: str, status: DeviceStatus) -> None:
+        """Upsert the device. `online` replaces its camera health (empty from older edges);
+        `offline` (the last will carries none) keeps the last one known."""
         await self.ensure_site(site_id)
-        values = {
+        values: dict[str, object] = {
             "state": status.state,
             "version": status.version,
             "cameras": status.cameras,
             "last_seen": datetime.now(UTC),
         }
+        if status.state == "online":
+            values["camera_health"] = [h.model_dump(mode="json") for h in status.camera_health]
         stmt = insert(Device).values(id=status.device, site_id=site_id, **values)
         await self.s.execute(stmt.on_conflict_do_update(index_elements=[Device.id], set_=values))
 

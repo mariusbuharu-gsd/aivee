@@ -73,6 +73,9 @@ class Device(Base):
     state: Mapped[str] = mapped_column(String(16), default="offline")
     version: Mapped[str] = mapped_column(String(32), default="")
     cameras: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    camera_health: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    """`DeviceStatus.camera_health` of the last `online` status (JSON); an offline status
+    keeps it, so the last frame time of each camera stays known."""
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (CheckConstraint("state IN ('online', 'offline')", name="device_state"),)
