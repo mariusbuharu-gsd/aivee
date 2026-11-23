@@ -525,3 +525,21 @@ def test_check_vision_names_the_missing_model_files(
     with pytest.raises(app.VisionUnavailable, match=r"yunet\.onnx"):
         app.check_vision(settings)
     app.check_vision(settings.model_copy(update={"blur": False}))
+
+
+def test_jobs_are_attached_only_where_the_settings_serve_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from aivee_edge.adapters.mqtt import MqttEdgeClient
+
+    for name in ("SOURCE", "CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE", "EDGE_JOBS"):
+        monkeypatch.delenv(name, raising=False)
+    box = EdgeSettings(_env_file=None)  # type: ignore[call-arg]
+    client = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    jobs = app.attach_jobs(client, box)
+    assert jobs is not None and client.on_request == jobs.submit
+    jobs.close()
+
+    cloud = EdgeSettings(source="mqtt-frames://cam-01", _env_file=None)  # type: ignore[call-arg]
+    client = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    assert app.attach_jobs(client, cloud) is None and client.on_request is None

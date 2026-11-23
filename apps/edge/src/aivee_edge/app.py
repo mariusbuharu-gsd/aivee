@@ -28,6 +28,7 @@ from aivee_edge.domain.ports import FrameSource, Image, PersonDetector, VisualSc
 from aivee_edge.domain.role import StaffWeights
 from aivee_edge.fleet import CameraFleet
 from aivee_edge.health import CameraHealthMonitor, LogHealth, MqttHealth, tick_until
+from aivee_edge.jobs import EdgeJobs
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.redact import redact_url
 from aivee_edge.settings import CameraSpec, EdgeSettings
@@ -237,6 +238,34 @@ def build_client(settings: EdgeSettings) -> MqttEdgeClient:
     )
 
 
+def attach_jobs(client: MqttEdgeClient, settings: EdgeSettings) -> EdgeJobs | None:
+    """Answer the dashboard's camera discovery and camera test on this device, when the
+    settings say it should (`EdgeSettings.serves_jobs`)."""
+    if not settings.serves_jobs:
+        return None
+    from aivee_edge.adapters.camera_still import CameraTester
+    from aivee_edge.adapters.discovery import CameraDiscovery
+
+    def blurrer() -> Any:
+        blur = _adapter("blur")
+        return blur.FaceBlurrer(blur.YuNetFaces(settings.yunet_model))
+
+    def encode(image: Any) -> bytes:
+        return bytes(_adapter("blur").encode_jpeg(image))
+
+    tester = CameraTester(blurrer, encode, timeout_s=settings.camera_test_timeout_s)
+    jobs = EdgeJobs(
+        settings.device, client.publish_reply, discover=CameraDiscovery().discover, test=tester.test
+    )
+    client.on_request = jobs.submit
+    return jobs
+
+
+def _close_jobs(jobs: EdgeJobs | None) -> None:
+    if jobs is not None:
+        jobs.close()
+
+
 def pipeline_tuning(settings: EdgeSettings) -> dict[str, Any]:
     """Scoring knobs from the environment, passed to the EdgePipeline as keyword args."""
     return {
@@ -324,9 +353,11 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         log.error("%s", e)
         return 2
     client = build_client(settings)
+    jobs = attach_jobs(client, settings)
     stop = stop or threading.Event()
     install_stop_signals(stop)
     if not _start(client, settings):
+        _close_jobs(jobs)
         return 3
     if settings.config_wait_s > 0 and not client.wait_for_state(settings.config_wait_s):
         log.error(
@@ -334,6 +365,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
             settings.camera_id,
             settings.config_wait_s,
         )
+        _close_jobs(jobs)
         client.stop()
         return EXIT_NO_STATE
     pipeline = build_pipeline(settings, vision, client, settings.camera_id)
@@ -353,6 +385,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         log.info("edge stopped frames=%d", frames)
     finally:
         done.set()
+        _close_jobs(jobs)
         client.stop()
         _close(vision.source)
     return 0
@@ -378,6 +411,7 @@ def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> 
             _close(vision.source)
         return 2
     client = build_client(settings)
+    jobs = attach_jobs(client, settings)
     runs: list[CameraRun] = []
     for spec, vision in visions:
         view = client.for_camera(CameraConfig(id=spec.id, name=spec.id, source=spec.source))
@@ -387,6 +421,7 @@ def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> 
     stop = stop or threading.Event()
     install_stop_signals(stop)
     if not _start(client, settings):
+        _close_jobs(jobs)
         for run_ in runs:
             _close(run_.source)
         return 3
@@ -403,6 +438,7 @@ def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> 
         code = Supervisor(runs, tick=health.tick, tick_s=HEALTH_TICK_S).run(stop)
         log.info("edge stopped cameras=%d", len(runs))
     finally:
+        _close_jobs(jobs)
         client.stop()
     return code
 
@@ -435,9 +471,11 @@ def run_box(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
     if settings.config_wait_s > 0:
         log.warning("CONFIG_WAIT_S is for offline clip runs and is ignored on an edge box")
     client = build_client(settings)
+    jobs = attach_jobs(client, settings)
     stop = stop or threading.Event()
     install_stop_signals(stop)
     if not _start(client, settings):
+        _close_jobs(jobs)
         return 3
     log.info(
         "edge box started site=%s device=%s: running the cameras the dashboard configures",
@@ -456,5 +494,6 @@ def run_box(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         code = supervisor.run(stop)
         log.info("edge stopped cameras=%d", len(fleet.running()))
     finally:
+        _close_jobs(jobs)
         client.stop()
     return code
