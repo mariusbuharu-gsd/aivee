@@ -279,9 +279,12 @@ each run also writes `drafts.json` (raw model output per case), the source of `t
 ## Reguli libere (open rules: `object_present`, `visual`)
 
 The owner can ask for anything a camera image shows: „anunță-mă dacă vine un urs”, „dacă e foc”,
-„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă cineva are un cuțit”, „dacă ușa
-rămâne deschisă”. Refusals do not change: faces, identifying people, age, gender, ethnicity and any
-judgement of a person's appearance stay refused; theft is only `object_gone` (an object gone from a table).
+„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă ușa rămâne deschisă”. Refusals do
+not change: faces, identifying people, age, gender, ethnicity and any judgement of a person's appearance
+stay refused; theft is only `object_gone` (an object gone from a table). Cutlery is not a rule: „dacă
+cineva are un cuțit” gets a clarifying question, because every table has a knife and neither YOLO nor
+CLIP can tell a table knife from a weapon (`service.py: looks_for_cutlery`, eval case `refuse-knife`).
+`knife` is also not in the detector's `DEFAULT_CLASSES`.
 
 **How it works.**
 1. *Translation* (`rules/prompt.py`, situations 6 and 7). A COCO class → `object_present` (`objects`,
