@@ -34,7 +34,7 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 
 | Route | Page | Permission | Purpose |
 |---|---|---|---|
-| `/` | Live | `alerts.view` | camera tiles with live video and detection boxes (staff light blue, guests white) for `devices.manage` only (`canWatchLive`): staff (waiters) get the open alerts as cards with the blurred snapshot, never live video; one state per camera (`src/devices/health.ts`: the per-camera `stream_state` / `last_frame_at` when the API sends them, else the shared device and its `last_seen`, polled every 5 s), an offline camera is one row "Cameră offline" with the cause; alert feed, staff suggestions; "Configurare" checklist for owners and managers (8 steps from cameras, zones, rules, staff profiles, push/Telegram; `src/setup/checklist.ts`), one line ("Mai ai 2 pași: …" + "Arată") once ≤ 2 steps are left, "Conectează Telegram" inline for owners, "Ascunde" remembered per user on the device |
+| `/` | Live | `alerts.view` | camera tiles with live video and detection boxes (staff light blue, guests white) for `devices.manage` only (`canWatchLive`): staff (waiters) get the open alerts as cards with the blurred snapshot, never live video; one state per camera (`src/devices/health.ts`: the API's per-camera `stream_state` decides `down` / `reconnecting`; with `ok` or null the camera follows its device and its `last_seen`, polled every 5 s; `last_frame_at` is shown for a stopped camera, never aged, since the edge republishes only once a minute), an offline camera is one row "Cameră offline" with the cause; alert feed, staff suggestions; "Configurare" checklist for owners and managers (8 steps from cameras, zones, rules, staff profiles, push/Telegram; `src/setup/checklist.ts`), one line ("Mai ai 2 pași: …" + "Arată") once ≤ 2 steps are left, "Conectează Telegram" inline for owners, "Ascunde" remembered per user on the device |
 | `/alerte` | Alerte | `alerts.view` | alerts with the timeline Deschisă → Ajuns → Închisă with the wait (no "Preiau": the camera closes alerts; a "Preluată" step shows only on old alerts that were taken); AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare: median and p90, from arrival times; the Reacție and Drum tiles are hidden since nobody takes alerts), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text; open rules („dacă e foc”, „dacă vine un urs”) read Unde / Ce caută / Cât timp / Atunci, `anywhere` shows as „oriunde în imagine” (`src/rules/chips.ts`) |
@@ -150,13 +150,6 @@ Static HTML/CSS, built by `apps/site/build.mjs`, deployed to GitHub Pages by `.g
 - Staff photo profiles are global (shared by every location), not per location.
 - Cameras can be added only at the API's own location (`SITE`); elsewhere "Adaugă cameră" gets an error.
 - Open alerts stay open when their device goes offline — being fixed in `fix/alert-edge-cases`.
-- **Per-camera health is not in the API yet.** With two cameras on one edge box both follow the device's
-  online flag. The dashboard already reads two optional fields on each `GET /api/cameras` item and uses them
-  once they arrive: `last_frame_at: string | null` (ISO time of the newest decoded frame) and
-  `stream_state: 'ok' | 'reconnecting' | 'down' | null`. The edge computes these (`CameraHealth {camera_id,
-  state, last_frame_at, last_frame_age_s, fps, width, height}`, `down` = no frame for > 60 s) but only logs
-  them; they need a contract field (e.g. `DeviceStatus.camera_health`) and the API mapping `state` →
-  `stream_state`.
 - **"Testează camera" has no endpoint.** The UI calls `testCameraSource` only when `/api/capabilities` has
   `camera_test: true`. Proposed: `POST /api/cameras/test?location_id=` (`devices.manage`), body
   `{source, device?}`; the API asks the location's edge (an `EdgeCommand`) to open the source once and send

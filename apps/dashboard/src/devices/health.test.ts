@@ -46,15 +46,36 @@ describe('cameraHealth', () => {
     ]);
   });
 
-  it('shows a reconnecting stream, and an old last frame as offline', () => {
-    expect(cameraHealth(cam({ stream_state: 'reconnecting' }), dev(), NOW).state).toBe(
-      'reconnecting',
-    );
-    expect(cameraHealth(cam({ last_frame_at: ago(90) }), dev(), NOW)).toEqual({
-      state: 'offline',
+  it('shows a reconnecting stream', () => {
+    expect(cameraHealth(cam({ stream_state: 'reconnecting' }), dev(), NOW)).toEqual({
+      state: 'reconnecting',
       cause: 'camera',
     });
-    expect(cameraHealth(cam({ last_frame_at: null }), dev(), NOW).state).toBe('offline');
+  });
+
+  it('trusts the edge state over the age of the last frame it reported', () => {
+    // The edge republishes once a minute while nothing changes, so `last_frame_at` of a
+    // healthy camera can be over a minute old; it says `down` itself after 60 s without frames.
+    expect(cameraHealth(cam({ stream_state: 'ok', last_frame_at: ago(90) }), dev(), NOW)).toEqual({
+      state: 'online',
+      cause: null,
+    });
+    expect(cameraHealth(cam({ stream_state: 'ok', last_frame_at: null }), dev(), NOW).state).toBe(
+      'online',
+    );
+  });
+
+  it('follows the device when the API sends the fields but does not know', () => {
+    const unknown = cam({ stream_state: null, last_frame_at: null });
+    expect(cameraHealth(unknown, dev(), NOW)).toEqual({ state: 'online', cause: null });
+    expect(cameraHealth(unknown, dev({ last_seen: ago(120) }), NOW).state).toBe('stale');
+  });
+
+  it('a silent device is stale even when its last report said ok', () => {
+    expect(cameraHealth(cam({ stream_state: 'ok' }), dev({ last_seen: ago(120) }), NOW)).toEqual({
+      state: 'stale',
+      cause: 'device',
+    });
   });
 
   it('a dead device wins over a stale camera signal', () => {

@@ -22,9 +22,11 @@ export const HEALTH_LABEL: Record<CameraHealthState, string> = {
 
 /**
  * How one camera is doing. Several cameras can share one device, so the device's state alone
- * cannot say which camera stopped. When the API sends the per-camera fields (`stream_state`,
- * `last_frame_at`), they decide; without them every camera follows its device: online, offline,
- * or "fără imagine" when an online device has been silent for over a minute.
+ * cannot say which camera stopped. The API's per-camera `stream_state` (what the edge last
+ * reported) decides `down` and `reconnecting`. `last_frame_at` is not checked for age: the edge
+ * republishes only once a minute while nothing changes, and marks a camera `down` itself after
+ * 60 s without frames. With `ok` or no per-camera state, the camera follows its device: online,
+ * offline, or "fără imagine" when an online device has been silent for over a minute.
  */
 export function cameraHealth(
   camera: CameraView,
@@ -36,11 +38,6 @@ export function cameraHealth(
 
   if (camera.stream_state === 'down') return { state: 'offline', cause: 'camera' };
   if (camera.stream_state === 'reconnecting') return { state: 'reconnecting', cause: 'camera' };
-  if (camera.last_frame_at !== undefined) {
-    const at = camera.last_frame_at ? Date.parse(camera.last_frame_at) : NaN;
-    if (Number.isNaN(at) || now - at > STALE_MS) return { state: 'offline', cause: 'camera' };
-    return { state: 'online', cause: null };
-  }
 
   const seen = device?.last_seen ? Date.parse(device.last_seen) : NaN;
   if (!Number.isNaN(seen) && now - seen > STALE_MS) return { state: 'stale', cause: 'device' };

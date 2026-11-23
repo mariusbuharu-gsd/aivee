@@ -177,9 +177,11 @@ function CameraCard({
   const now = useNow(device?.last_seen != null);
   const status = cameraHealth(camera, device, now);
   const state = status.state;
-  // The freshness line speaks for the camera when the API knows its last frame.
+  // The freshness line speaks for a camera the edge says is not streaming (its last frame
+  // stopped there); otherwise the device's last_seen is fresher than the edge's report.
+  const cameraStopped = camera.stream_state === 'down' || camera.stream_state === 'reconnecting';
   const seen =
-    camera.last_frame_at !== undefined && c.online
+    cameraStopped && c.online && camera.last_frame_at !== undefined
       ? camera.last_frame_at
         ? `ultima imagine acum ${sinceRo(now - Date.parse(camera.last_frame_at))}`
         : 'nicio imagine încă'
