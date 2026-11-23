@@ -45,6 +45,7 @@ import {
   type VideoUpload,
 } from './client';
 import { parseDetections } from '../live/detections';
+import { SharedSocket } from './socket';
 
 type WsMessage =
   | { type: 'alert'; data: AlertView }
@@ -353,38 +354,26 @@ export class HttpApi implements ApiClient {
     });
   }
 
-  /** One socket per subscriber, reconnecting with a fixed back-off. Good enough for a demo. */
+  subscribeReconnect(cb: () => void): Unsubscribe {
+    return this.socket.onReconnect(cb);
+  }
+
+  /** Every subscriber shares one socket (`SharedSocket`): one connection per tab. */
   private listen(onMessage: (m: WsMessage) => void): Unsubscribe {
-    const url = `${this.base.replace(/^http/, 'ws')}/ws/events`;
-    let ws: WebSocket | null = null;
-    let stopped = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const connect = () => {
-      ws = new WebSocket(url);
-      ws.onmessage = (e: MessageEvent<string>) => {
-        try {
-          const m = JSON.parse(e.data) as WsMessage | null;
-          if (m && typeof m === 'object' && 'type' in m) onMessage(m);
-        } catch {
-          /* ignore malformed frames */
-        }
-      };
-      ws.onclose = (e: CloseEvent) => {
-        // 1008 = policy violation: the API closes the socket when there is no session.
-        if (e.code === 1008) {
-          stopped = true;
-          window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-          return;
-        }
-        if (!stopped) retry = setTimeout(connect, 2000);
-      };
-    };
-    connect();
-    return () => {
-      stopped = true;
-      clearTimeout(retry);
-      ws?.close();
-    };
+    return this.socket.subscribe(onMessage);
+  }
+
+  private shared: SharedSocket<WsMessage> | null = null;
+  private get socket(): SharedSocket<WsMessage> {
+    this.shared ??= new SharedSocket<WsMessage>(
+      `${this.base.replace(/^http/, 'ws')}/ws/events`,
+      (raw) => {
+        const m = JSON.parse(raw) as WsMessage | null;
+        return m && typeof m === 'object' && 'type' in m ? m : null;
+      },
+      () => window.dispatchEvent(new Event(UNAUTHORIZED_EVENT)),
+    );
+    return this.shared;
   }
 
   // --- Accounts, locations, audit, alert lifecycle (docs/plans/2026-11-06-auth-roles-audit.md) ---

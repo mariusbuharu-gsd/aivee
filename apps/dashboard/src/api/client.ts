@@ -117,6 +117,12 @@ export interface SuggestionView extends StaffSuggestion {
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
   device_id?: string;
+  /**
+   * Set on the folded alert updates `/ws/events` sends (raw event rows have none): the alert's
+   * location, and the zone's name at the time.
+   */
+  location_id?: string | null;
+  zone_name?: string;
   snapshot_url?: string | null;
   /** Who closed it: the edge (someone came) or the system (the camera stopped watching). */
   closed_by?: 'edge' | 'system' | null;
@@ -281,6 +287,11 @@ export interface ApiClient extends AccountApi {
   listSuggestions(): Promise<SuggestionView[]>;
   subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe;
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe;
+  /**
+   * Called after the live feed came back from a drop (not on the first connection). What
+   * changed meanwhile never arrived, so state should be reloaded from the REST calls.
+   */
+  subscribeReconnect(cb: () => void): Unsubscribe;
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;
   uploadStaffPhoto(file: File): Promise<void>;

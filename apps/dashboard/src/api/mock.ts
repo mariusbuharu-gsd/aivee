@@ -789,6 +789,11 @@ export class MockApi implements ApiClient {
     return () => this.suggestionSubs.delete(cb);
   }
 
+  /** The mock never drops its feed. */
+  subscribeReconnect(): Unsubscribe {
+    return () => undefined;
+  }
+
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe {
     const cam = this.cameras.find((c) => c.id === cameraId);
     if (!cam?.online) return () => undefined;
