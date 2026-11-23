@@ -146,6 +146,7 @@ async def test_offline_closes_open_and_acknowledged_alerts_once(
     assert all(r.after == {"reason": "device_offline"} for r in system)
 
     # t3 closed by itself earlier (its own "client left" follow-up); one device note.
+    await asyncio.gather(a.drain(), b.drain())
     texts = [t for n in notifiers for t in n.texts if t[3] == "device"]
     assert len(texts) == 1
     text, tag, title, kind = texts[0]
@@ -166,6 +167,7 @@ async def test_offline_without_open_alerts_says_nothing(sessions: Any, tmp_path:
     await a.handle(TOPICS.status, _status("online"))
     await a.handle(TOPICS.status, _status("offline"))
     assert await _closed_audit(sessions) == []
+    await a.drain()
     assert all(n.texts == [] for n in notifiers)
 
 
@@ -175,6 +177,7 @@ async def test_one_alert_is_singular(sessions: Any, tmp_path: Path) -> None:
     await a.handle(TOPICS.status, _status("online"))
     await _publish(a, _event("opened", "t1"))
     await a.handle(TOPICS.status, _status("offline"))
+    await a.drain()
     assert [t for t, _, _, _ in notifiers[0].texts] == ["edge-01 s-a deconectat — o alertă închisă"]
 
 
@@ -207,6 +210,7 @@ async def test_back_online_closes_stale_alerts_but_retained_online_does_not(
     )
     [row] = await _closed_audit(sessions)
     assert row.summary_ro == "Alerta de la Masa 1 s-a închis: dispozitivul a repornit"
+    await asyncio.gather(a.drain(), b.drain())
     texts = [t for n in notifiers for t, _, _, _ in n.texts]
     assert texts == ["edge-01 a repornit — o alertă închisă"]
 

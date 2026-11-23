@@ -273,6 +273,7 @@ async def test_closed_before_arrived_still_folds_the_arrival(
     await handler.handle(topic, event("opened", 0))
     await handler.handle(topic, event("closed", 35))
     await handler.handle(topic, event("arrived", 35))
+    await handler.drain()
 
     async with sessions() as s:
         [view] = await AlertRepository(s).views(limit=5)

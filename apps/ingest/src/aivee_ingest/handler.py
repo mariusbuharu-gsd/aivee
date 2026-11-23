@@ -1,6 +1,5 @@
 """Turn one MQTT message from an edge device into rows, files and notifications."""
 
-import asyncio
 import logging
 import os
 import uuid
@@ -28,6 +27,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aivee_ingest.dispatch import NotifyDispatcher
 from aivee_ingest.lifecycle import (
     arrived_ro,
     closed_line,
@@ -58,15 +58,17 @@ class IngestHandler:
         audit: AuditWriter | None = None,
         verification: AlertVerification | None = None,
         close_grace_s: float = 3.0,
+        dispatcher: NotifyDispatcher | None = None,
     ) -> None:
         self._close_grace_s = close_grace_s
+        # Everything that talks to the staff runs here, never on the MQTT loop (R3).
+        self._dispatch = dispatcher or NotifyDispatcher()
         self._sessions = sessions
         self._audit = audit or LoggingAuditWriter()
         self._snapshots = snapshot_dir
         self._notifier = notifier
         self._snapshot_wait_s = snapshot_wait_s
         self._verification = verification
-        self._verifying: set[asyncio.Task[object]] = set()
         self.handled_events: deque[str] = deque(maxlen=10_000)
         snapshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,35 +138,43 @@ class IngestHandler:
             event.camera_id,
             event.zone_id,
         )
+        # Queued per alert (the opened event's id), so its jobs keep their order.
         if event.state == "opened" and self._verification is not None:
-            # Verify, then notify, off the MQTT loop: never block the handler on the model.
-            task = asyncio.create_task(self._verify(event, f"{t.site}/{t.device}"))
-            self._verifying.add(task)
-            task.add_done_callback(self._verifying.discard)
+            folder = f"{t.site}/{t.device}"
+            self._dispatch.submit(event.event_id, "verify", lambda: self._verify(event, folder))
         elif event.state == "opened":
-            snapshot = await self._wait_snapshot(path) if path else None
-            try:
-                await self._notifier.notify(event, snapshot)
-            except Exception:
-                log.exception("notifier failed for event %s", event.event_id)
+            self._dispatch.submit(
+                event.event_id, "opened", lambda: self._notify_opened(event, path)
+            )
         elif event.state == "arrived" and view is not None:
-            try:
-                await self._notifier.send_text(arrived_ro(view), view.event_id, kind="arrived")
-            except Exception:
-                log.exception("notifier failed for event %s", event.event_id)
-            await self._resolved(view, resolved_line(view))
+            arrived = view
+            self._dispatch.submit(arrived.event_id, "arrived", lambda: self._arrived(arrived))
         elif event.state == "closed" and view is not None and view.arrived_at is None:
-            # Off the MQTT loop: the `arrived` may still be on its way (another replica).
-            task = asyncio.create_task(self._closed_unserved(view.event_id))
-            self._verifying.add(task)
-            task.add_done_callback(self._verifying.discard)
+            # After a grace: the `arrived` may still be on its way (another replica).
+            alert_id = view.event_id
+            self._dispatch.submit_later(
+                self._close_grace_s, alert_id, "closed", lambda: self._closed_unserved(alert_id)
+            )
+
+    async def _notify_opened(self, event: AlertEvent, path: str | None) -> None:
+        snapshot = await self._wait_snapshot(path) if path else None
+        try:
+            await self._notifier.notify(event, snapshot)
+        except Exception:
+            log.exception("notifier failed for event %s", event.event_id)
+
+    async def _arrived(self, view: AlertView) -> None:
+        try:
+            await self._notifier.send_text(arrived_ro(view), view.event_id, kind="arrived")
+        except Exception:
+            log.exception("notifier failed for the arrival of %s", view.event_id)
+        await self._resolved(view, resolved_line(view))
 
     async def _closed_unserved(self, alert_id: str) -> None:
         """Nobody arrived and the situation ended: for a table, the guest left unserved.
-        Waits `close_grace_s` first, so an `arrived` processed late is not mistaken for it."""
+        Runs `close_grace_s` after the close, so an `arrived` processed late is not mistaken
+        for it."""
         try:
-            if self._close_grace_s > 0:
-                await asyncio.sleep(self._close_grace_s)
             async with self._sessions() as s:
                 view = await AlertRepository(s).view(alert_id)
             if view is None or view.arrived_at is not None:
@@ -197,9 +207,11 @@ class IngestHandler:
             log.exception("verification task failed for event %s", event.event_id)
 
     async def drain(self) -> None:
-        """Wait for the verifications and close follow-ups in flight (tests, shutdown)."""
-        while self._verifying:
-            await asyncio.gather(*self._verifying, return_exceptions=True)
+        """Wait for the notifications queued or in flight (tests, shutdown)."""
+        await self._dispatch.drain()
+
+    async def aclose(self) -> None:
+        await self._dispatch.aclose()
 
     async def _wait_snapshot(self, name: str) -> Path | None:
         return await wait_for_file(self._snapshots / name, self._snapshot_wait_s)
@@ -245,16 +257,20 @@ class IngestHandler:
         if closed and reason is not None:
             log.info("closed %d open alert(s) of %s: %s", len(closed), t.device, reason)
             note = device_closed_note_ro(t.device, reason, len(closed))
-            try:
-                # No "a ajuns": nobody came. The tag picks the location (and its chat).
-                await self._notifier.send_text(
-                    note, closed[0].event_id, title="AiVee · Dispozitiv", kind="device"
-                )
-            except Exception:
-                log.exception("notifier failed for the %s note of %s", reason, t.device)
+            tag = closed[0].event_id
+            self._dispatch.submit(tag, "device", lambda: self._device_note(note, tag, t.device))
             line = SYSTEM_CLOSED_LINE.get(reason, "⚪ Închisă")
             for view in closed:
-                await self._resolved(view, line)
+                self._dispatch.submit(
+                    view.event_id, "resolved", lambda v=view: self._resolved(v, line)
+                )
+
+    async def _device_note(self, note: str, tag: str, device: str) -> None:
+        try:
+            # No "a ajuns": nobody came. The tag picks the location (and its chat).
+            await self._notifier.send_text(note, tag, title="AiVee · Dispozitiv", kind="device")
+        except Exception:
+            log.exception("notifier failed for the device note of %s", device)
 
     async def _on_suggestion(self, t: Topics, suggestion: StaffSuggestion) -> None:
         async with self._sessions() as s:

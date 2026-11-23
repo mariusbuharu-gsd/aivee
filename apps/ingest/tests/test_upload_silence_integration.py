@@ -95,10 +95,12 @@ async def test_upload_events_are_stored_but_nobody_is_notified(
     await handler.handle(up.events, _event("video-abc", "arrived", T0 + timedelta(seconds=20)))
     await handler.handle(up.events, _event("video-abc", "opened", T0 + timedelta(seconds=40)))
     await handler.handle(up.status, _status("upload-01", "offline"))
+    await handler.drain()
     assert notifier.alerts == [] and notifier.texts == []
 
     # The same messages from a live edge do notify: the guard is about uploads only.
     await handler.handle(live.events, _event("cam-01", "opened", T0, "ev-live"))
+    await handler.drain()
     assert [e.event_id for e in notifier.alerts] == ["ev-live"]
 
     async with sessions() as s:

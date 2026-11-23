@@ -11,6 +11,7 @@ from aivee_contracts.rules import Condition
 from aivee_ingest.__main__ import build_notifier
 from aivee_ingest.alert_message import AlertContext
 from aivee_ingest.config import IngestSettings
+from aivee_ingest.dispatch import RetryingNotifier
 from aivee_ingest.notify import LogNotifier, alert_text
 from aivee_ingest.telegram import TelegramNotifier
 
@@ -150,11 +151,13 @@ def test_the_global_chat_is_ignored_unless_single_tenant() -> None:
 def test_build_notifier_gives_telegram_no_fallback_chat_by_default() -> None:
     sessions: Any = object()
     shared = IngestSettings(telegram_bot_token="TOKEN", telegram_chat_id="-100")
-    notifier = build_notifier(shared, sessions, VapidSettings())
-    assert isinstance(notifier, TelegramNotifier) and notifier.fallback_chat is None
+    built = build_notifier(shared, sessions, VapidSettings())
+    assert isinstance(built, RetryingNotifier)
+    assert isinstance(built.inner, TelegramNotifier) and built.inner.fallback_chat is None
     single = shared.model_copy(update={"telegram_single_tenant": True})
-    notifier = build_notifier(single, sessions, VapidSettings())
-    assert isinstance(notifier, TelegramNotifier) and notifier.fallback_chat == "-100"
+    built = build_notifier(single, sessions, VapidSettings())
+    assert isinstance(built, RetryingNotifier)
+    assert isinstance(built.inner, TelegramNotifier) and built.inner.fallback_chat == "-100"
 
 
 async def test_a_follow_up_without_an_alert_has_no_chat_either(
