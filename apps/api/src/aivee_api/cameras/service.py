@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from aivee_api.alerts.audit import AuditWriter, system_closed_entry
 from aivee_api.alerts.repository import AlertRepository
+from aivee_api.cameras.masking import MaskedWithoutPassword, is_masked, mask_source, restore_masked
 from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.db.models import Camera, Device
 from aivee_api.db.repositories import CameraRepository, DeviceRepository, camera_config
 from aivee_api.edge.sync import EdgeSync
 from aivee_api.errors import Conflict, Invalid, NotFound
+
+MASKED_NEW_RO = "Scrie parola camerei: „***” ține doar locul unei parole deja salvate."
 
 
 @dataclass(frozen=True)
@@ -58,8 +61,10 @@ def _out(row: Camera, devices: Mapping[str, Device]) -> CameraOut:
     stream = camera_stream(
         row.id, device.state if device else None, device.camera_health if device else None
     )
+    config = camera_config(row)
     return CameraOut(
-        **camera_config(row).model_dump(),
+        **config.model_dump(exclude={"source"}),
+        source=mask_source(config.source),
         device=row.device_id or "",
         online=stream.online,
         stream_state=stream.state,
@@ -100,6 +105,8 @@ class CameraService:
 
     async def create(self, data: CameraIn) -> CameraOut:
         check_unique_zone_ids(data.zones)
+        if is_masked(data.source):
+            raise Invalid(MASKED_NEW_RO)
         camera = CameraConfig(
             id=data.id or f"cam-{uuid.uuid4().hex[:8]}",
             name=data.name,
@@ -119,16 +126,33 @@ class CameraService:
 
     async def update(self, camera_id: str, patch: CameraPatch) -> CameraOut:
         before = await self.get(camera_id)
+        source = await self._unmasked(camera_id, patch.source)
         if patch.device:
             await self._devices.ensure_device(self._sync.site, patch.device)
         await self._cameras.update(
-            camera_id, name=patch.name, source=patch.source, device_id=patch.device
+            camera_id, name=patch.name, source=source, device_id=patch.device
         )
         await self._s.commit()
         await self._sync.publish_config()
         if patch.device and patch.device != before.device:
             await self._sync.publish_rules()  # the camera's rules move with it
         return await self.get(camera_id)
+
+    async def stored_source(self, camera_id: str) -> str:
+        """The camera's real source, password included: only for the edge, never a response."""
+        row = await self._cameras.get(camera_id)
+        if row is None:
+            raise NotFound(f"Camera {camera_id} nu există.")
+        return row.source
+
+    async def _unmasked(self, camera_id: str, source: str | None) -> str | None:
+        """An edited source with `***` put back to the stored password (see `masking`)."""
+        if source is None or not is_masked(source):
+            return source
+        try:
+            return restore_masked(source, await self.stored_source(camera_id))
+        except MaskedWithoutPassword:
+            raise Invalid(MASKED_NEW_RO) from None
 
     async def delete(self, camera_id: str, audit: AuditWriter) -> CameraOut:
         """Delete the camera with its zones and rules; its open alerts are closed by the
