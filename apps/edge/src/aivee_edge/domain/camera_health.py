@@ -41,6 +41,8 @@ class SourceHealth:
     height: int | None = None
     frames: int = 0
     reconnects: int = 0
+    codec: str | None = None
+    """FourCC the backend reports for the stream (e.g. `h264`), None when it says nothing."""
 
 
 @dataclass(frozen=True)

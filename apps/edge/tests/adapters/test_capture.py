@@ -124,6 +124,7 @@ def test_cv2_source_gives_up_after_max_reconnects(tmp_path: Path) -> None:
         str(tmp_path / "missing.avi"), target_fps=5, max_reconnects=3, sleep=sleeps.append
     )
     assert source.read() is None
+    assert source.ended()
     assert sleeps == [0.5, 1.0, 2.0]
 
 
@@ -406,3 +407,19 @@ def test_health_is_disconnected_while_the_camera_is_unreachable(cameras: Any) ->
     assert health.connected is False
     assert health.reconnects >= 5
     assert sleeps[:5] == [0.5, 1.0, 2.0, 4.0, 8.0]  # exponential backoff
+
+
+def test_health_names_the_codec_when_the_backend_reports_it(cameras: Any) -> None:
+    clock, queued = cameras
+
+    class H264(_Camera):
+        def get(self, prop: int) -> float:
+            return float(cv2.VideoWriter.fourcc(*"h264")) if prop == cv2.CAP_PROP_FOURCC else 0.0
+
+    cam = H264(clock)
+    queued.append(cam)
+    source = _source(clock, target_fps=5)
+    cam.push(0.0, _frame(1))
+    assert source.read() is not None
+    assert source.health().codec == "h264"
+    source.close()

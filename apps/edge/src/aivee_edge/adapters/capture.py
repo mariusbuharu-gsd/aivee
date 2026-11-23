@@ -82,6 +82,15 @@ def ffmpeg_capture_options(timeout_s: float) -> None:
     )
 
 
+def fourcc(value: float) -> str | None:
+    """`CAP_PROP_FOURCC` as text (`h264`, `hevc`, `MJPG`), None when the backend gives 0."""
+    code = int(value)
+    if code <= 0:
+        return None
+    text = code.to_bytes(4, "little").decode("ascii", "replace").strip("\x00 ")
+    return text or None
+
+
 @dataclass(frozen=True)
 class _Grabbed:
     seq: int
@@ -140,6 +149,7 @@ class Cv2Source:
         self._reconnects = 0
         self._stamps: deque[float] = deque()
         self._size: tuple[int, int] | None = None
+        self._codec: str | None = None
 
     # -- grabber thread ------------------------------------------------------------
 
@@ -203,6 +213,9 @@ class Cv2Source:
                     cap = self._connect()
                     if cap is None:
                         break
+                    codec = fourcc(cap.get(cv2.CAP_PROP_FOURCC))
+                    with self._cond:
+                        self._codec = codec
                 ok, image = cap.read()
                 if self._closed.is_set():
                     break
@@ -251,6 +264,11 @@ class Cv2Source:
             self._due = next_due(self._due, frame.ts, self._period)
         return frame.ts, rotate(frame.image, self._rotate)
 
+    def ended(self) -> bool:
+        """The grabber stopped: closed, or it gave up after `max_reconnects`."""
+        with self._cond:
+            return self._ended
+
     def health(self) -> SourceHealth:
         now = self._clock()
         with self._cond:
@@ -265,6 +283,7 @@ class Cv2Source:
                 height=self._size[1] if self._size else None,
                 frames=self._frames,
                 reconnects=self._reconnects,
+                codec=self._codec,
             )
 
     def close(self) -> None:
