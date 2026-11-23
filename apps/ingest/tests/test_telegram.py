@@ -1,12 +1,16 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
+from aivee_api.push.settings import VapidSettings
 from aivee_contracts.events import AlertEvent
 from aivee_contracts.rules import Condition
+from aivee_ingest.__main__ import build_notifier
 from aivee_ingest.alert_message import AlertContext
+from aivee_ingest.config import IngestSettings
 from aivee_ingest.notify import LogNotifier, alert_text
 from aivee_ingest.telegram import TelegramNotifier
 
@@ -131,7 +135,35 @@ async def test_no_chat_at_all_sends_nothing(caplog: pytest.LogCaptureFixture) ->
     notifier = TelegramNotifier("TOKEN", None, client, chat_for=none)
     await notifier.notify(EVENT, None)
     await notifier.send_text("x", tag="e1", kind="realert")
-    assert seen == [] and "no Telegram chat" in caplog.text
+    assert seen == [] and "telegram_skipped reason=no_chat" in caplog.text
+
+
+# S5: alerts of a location without its own chat never go to a shared, global chat.
+
+
+def test_the_global_chat_is_ignored_unless_single_tenant() -> None:
+    assert IngestSettings(telegram_chat_id="-100").telegram_fallback_chat is None
+    single = IngestSettings(telegram_chat_id="-100", telegram_single_tenant=True)
+    assert single.telegram_fallback_chat == "-100"
+
+
+def test_build_notifier_gives_telegram_no_fallback_chat_by_default() -> None:
+    sessions: Any = object()
+    shared = IngestSettings(telegram_bot_token="TOKEN", telegram_chat_id="-100")
+    notifier = build_notifier(shared, sessions, VapidSettings())
+    assert isinstance(notifier, TelegramNotifier) and notifier.fallback_chat is None
+    single = shared.model_copy(update={"telegram_single_tenant": True})
+    notifier = build_notifier(single, sessions, VapidSettings())
+    assert isinstance(notifier, TelegramNotifier) and notifier.fallback_chat == "-100"
+
+
+async def test_a_follow_up_without_an_alert_has_no_chat_either(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    client, seen = _recording_client()
+    notifier = TelegramNotifier("TOKEN", None, client)
+    await notifier.send_text("fără alertă", kind="device")
+    assert seen == [] and "telegram_skipped reason=no_chat" in caplog.text
 
 
 async def _names(event: AlertEvent) -> AlertContext:

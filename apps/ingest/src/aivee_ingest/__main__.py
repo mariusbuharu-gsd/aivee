@@ -42,8 +42,14 @@ def build_notifier(
     vapid: VapidSettings | None = None,
 ) -> Notifier:
     notifiers: list[Notifier] = []
-    if settings.telegram_bot_token and (settings.telegram_chat_id or sessions is not None):
-        log.info("notifier: Telegram (location chat, else TELEGRAM_CHAT_ID)")
+    if settings.telegram_chat_id and not settings.telegram_single_tenant:
+        log.warning("TELEGRAM_CHAT_ID ignored: set TELEGRAM_SINGLE_TENANT=true to use it")
+    fallback = settings.telegram_fallback_chat
+    if settings.telegram_bot_token and (fallback or sessions is not None):
+        log.info(
+            "notifier: Telegram (the location's chat%s)",
+            ", else TELEGRAM_CHAT_ID" if fallback else "; none: not sent",
+        )
 
         async def chat_for(event_id: str) -> str | None:
             return await telegram_chat_for(sessions, event_id) if sessions is not None else None
@@ -60,7 +66,7 @@ def build_notifier(
         notifiers.append(
             TelegramNotifier(
                 settings.telegram_bot_token,
-                settings.telegram_chat_id,
+                fallback,
                 prefix=settings.telegram_prefix,
                 chat_for=chat_for,
                 context_for=context_for,
@@ -113,7 +119,7 @@ async def main() -> None:
         bot_api = HttpBotApi(settings.telegram_bot_token)
         callbacks = AlertCallbacks(
             bot_api,
-            DbAckStore(sessions, audit, settings.telegram_chat_id),
+            DbAckStore(sessions, audit, settings.telegram_fallback_chat),
             prefix=settings.telegram_prefix,
             dashboard_url=settings.public_dashboard_url,
         )

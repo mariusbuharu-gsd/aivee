@@ -5,7 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class IngestSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_INGEST_USER, MQTT_INGEST_PASSWORD, SNAPSHOT_DIR,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_PREFIX, TELEGRAM_POLL, PUBLIC_DASHBOARD_URL,
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_SINGLE_TENANT, TELEGRAM_PREFIX, TELEGRAM_POLL,
+    PUBLIC_DASHBOARD_URL,
     REALERT_AFTER_S, REMIND_S,
     VERIFY_ALERTS, VERIFY_MODEL, VERIFY_TIMEOUT_S, ANTHROPIC_API_KEY
     (+ POSTGRES_* via aivee_api.db.settings,
@@ -22,6 +23,11 @@ class IngestSettings(BaseSettings):
     """Relative to the repo root (where `make api` runs); compose bind-mounts the same dir."""
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    """A shared chat, used only with `telegram_single_tenant` (dev or a one-customer install)."""
+    telegram_single_tenant: bool = False
+    """True: alerts of a location without its own chat go to TELEGRAM_CHAT_ID. Off (the
+    default), they go to no chat at all: a shared chat would show one customer's alerts to
+    another."""
     telegram_prefix: str = ""
     """Prepended to every message, e.g. "[test]" when a dev run shares the real group."""
     telegram_poll: bool = True
@@ -43,3 +49,8 @@ class IngestSettings(BaseSettings):
     verify_timeout_s: float = 20
     """Longer than this and the alert goes out unverified."""
     anthropic_api_key: str | None = None
+
+    @property
+    def telegram_fallback_chat(self) -> str | None:
+        """The chat for alerts of a location without its own: only in single-tenant mode."""
+        return self.telegram_chat_id if self.telegram_single_tenant else None

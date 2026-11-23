@@ -4,8 +4,8 @@ The getUpdates poller (`telegram_link.py`, one replica) hands every callback her
 goes through `AlertRepository.acknowledge`, the dashboard's "Merg eu" path, with the
 Telegram user's first name as `acknowledged_by` (no AiVee account: `acknowledged_by_id`
 stays empty), plus an `alert.acknowledged` audit entry. Only the chat the alert was sent to
-(the location's chat, else TELEGRAM_CHAT_ID) may take it. The dashboard picks the ack up
-like any other (`acknowledged_after`).
+(the location's chat; TELEGRAM_CHAT_ID only in single-tenant mode) may take it. The
+dashboard picks the ack up like any other (`acknowledged_after`).
 
 Every callback is answered (a toast), or the button keeps spinning. After an ack the
 message gets "✋ Preluată de Ana · 16:58" and loses the button; already taken or closed
