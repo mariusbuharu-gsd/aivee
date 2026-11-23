@@ -3,8 +3,8 @@
 `SourceHealth` is what the capture adapter measures. `CameraWatch` turns the health of every
 camera of a device into a `CameraHealth` per camera with a `state`:
 
-- `ok`: frames are arriving.
-- `reconnecting`: the stream dropped or does not open; the grabber is retrying.
+- `ok`: frames are arriving (or the first open is still under way).
+- `reconnecting`: the stream dropped or an open failed; the grabber is retrying.
 - `down`: no frame for more than `DOWN_AFTER_S` (reconnecting or not: a frozen stream that
   stays connected is down too), or none at all within `DOWN_AFTER_S` of the start.
 
@@ -66,7 +66,9 @@ def stream_state(
     age = health.last_frame_age_s if health.last_frame_age_s is not None else running_s
     if age > down_after_s:
         return "down"
-    return "ok" if health.connected else "reconnecting"
+    if health.connected or health.reconnects == 0:  # streaming, or the first open pending
+        return "ok"
+    return "reconnecting"
 
 
 class CameraWatch:

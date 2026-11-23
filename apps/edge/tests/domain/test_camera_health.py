@@ -11,8 +11,10 @@ from aivee_edge.domain.camera_health import (
 T0 = datetime(2026, 11, 23, 12, 0, tzinfo=UTC)
 
 
-def _h(connected: bool = True, age: float | None = 0.1, fps: float = 15.0) -> SourceHealth:
-    return SourceHealth(connected, age, fps, 1280, 720)
+def _h(
+    connected: bool = True, age: float | None = 0.1, fps: float = 15.0, reconnects: int = 1
+) -> SourceHealth:
+    return SourceHealth(connected, age, fps, 1280, 720, reconnects=reconnects)
 
 
 def test_stream_state_ok_reconnecting_down() -> None:
@@ -28,6 +30,12 @@ def test_a_camera_that_never_sent_a_frame_is_down_60s_after_start() -> None:
     never = _h(connected=False, age=None, fps=0)
     assert stream_state(never, running_s=30) == "reconnecting"
     assert stream_state(never, running_s=61) == "down"
+
+
+def test_a_camera_still_opening_its_first_stream_is_not_reconnecting() -> None:
+    opening = _h(connected=False, age=None, fps=0, reconnects=0)
+    assert stream_state(opening, running_s=2) == "ok"
+    assert stream_state(opening, running_s=61) == "down"  # an open that never ends
 
 
 def test_watch_reports_state_changes_once() -> None:

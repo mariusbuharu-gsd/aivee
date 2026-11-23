@@ -47,7 +47,7 @@ class LogHealth:
         for h in changed:
             age = f"{h.last_frame_age_s:.0f}" if h.last_frame_age_s is not None else "never"
             if h.state == "ok":
-                log.info("camera_up camera=%s fps=%.1f", h.camera_id, h.fps)
+                log.info("camera_up camera=%s", h.camera_id)
             else:
                 log.warning("camera_%s camera=%s last_frame_age_s=%s", h.state, h.camera_id, age)
         now = self._clock()
