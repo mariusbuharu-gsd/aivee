@@ -13,7 +13,7 @@ import httpx
 import numpy as np
 import pytest
 from aivee_api.edge.publisher import MqttEdgeLink
-from aivee_api.frames.router import get_camera_topics
+from aivee_api.frames.router import CameraTarget, get_camera_target
 from aivee_api.frames.store import LiveFrames, mjpeg_stream
 from aivee_api.main import create_app
 from aivee_api.metrics.cache import MetricsCache
@@ -52,10 +52,10 @@ async def test_posted_frames_reach_the_vision_worker_and_the_mjpeg_stream(
     svc.frames = LiveFrames(link)
     app = create_app(svc)
 
-    async def find(camera_id: str) -> Topics | None:
-        return Topics(site=site, device=device)
+    async def find(camera_id: str) -> CameraTarget | None:
+        return CameraTarget(Topics(site=site, device=device), org_id="org")
 
-    app.dependency_overrides[get_camera_topics] = lambda: find
+    app.dependency_overrides[get_camera_target] = lambda: find
     worker = open_frames_source(
         "mqtt-frames://cam-e2e",
         host=broker.host,

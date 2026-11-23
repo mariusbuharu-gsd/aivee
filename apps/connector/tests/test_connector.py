@@ -248,6 +248,21 @@ def test_frame_request_has_path_and_basic_auth() -> None:
     assert path == "/aivee/api/ingest/frames/cam-01"
 
 
+def test_a_camera_push_key_is_sent_as_bearer_instead_of_the_shared_credential() -> None:
+    conf = c.Config.from_env(
+        {
+            "SOURCE": "0",
+            "CLOUD_PUSH_URL": "https://h",
+            "CLOUD_PUSH_KEY": "k3y",
+            "STREAM_PUBLISH_USER": "pub",
+            "STREAM_PUBLISH_PASSWORD": "pw",
+        }
+    )
+    _, headers = c.frame_request(conf)
+    assert headers["Authorization"] == "Bearer k3y"
+    assert "k3y" not in repr(conf)
+
+
 class FakeResponse:
     def __init__(self, status: int) -> None:
         self.status = status

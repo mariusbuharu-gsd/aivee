@@ -47,6 +47,11 @@ CASES = [
     ("camera.created", {"actor": "Ana", "target": "Sala"}, "Ana a adăugat camera Sala"),
     ("camera.updated", {"actor": "Ana", "target": "Sala"}, "Ana a modificat camera Sala"),
     ("camera.deleted", {"actor": "Ana", "target": "Sala"}, "Ana a șters camera Sala"),
+    (
+        "camera.push_key_created",
+        {"actor": "Ana", "target": "Sala"},
+        "Ana a generat o cheie nouă de publicare pentru camera Sala",
+    ),
     ("zones.updated", {"actor": "Ana", "target": "Sala"}, "Ana a modificat zonele camerei Sala"),
     (
         "video.uploaded",

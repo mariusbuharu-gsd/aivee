@@ -2,6 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from sqlalchemy import update
 
 from aivee_api.alerts.audit import AuditWriter, get_audit_writer
 from aivee_api.audit.record import record
@@ -13,8 +15,10 @@ from aivee_api.auth.scope import authorize_at, authorize_camera, camera_ids_at, 
 from aivee_api.cameras.frame import latest_frame
 from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.cameras.service import CameraService
+from aivee_api.db.models import Camera
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Invalid, NotFound
+from aivee_api.frames.keys import key_hash, new_key
 from aivee_api.videos.kind import is_upload_camera, is_upload_device
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
@@ -88,6 +92,31 @@ async def get_camera_frame(
         media_type="image/jpeg",
         headers={FRAME_AT_HEADER: frame.at.isoformat(), "Cache-Control": "no-store"},
     )
+
+
+class PushKeyOut(BaseModel):
+    camera_id: str
+    key: str
+    """Shown once: the connector's CLOUD_PUSH_KEY. Only its sha256 is stored."""
+
+
+@router.post("/{camera_id}/push-key", status_code=status.HTTP_201_CREATED)
+async def create_push_key(camera_id: str, s: SessionDep, p: CurrentUser) -> PushKeyOut:
+    """A new frame-ingest key for this camera (devices.manage); the previous one stops working,
+    and so does the shared STREAM_PUBLISH_USER/PASSWORD for this camera (S6)."""
+    loc = await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
+    key = new_key()
+    await s.execute(
+        update(Camera).where(Camera.id == camera_id).values(push_key_hash=key_hash(key))
+    )
+    await record(
+        s,
+        p,
+        "camera.push_key_created",
+        location_id=loc,
+        target=Target("camera", camera_id, camera_id),
+    )
+    return PushKeyOut(camera_id=camera_id, key=key)
 
 
 @router.put("/{camera_id}")

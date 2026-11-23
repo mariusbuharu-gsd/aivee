@@ -9,15 +9,16 @@ worker analyses the frames in memory. Two ways out:
   `/api/ingest/frames/{camera_id}` over a keep-alive connection, for networks where only 443
   is open. A slow server makes the connector drop frames, never queue them.
 
-Both authenticate with STREAM_PUBLISH_USER/PASSWORD (one shared credential for now; per-device
-keys replace it after the freeze).
+RTSP authenticates with STREAM_PUBLISH_USER/PASSWORD (shared). HTTPS uses the camera's own
+push key when CLOUD_PUSH_KEY is set (`Authorization: Bearer`, from the dashboard's
+`POST /api/cameras/{id}/push-key`), else the same shared credential.
 
 Standard library only, so it runs on any PC or small box that has Python 3 and ffmpeg.
 
     python3 connector.py --source http://PHONE:8080/video --camera-id cam-01 --rotate 90
     python3 connector.py --source 0 --camera-id cam-coleg-1 --push https://app.example
 
-Env: SOURCE, CAMERA_ID, CLOUD_RTSP_URL, CLOUD_PUSH_URL, STREAM_PUBLISH_USER,
+Env: SOURCE, CAMERA_ID, CLOUD_RTSP_URL, CLOUD_PUSH_URL, CLOUD_PUSH_KEY, STREAM_PUBLISH_USER,
 STREAM_PUBLISH_PASSWORD, CLOUD_FPS, CLOUD_WIDTH, CLOUD_BITRATE_KBPS, CLOUD_JPEG_QUALITY, ROTATE.
 Flags override env.
 """
@@ -62,6 +63,8 @@ class Config:
     """HTTPS base URL of the AiVee API; set = frames over HTTPS instead of RTSP."""
     jpeg_quality: int = 6
     """ffmpeg `-q:v` for the HTTPS frames: 2 (best, biggest) to 31 (worst)."""
+    push_key: str = field(default="", repr=False)
+    """The camera's own HTTPS push key; set = Bearer instead of the shared Basic credential."""
 
     def __post_init__(self) -> None:
         if not _CAMERA_ID.match(self.camera_id):
@@ -91,6 +94,7 @@ class Config:
             "bitrate_kbps": int(env.get("CLOUD_BITRATE_KBPS") or 400),
             "push_url": env.get("CLOUD_PUSH_URL", ""),
             "jpeg_quality": int(env.get("CLOUD_JPEG_QUALITY") or 6),
+            "push_key": env.get("CLOUD_PUSH_KEY", ""),
         }
         values.update({k: v for k, v in overrides.items() if v is not None})
         return cls(**values)  # type: ignore[arg-type]
@@ -292,11 +296,15 @@ class Newest:
 
 
 def frame_request(cfg: Config) -> tuple[str, dict[str, str]]:
-    """Path and headers of one frame POST (HTTP Basic with the publish credentials)."""
+    """Path and headers of one frame POST: Bearer with the camera's push key, else HTTP Basic
+    with the shared publish credentials."""
     base = urlsplit(cfg.push_url).path.rstrip("/")
-    token = base64.b64encode(f"{cfg.user}:{cfg.password}".encode()).decode()
+    if cfg.push_key:
+        auth = f"Bearer {cfg.push_key}"
+    else:
+        auth = "Basic " + base64.b64encode(f"{cfg.user}:{cfg.password}".encode()).decode()
     headers = {
-        "Authorization": f"Basic {token}",
+        "Authorization": auth,
         "Content-Type": "image/jpeg",
         "Connection": "keep-alive",
         "User-Agent": "aivee-connector",
@@ -319,7 +327,8 @@ def open_connection(push_url: str, timeout_s: float = 10.0) -> Connection:
 
 
 _HINTS = {
-    401: "credentials rejected: check STREAM_PUBLISH_USER/PASSWORD",
+    401: "credentials rejected: check CLOUD_PUSH_KEY (a camera with a key refuses the shared "
+    "one), else STREAM_PUBLISH_USER/PASSWORD",
     404: "camera unknown to the cloud: add it in the dashboard with this camera id",
     413: "frame too large: lower CLOUD_WIDTH or raise CLOUD_JPEG_QUALITY",
 }

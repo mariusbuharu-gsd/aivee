@@ -84,6 +84,8 @@ class Camera(Base):
     name: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(Text)
     zones: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    push_key_hash: Mapped[str | None] = mapped_column(String(64))
+    """sha256 (hex) of the camera's own frame-ingest key (`aivee_api.frames.keys`), if any."""
 
 
 class RuleRow(Base):
