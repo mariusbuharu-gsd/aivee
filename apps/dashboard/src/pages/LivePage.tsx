@@ -13,6 +13,8 @@ import { canWatchLive, useAuth } from '../auth/context';
 import { useLiveData } from '../state/context';
 import { openAlerts, elapsed, tick } from '../live/room';
 import { useNow } from '../live/useNow';
+import { cameraHealth } from '../devices/health';
+import { useDevices } from '../devices/useDevices';
 import { EmptyState, Skeleton } from '../ui/controls';
 import './LivePage.css';
 
@@ -137,7 +139,13 @@ function CameraGrid({
   hotFor: (cameraId: string) => Record<string, string>;
 }) {
   const { can } = useAuth();
-  const ordered = [...cameras].sort((a, b) => Number(b.online) - Number(a.online));
+  // The camera list loads once; the devices poll keeps each tile's state fresh.
+  const devices = useDevices();
+  const now = useNow(cameras.length > 0, 5_000);
+  const rows = cameras.map((c) => ({ camera: c, health: cameraHealth(c, devices[c.device], now) }));
+  const ordered = rows.sort(
+    (a, b) => Number(b.health.state !== 'offline') - Number(a.health.state !== 'offline'),
+  );
   return (
     <section aria-label="Camere" className="cameras">
       {loading && cameras.length === 0 && <Skeleton rows={2} label="Se încarcă camerele" />}
@@ -156,8 +164,8 @@ function CameraGrid({
           Leagă o cameră din sală, apoi desenează mesele pe imagine.
         </EmptyState>
       )}
-      {ordered.map((c) => (
-        <CameraTile key={c.id} camera={c} hot={hotFor(c.id)} />
+      {ordered.map(({ camera, health }) => (
+        <CameraTile key={camera.id} camera={camera} health={health} hot={hotFor(camera.id)} />
       ))}
     </section>
   );

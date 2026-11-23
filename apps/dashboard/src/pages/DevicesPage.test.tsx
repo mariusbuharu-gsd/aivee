@@ -32,6 +32,52 @@ function renderApp(
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
+describe('DevicesPage with two cameras on one device', () => {
+  function twoCameras(perCamera: boolean) {
+    const api = new MockApi({ latencyMs: 0, autoplay: false });
+    const base = { device: 'edge-01', online: true, zones: [] };
+    vi.spyOn(api, 'listCameras').mockResolvedValue([
+      {
+        ...base,
+        id: 'cam-01',
+        name: 'Sala',
+        source: 'rtsp://u:p@10.0.0.5:554/stream2',
+        ...(perCamera ? { stream_state: 'ok', last_frame_at: new Date().toISOString() } : {}),
+      },
+      {
+        ...base,
+        id: 'cam-02',
+        name: 'Terasă',
+        source: 'rtsp://u:p@10.0.0.6:554/stream2',
+        ...(perCamera ? { stream_state: 'down', last_frame_at: null } : {}),
+      },
+    ]);
+    vi.spyOn(api, 'listDevices').mockResolvedValue([
+      { device: 'edge-01', state: 'online', last_seen: new Date().toISOString() },
+    ]);
+    return api;
+  }
+
+  it('says which camera is down when the API reports each camera', async () => {
+    renderApp('/dispozitive', 'manager@aivee.demo', twoCameras(true));
+    const sala = await screen.findByRole('listitem', { name: 'Camera Sala' });
+    const terasa = screen.getByRole('listitem', { name: 'Camera Terasă' });
+    expect(within(sala).getByText('online')).toBeInTheDocument();
+    expect(await within(terasa).findByText('offline')).toBeInTheDocument();
+    expect(within(terasa).getByText('nicio imagine încă')).toBeInTheDocument();
+    expect(within(terasa).getByText(/Adresa IP a camerei s-a schimbat/)).toBeInTheDocument();
+    expect(within(terasa).queryByText(/Dispozitivul AiVee/)).toBeNull();
+  });
+
+  it('follows the shared device when the API has no per-camera signal', async () => {
+    renderApp('/dispozitive', 'manager@aivee.demo', twoCameras(false));
+    const sala = await screen.findByRole('listitem', { name: 'Camera Sala' });
+    const terasa = screen.getByRole('listitem', { name: 'Camera Terasă' });
+    expect(within(sala).getByText('online')).toBeInTheDocument();
+    expect(within(terasa).getByText('online')).toBeInTheDocument();
+  });
+});
+
 describe('DevicesPage', () => {
   it('keeps the latency unit out of the monospace span, which made "0.9 s" read as "0.9  s"', async () => {
     renderApp();

@@ -65,7 +65,15 @@ export interface StaffEnrolResult {
 /** A camera plus the online state of the device that serves it. */
 export interface CameraView extends CameraConfig {
   device: string;
+  /** The device's state: with several cameras on one device, all of them share it. */
   online: boolean;
+  /**
+   * Not sent by the API yet (proposed, see docs/handbook/frontend.md "Known gaps"): when the
+   * edge decoded this camera's newest frame. Absent = unknown, null = never.
+   */
+  last_frame_at?: string | null;
+  /** Not sent yet either: the edge's capture state for this camera. */
+  stream_state?: 'ok' | 'reconnecting' | 'down' | null;
 }
 
 /** `GET /api/devices`: the edge's status plus when the API last heard from it. */

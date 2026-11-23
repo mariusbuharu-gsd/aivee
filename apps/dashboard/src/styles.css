@@ -603,6 +603,10 @@ details summary {
 .badge-off {
   color: var(--danger-on-night);
 }
+/* Online device, but this camera's picture stalled or is coming back. */
+.badge-warn {
+  color: var(--warn-tint);
+}
 @keyframes pulse {
   50% {
     opacity: 0.35;

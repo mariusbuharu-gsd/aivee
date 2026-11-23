@@ -8,7 +8,8 @@ import { QrCode } from '../components/QrCode';
 import { StaffCaptureButton } from '../components/StaffCapture';
 import type { Metrics } from '../contracts';
 import { CameraThumb } from '../devices/CameraThumb';
-import { cameraState, lastSeenRo, type CameraState } from '../devices/lastSeen';
+import { cameraHealth, type CameraHealth, type CameraHealthState } from '../devices/health';
+import { lastSeenRo, sinceRo } from '../devices/lastSeen';
 import { maskSource } from '../devices/maskSource';
 import { useDevices } from '../devices/useDevices';
 import { useNow } from '../live/useNow';
@@ -164,8 +165,15 @@ function CameraCard({
   // The devices poll is fresher than the camera list, which loads once.
   const c = device ? { ...camera, online: device.state === 'online' } : camera;
   const now = useNow(device?.last_seen != null);
-  const seen = lastSeenRo(c.online, device?.last_seen, now);
-  const state = cameraState(c.online, device?.last_seen, now);
+  const status = cameraHealth(camera, device, now);
+  const state = status.state;
+  // The freshness line speaks for the camera when the API knows its last frame.
+  const seen =
+    camera.last_frame_at !== undefined && c.online
+      ? camera.last_frame_at
+        ? `ultima imagine acum ${sinceRo(now - Date.parse(camera.last_frame_at))}`
+        : 'nicio imagine încă'
+      : lastSeenRo(c.online, device?.last_seen, now);
   return (
     <li className="card device-card" aria-label={`Camera ${c.name}`}>
       <CameraThumb cameraId={c.id} name={c.name} online={c.online} />
@@ -193,7 +201,7 @@ function CameraCard({
         )}
         {plural(c.zones?.length ?? 0, 'zonă', 'zone')}
       </p>
-      {state !== 'online' && <OfflineChecklist camera={c} stale={state === 'stale'} />}
+      {state !== 'online' && <OfflineChecklist camera={c} health={status} />}
       <Link to={zonesPath(c.id)} className="btn">
         Editează zonele
       </Link>
@@ -226,19 +234,22 @@ function CameraCard({
   );
 }
 
-const PILL: Record<CameraState, { label: string; className: string }> = {
+const PILL: Record<CameraHealthState, { label: string; className: string }> = {
   online: { label: 'online', className: 'pill-live' },
+  reconnecting: { label: 'se reconectează', className: 'pill-warn' },
   // Connected but silent: the sender (laptop script, phone page) stopped, not the device.
   stale: { label: 'fără imagine', className: 'pill-warn' },
   offline: { label: 'offline', className: 'pill-off' },
 };
 
 /**
- * What to check, in order, when a camera stops sending. Cloud cameras (`mqtt-frames://`) are fed
- * by the laptop connector or the /telefon page, so the edge-box steps would send people to look
- * for a box that is not there. The button asks the API again.
+ * What to check, in order, when a camera stops sending. Cloud cameras are fed by the laptop
+ * connector or the /telefon page, so the edge-box steps would send people to look for a box
+ * that is not there; when only this camera is down (its device still answers), the steps are
+ * about the camera. The button asks the API again.
  */
-function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale?: boolean }) {
+function OfflineChecklist({ camera, health }: { camera: CameraView; health: CameraHealth }) {
+  const stale = health.state === 'stale' || health.state === 'reconnecting';
   const api = useApi();
   const toast = useToast();
   const { addCamera } = useLiveData();
@@ -253,7 +264,7 @@ function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale
         toast({ title: `Camera „${camera.name}” e din nou online` });
       } else {
         toast({
-          title: `${camera.device} tot nu răspunde`,
+          title: `Camera „${camera.name}” tot nu răspunde`,
           text: 'Mai verifică o dată pașii, apoi încearcă din nou.',
         });
       }
@@ -275,16 +286,20 @@ function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale
       {isCloudFrames(camera.source) ? (
         <ol>
           <li>Scriptul de pe laptop rulează? Laptopul are internet?</li>
+          <li>Pagina „Telefonul ca cameră” e deschisă și ecranul aprins?</li>
+        </ol>
+      ) : health.cause === 'camera' ? (
+        <ol>
+          <li>Camera are curent (LED-ul din față)?</li>
+          <li>Cablul de rețea al camerei e în priză la ambele capete.</li>
           <li>
-            Pagina <span className="mono">/telefon</span> e deschisă și ecranul aprins?
+            Adresa IP a camerei s-a schimbat? Verific-o în aplicația camerei, apoi la „Editează
+            camera”.
           </li>
         </ol>
       ) : (
         <ol>
-          <li>
-            Calculatorul <span className="mono">{camera.device}</span> e pornit? Lumina de pe
-            carcasă e aprinsă.
-          </li>
+          <li>Dispozitivul AiVee din local e pornit? Lumina de pe carcasă e aprinsă.</li>
           <li>Cablul de rețea e în priză la ambele capete.</li>
           <li>Camera are curent (LED-ul din față).</li>
         </ol>

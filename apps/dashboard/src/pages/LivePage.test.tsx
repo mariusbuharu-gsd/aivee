@@ -51,7 +51,11 @@ describe('Live', () => {
     expect(screen.getByText('Masa 2 așteaptă')).toBeInTheDocument();
     // The offline camera is one row, after the cameras that see.
     const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
-    expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
+    expect(within(terrace).getByText('Cameră offline')).toBeInTheDocument();
+    expect(
+      within(terrace).getByText('Dispozitivul AiVee din local nu răspunde.'),
+    ).toBeInTheDocument();
+    expect(within(terrace).queryByText('edge-terasa')).toBeNull();
   });
 
   it('the Alerte nav count is the number of open alerts, like the Deschise filter', async () => {

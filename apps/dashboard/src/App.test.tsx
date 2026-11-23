@@ -146,7 +146,11 @@ describe('App with the mock API', () => {
     renderApp();
     expect(await screen.findByRole('article', { name: 'Camera Sala principală' })).toBeVisible();
     const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
-    expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
+    expect(within(terrace).getByText('Cameră offline')).toBeInTheDocument();
+    expect(
+      within(terrace).getByText('Dispozitivul AiVee din local nu răspunde.'),
+    ).toBeInTheDocument();
+    expect(within(terrace).queryByText('edge-terasa')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Alerte recente' })).toBeInTheDocument();
     // The last five closed alerts as rows, the newest an object_gone checked by the AI.
     const rows = await screen.findByRole('list', { name: 'Alerte închise' });
