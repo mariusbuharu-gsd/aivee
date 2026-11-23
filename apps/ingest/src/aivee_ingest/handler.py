@@ -5,6 +5,7 @@ import os
 import uuid
 from collections import deque
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 from aivee_api.alerts.audit import (
@@ -276,7 +277,7 @@ class IngestHandler:
             line = SYSTEM_CLOSED_LINE.get(reason, "⚪ Închisă")
             for view in closed:
                 self._dispatch.submit(
-                    view.event_id, "resolved", lambda v=view: self._resolved(v, line)
+                    view.event_id, "resolved", partial(self._resolved, view, line)
                 )
 
     async def _device_note(self, note: str, tag: str, device: str) -> None:

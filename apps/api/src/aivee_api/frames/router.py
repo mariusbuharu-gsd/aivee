@@ -112,6 +112,8 @@ def get_camera_target(svc: ServicesDep) -> CameraLookup:
         if row is None:
             return None
         site, device, org_id, key_hash = row
+        if device is None:  # never: the inner join drops cameras without a device
+            return None
         return CameraTarget(Topics(site=site, device=device), org_id, key_hash)
 
     return find
