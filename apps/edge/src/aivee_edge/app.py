@@ -158,7 +158,7 @@ def build_vision(settings: EdgeSettings) -> Vision:
             )
         else:
             source = capture.Cv2Source(settings.source, settings.target_fps, rotate=settings.rotate)
-        detector = _adapter("yolo").YoloDetector(settings.detector_model)
+        detector = _adapter("yolo").YoloDetector(settings.detector_model, fps=settings.target_fps)
         pose = _adapter("pose").PoseEstimator(settings.pose_model) if settings.pose_model else None
         embedder = (
             CropEmbedder(_adapter("clip_embedder").ClipEmbedder()) if settings.appearance else None
