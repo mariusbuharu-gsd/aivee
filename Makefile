@@ -94,3 +94,21 @@ cloud-up:
 	docker compose --profile cloud up -d --build vision
 cloud-down:
 	docker compose --profile cloud stop vision
+
+.PHONY: eval-vision record-cams
+# Vision eval on labelled real-camera clips (evals/vision/README.md). Green on zero clips.
+CLIPS ?= recordings/eval
+eval-vision:
+	uv run python evals/vision/run.py --clips $(CLIPS)
+# Record all cameras at once into recordings/eval/<name>-<time>.mp4, for labelling and INT8
+# calibration. Keep camera URLs (they carry credentials) in env vars, never in this file:
+#   make record-cams CAMS="cam-01=$CAM_01_URL cam-02=$CAM_02_URL" SECONDS=600
+REC_FPS ?= 15
+record-cams:
+	@test -n "$(CAMS)" || { echo 'record-cams: set CAMS="cam-01=<url> cam-02=<url>"' >&2; exit 1; }
+	@mkdir -p recordings/eval; stamp=$$(date +%Y%m%d-%H%M); pids=""; \
+	for pair in $(CAMS); do \
+	  name=$${pair%%=*}; url=$${pair#*=}; \
+	  uv run python tools/record_clip.py --source "$$url" --seconds $(SECONDS) --fps $(REC_FPS) \
+	    --out recordings/eval/$$name-$$stamp.mp4 & pids="$$pids $$!"; \
+	done; status=0; for p in $$pids; do wait $$p || status=1; done; exit $$status

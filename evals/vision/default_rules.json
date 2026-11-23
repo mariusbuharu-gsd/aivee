@@ -1,0 +1,55 @@
+[
+  {
+    "id": "unattended",
+    "camera_id": "",
+    "name": "Masă neservită 5 min",
+    "prompt_ro": "Anunță-mă dacă la o masă nu a venit nimeni de 5 minute",
+    "zone_tag": "table",
+    "all_of": [
+      { "kind": "present", "role": "guest", "min_duration_s": 60 },
+      { "kind": "absent", "role": "staff", "min_duration_s": 300 }
+    ],
+    "action": { "type": "telegram" },
+    "cooldown_s": 300
+  },
+  {
+    "id": "raised_hand",
+    "camera_id": "",
+    "name": "Client cheamă",
+    "prompt_ro": "Anunță-mă când un client ridică mâna",
+    "zone_tag": "table",
+    "all_of": [{ "kind": "pose", "role": "guest", "pose": "raised_hand" }],
+    "action": { "type": "telegram" },
+    "cooldown_s": 60
+  },
+  {
+    "id": "not_cleared",
+    "camera_id": "",
+    "name": "Masă nedebarasată 5 min",
+    "prompt_ro": "Anunță-mă dacă o masă nu a fost debarasată de 5 minute",
+    "zone_tag": "table",
+    "all_of": [
+      {
+        "kind": "objects_unattended",
+        "role": "any",
+        "objects": ["cup", "bottle", "wine glass", "bowl", "fork", "knife", "spoon"],
+        "min_duration_s": 300
+      }
+    ],
+    "action": { "type": "telegram" },
+    "cooldown_s": 300
+  },
+  {
+    "id": "queue",
+    "camera_id": "",
+    "name": "Coadă la intrare",
+    "prompt_ro": "Anunță-mă dacă așteaptă 4 oameni la intrare",
+    "zone_tag": "entrance",
+    "all_of": [
+      { "kind": "count", "role": "guest", "min_count": 4 },
+      { "kind": "absent", "role": "staff", "min_duration_s": 0 }
+    ],
+    "action": { "type": "telegram" },
+    "cooldown_s": 300
+  }
+]
