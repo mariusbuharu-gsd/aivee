@@ -251,6 +251,12 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
   leg: ≥ 150° standing (also mid-stride), ≤ 120° seated. Without a decisive leg, the box's pixel height / width:
   ≥ 2.2 standing, ≤ 1.6 seated, else unknown. The trajectory buffer keeps 3 s of known stances per track;
   `standing_ratio` = standing share × min(1, known span / 2 s), so a guest who just stood up does not count at once.
+- Raised hand (`domain/pose.py`), people in table zones only: per frame, a visible wrist above the highest head
+  point (nose, eyes or ears) by 0.03, so guests seen from the side or from behind count; with no head point, above
+  the shoulder line by 0.75 shoulder widths (pixel space); one shoulder and no head, or no shoulder, is "not
+  raised". `RaisedHandFilter` then holds it per track: the hand counts after 1.0 s up (`raised_hand_s`) and gaps
+  up to 0.6 s (`raised_hand_drop_s`) neither reset the hold nor end it, so a wave or one bad frame opens nothing.
+  A raised-hand alert therefore opens ~1 s after the hand goes up.
 - `arrived`: a staff track's foot point in the alert's zone ≥ `ARRIVE_S` (default 5 s), once per alert.
 - Appearance is off by default (`APPEARANCE` / `--appearance`), ~0.6 s per crop, at most once per 2 s per person.
 - `ROTATE=90` for a sideways phone (D13). Live alert time is wall clock.
