@@ -11,7 +11,12 @@
 - Several cameras, one device (one MQTT connection, one client id): `for_camera()` gives each
   camera's pipeline a `CameraClient` view. Its `camera()` is that camera, its commands are the
   ones naming that camera, and its metrics are combined into one `Metrics` per device
-  (`DeviceMetrics`). `DeviceStatus.cameras` lists every camera.
+  (`DeviceMetrics`). `DeviceStatus.cameras` lists every camera. Cameras may join and leave
+  (`drop_camera()`) while connected (an edge box following its config); the status and the
+  last will follow.
+- `EdgeRequest`s (one-off jobs: camera discovery, camera test) arrive on `commands` too; they go
+  to `on_request`, which must not block (the network thread calls it). The answer goes out
+  with `publish_reply()` on `replies`.
 - Per-camera stream health (`publish_camera_health`, fed by `health.MqttHealth`) rides on the
   retained `online` status as `camera_health`; the LWT and the `offline` status carry none.
 - Transport: plain TCP by default; `transport="websockets"` (+ `ws_path`) and `tls=True` let a
@@ -23,10 +28,11 @@ import ssl
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from typing import Any
 
 import paho.mqtt.client as mqtt
-from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.commands import EdgeCommand, EdgeReply, EdgeRequest, parse_command
 from aivee_contracts.detections import Detections
 from aivee_contracts.events import (
     AlertEvent,
@@ -74,7 +80,10 @@ class MqttEdgeClient:
         tls: bool = False,
         ws_path: str = "/mqtt",
         metrics_interval_s: float = 5.0,
+        multi_camera: bool = False,
     ) -> None:
+        """`multi_camera`: the cameras register through `for_camera()` (CAMERAS, edge box);
+        the device then serves only those, even while it has none."""
         if transport not in TRANSPORTS:
             raise ValueError(f"MQTT transport must be one of {TRANSPORTS}, not {transport!r}")
         self.topics = Topics(site=site, device=device)
@@ -88,6 +97,9 @@ class MqttEdgeClient:
         self._profiles: StaffProfiles | None = None
         self._commands: deque[EdgeCommand] = deque(maxlen=MAX_PENDING_COMMANDS)
         self._views: dict[str, CameraClient] = {}
+        self._multi = multi_camera
+        self.on_request: Callable[[EdgeRequest], None] | None = None
+        """Called on the network thread with every `EdgeRequest`; must return quickly."""
         self._metrics_interval_s = metrics_interval_s
         self._device_metrics: DeviceMetrics | None = None
         self._camera_health: list[CameraStreamHealth] = []
@@ -114,18 +126,40 @@ class MqttEdgeClient:
         self._client.will_set(self.topics.status, self._status("offline"), qos=1, retain=True)
 
     def for_camera(self, camera: CameraConfig) -> "CameraClient":
-        """Register one camera of this device and return its pipeline's view. Call before
-        `start()`, so the status and the last will list every camera."""
+        """Register one camera of this device and return its pipeline's view. While
+        connected, the status is republished with the new camera list."""
         with self._lock:
             if camera.id in self._views:
                 raise ValueError(f"camera {camera.id!r} is already registered")
             view = CameraClient(self, camera)
             self._views[camera.id] = view
-            self._device_metrics = DeviceMetrics(
-                self._device, list(self._views), self._metrics_interval_s
-            )
-        self._set_will()
+            self._multi = True
+            self._cameras_changed()
+        self._announce_cameras()
         return view
+
+    def drop_camera(self, camera_id: str) -> None:
+        """Unregister a camera whose pipeline stopped: its commands are dropped from now on,
+        and the status no longer lists it or its health. Unknown ids are ignored."""
+        with self._lock:
+            if self._views.pop(camera_id, None) is None:
+                return
+            self._camera_health = [h for h in self._camera_health if h.camera_id != camera_id]
+            self._cameras_changed()
+        self._announce_cameras()
+
+    def _cameras_changed(self) -> None:
+        """Under the lock: the camera list changed."""
+        self._device_metrics = (
+            DeviceMetrics(self._device, list(self._views), self._metrics_interval_s)
+            if self._views
+            else None
+        )
+
+    def _announce_cameras(self) -> None:
+        self._set_will()
+        if self.connected.is_set():
+            self._client.publish(self.topics.status, self._status("online"), qos=1, retain=True)
 
     # -- lifecycle -----------------------------------------------------------------
 
@@ -180,6 +214,10 @@ class MqttEdgeClient:
 
     def publish_metrics(self, metrics: Metrics) -> None:
         self._client.publish(self.topics.metrics, metrics.model_dump_json(), qos=0)
+
+    def publish_reply(self, reply: EdgeReply) -> None:
+        """The answer to one `EdgeRequest` (QoS 1, not retained: nobody waits for it later)."""
+        self._client.publish(self.topics.replies, reply.model_dump_json(), qos=1)
 
     def publish_camera_metrics(self, camera_id: str, metrics: Metrics) -> None:
         """One camera's sample; the device's combined Metrics goes out when it is due."""
@@ -265,7 +303,7 @@ class MqttEdgeClient:
 
     def _status(self, state: str) -> str:
         with self._lock:
-            if self._views:
+            if self._multi:
                 cameras = list(self._views)
             else:
                 camera = self._configured_camera() or self._camera
@@ -319,20 +357,32 @@ class MqttEdgeClient:
                 with self._lock:
                     self._config = config
             elif msg.topic == self.topics.commands:
-                command = EdgeCommand.model_validate_json(msg.payload)
-                self._route(command)
+                command = parse_command(msg.payload)
+                if isinstance(command, EdgeRequest):
+                    self._request(command)
+                else:
+                    self._route(command)
         except ValidationError:
             log.exception("ignoring invalid payload on %s", msg.topic)
+
+    def _request(self, request: EdgeRequest) -> None:
+        handler = self.on_request
+        log.info("request received request_id=%s kind=%s", request.request_id, request.kind)
+        if handler is None:
+            log.info("request_ignored request_id=%s: this edge runs no jobs", request.request_id)
+            return
+        handler(request)
 
     def _route(self, command: EdgeCommand) -> None:
         """Queue a command for the pipeline of its camera (or the single pipeline)."""
         with self._lock:
+            multi = self._multi
             view = self._views.get(command.camera_id)
             if view is not None:
                 view._commands.append(command)
-            elif not self._views:
+            elif not multi:
                 self._commands.append(command)
-        if self._views and view is None:
+        if multi and view is None:
             log.info(
                 "command_ignored command_id=%s kind=%s camera=%s: not a camera of this device",
                 command.command_id,

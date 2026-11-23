@@ -7,12 +7,19 @@
 #   cp edge.env.example edge.env   # fill in the values from the AiVee dashboard
 #   docker compose -f compose.yml up -d --remove-orphans
 #
-# One service = one device, however many cameras: list them in CAMERAS in edge.env (see
-# docs/handbook/ip-cameras.md). One process keeps one MQTT connection; two services with the
+# One service = one device, however many cameras. The cameras are added in the dashboard
+# (Camere → Caută camere → Testează); the device runs whatever its retained config lists and
+# follows changes without a restart (see docs/handbook/ip-cameras.md). CAMERAS or SOURCE in
+# edge.env are dev overrides. One process keeps one MQTT connection; two services with the
 # same device credential would knock each other off the broker. `--remove-orphans` removes
 # the older per-camera `camera-1` service.
+#
+# Host networking: camera discovery sends an ONVIF multicast probe and checks the RTSP ports
+# of the venue's subnet, and the cameras are read by their LAN IPs. A bridged container would
+# only see Docker's own network.
 x-edge: &edge
   image: ${AIVEE_EDGE_IMAGE:-aivee-edge:dev}
+  network_mode: host
   env_file: edge.env
   volumes:
     - ./models:/app/models:ro

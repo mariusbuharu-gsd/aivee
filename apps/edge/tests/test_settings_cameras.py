@@ -11,7 +11,7 @@ TWO = "cam-01=rtsp://admin:s3cr3t@192.168.1.21:554/stream2;cam-02=rtsp://admin:s
 def _no_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
     # The repo's .env must not leak into these tests.
     monkeypatch.setitem(EdgeSettings.model_config, "env_file", None)
-    for name in ("CAMERAS", "SOURCE", "CAMERA_ID", "CLIP_EPOCH", "PROGRESS_FILE"):
+    for name in ("CAMERAS", "SOURCE", "CAMERA_ID", "CLIP_EPOCH", "PROGRESS_FILE", "EDGE_JOBS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -93,3 +93,44 @@ def test_a_bad_cameras_env_error_does_not_echo_the_value(monkeypatch: pytest.Mon
     with pytest.raises(ValueError) as e:
         EdgeSettings()
     assert "s3cr3t" not in str(e.value)
+
+
+# -- edge box: neither SOURCE nor CAMERAS, the cameras come from the dashboard ----------------
+
+
+def test_the_three_camera_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert EdgeSettings().camera_mode == "box"
+    monkeypatch.setenv("CAMERAS", TWO)
+    assert EdgeSettings().camera_mode == "cameras"
+    monkeypatch.setenv("SOURCE", "rtsp://cam/stream2")
+    assert EdgeSettings().camera_mode == "single"
+    monkeypatch.delenv("CAMERAS")
+    assert EdgeSettings().camera_mode == "single"
+
+
+def test_a_box_cannot_run_an_offline_clip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLIP_EPOCH", "2026-11-23T10:00:00Z")
+    with pytest.raises(ValueError, match="SOURCE"):
+        EdgeSettings()
+
+
+def test_jobs_run_on_a_box_and_with_cameras_unless_turned_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert EdgeSettings().serves_jobs
+    monkeypatch.setenv("CAMERAS", TWO)
+    assert EdgeSettings().serves_jobs
+    monkeypatch.setenv("EDGE_JOBS", "false")
+    assert not EdgeSettings().serves_jobs
+
+
+def test_a_single_source_serves_jobs_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The cloud vision workers run with SOURCE=mqtt-frames://…: they must not scan the server.
+    monkeypatch.setenv("SOURCE", "mqtt-frames://cam-coleg-1")
+    assert not EdgeSettings().serves_jobs
+    monkeypatch.setenv("SOURCE", "0")
+    monkeypatch.setenv("EDGE_JOBS", "true")
+    assert EdgeSettings().serves_jobs
+    monkeypatch.setenv("SOURCE", "clip.mp4")
+    monkeypatch.setenv("CLIP_EPOCH", "2026-11-23T10:00:00Z")
+    assert not EdgeSettings().serves_jobs  # an offline clip run never does

@@ -152,7 +152,7 @@ def test_run_exits_with_code_2_when_vision_is_unavailable(monkeypatch: pytest.Mo
         raise app.VisionUnavailable("no models")
 
     monkeypatch.setattr(app, "build_vision", boom)
-    assert app.run(EdgeSettings(_env_file=None)) == 2  # type: ignore[call-arg]
+    assert app.run(EdgeSettings(source="0", _env_file=None)) == 2  # type: ignore[call-arg]
 
 
 def test_crop_embedder_crops_the_normalised_box() -> None:
@@ -419,3 +419,109 @@ def test_cameras_put_their_health_on_the_status(monkeypatch: pytest.MonkeyPatch)
     settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
     assert app.run(settings) == 0
     assert [h.camera_id for h in _published_health(clients)] == ["cam-01", "cam-02"]
+
+
+# -- edge box: no SOURCE, no CAMERAS: the cameras the dashboard configures ---------------------
+
+
+def _box_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("SOURCE", "CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE", "EDGE_JOBS"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(app, "install_stop_signals", lambda _stop: None)  # not the main thread
+    monkeypatch.setattr(app, "check_vision", lambda _s: None)
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+
+
+def _until(cond: Any, timeout: float = 5.0) -> None:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while not cond():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.005)
+
+
+def test_the_box_runs_the_cameras_of_its_config_and_follows_changes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import threading
+
+    from aivee_contracts.events import DeviceStatus
+    from aivee_contracts.geometry import CameraConfig, DeviceConfig
+
+    _box_env(monkeypatch)
+    stop = threading.Event()
+    opened: dict[str, _LiveCamera] = {}
+
+    def fake_vision(s: EdgeSettings) -> app.Vision:
+        opened[s.source] = _LiveCamera(stop.is_set)
+        return app.Vision(opened[s.source], _NoPeople(), None, None, None)
+
+    clients: list[Any] = []
+    monkeypatch.setattr(app, "build_vision", fake_vision)
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    done: list[int] = []
+    with caplog.at_level("INFO"):
+        thread = threading.Thread(target=lambda: done.append(app.run(settings, stop)))
+        thread.start()
+        _until(lambda: bool(clients))
+        client = clients[0]
+
+        def configure(*cams: tuple[str, str]) -> None:
+            config = DeviceConfig(
+                device=client._device,
+                cameras=[CameraConfig(id=i, name=i, source=src) for i, src in cams],
+            )
+
+            class Msg:
+                topic = client.topics.config
+                payload = config.model_dump_json().encode()
+
+            client._on_message(client._client, None, Msg())
+
+        def cameras() -> list[str]:
+            return DeviceStatus.model_validate_json(client._status("online")).cameras
+
+        assert cameras() == []  # waiting for the dashboard
+        configure(("cam-01", "rtsp://admin:s3cr3t@10.0.0.21/stream2"), ("cam-02", "rtsp://b/2"))
+        _until(lambda: cameras() == ["cam-01", "cam-02"])
+        first = opened["rtsp://b/2"]
+
+        configure(("cam-02", "rtsp://b/2"), ("cam-03", "rtsp://c/2"))
+        _until(lambda: cameras() == ["cam-02", "cam-03"])
+        assert opened["rtsp://admin:s3cr3t@10.0.0.21/stream2"].closed  # cam-01 stopped
+        assert not first.closed and opened["rtsp://b/2"] is first  # cam-02 left alone
+
+        stop.set()
+        thread.join(5)
+    assert done == [0]
+    assert all(src.closed for src in opened.values())
+    assert "s3cr3t" not in caplog.text
+
+
+def test_the_box_fails_fast_without_its_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    _box_env(monkeypatch)
+
+    def missing(_s: EdgeSettings) -> None:
+        raise app.VisionUnavailable("model files missing")
+
+    monkeypatch.setattr(app, "check_vision", missing)
+    assert app.run(EdgeSettings(_env_file=None)) == 2  # type: ignore[call-arg]
+
+
+def test_check_vision_names_the_missing_model_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    monkeypatch.setattr(app, "_adapter", lambda name: object())
+    detector = tmp_path / "det"
+    detector.mkdir()
+    settings = EdgeSettings(
+        _env_file=None,  # type: ignore[call-arg]
+        detector_model=str(detector),
+        pose_model="",
+        yunet_model=str(tmp_path / "yunet.onnx"),
+    )
+    with pytest.raises(app.VisionUnavailable, match=r"yunet\.onnx"):
+        app.check_vision(settings)
+    app.check_vision(settings.model_copy(update={"blur": False}))

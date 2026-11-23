@@ -34,3 +34,13 @@ def test_redact_url_accepts_webcam_indexes() -> None:
 def test_redact_url_handles_a_password_with_an_at_sign() -> None:
     # Not percent-encoded: everything up to the last "@" before the host is userinfo.
     assert redact_url("rtsp://admin:p@ss@10.0.0.5/stream1") == "rtsp://admin:***@10.0.0.5/stream1"
+
+
+def test_redact_text_masks_every_url_inside_a_message() -> None:
+    from aivee_edge.redact import redact_text
+
+    text = "cannot open rtsp://admin:s3cr3t@10.0.0.5/stream1 (or rtsp://u:p@h/x): timeout"
+    assert redact_text(text) == (
+        "cannot open rtsp://admin:***@10.0.0.5/stream1 (or rtsp://u:***@h/x): timeout"
+    )
+    assert redact_text("no models in models/") == "no models in models/"

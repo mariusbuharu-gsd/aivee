@@ -79,6 +79,12 @@ class CameraWatch:
         self._first_seen: dict[str, float] = {}
         self._states: dict[str, StreamState] = {}
 
+    def forget(self, camera_id: str) -> None:
+        """The camera stopped (removed, or its source changed): if it comes back, it starts
+        afresh."""
+        self._first_seen.pop(camera_id, None)
+        self._states.pop(camera_id, None)
+
     def observe(
         self, now: float, wall: datetime, healths: Mapping[str, SourceHealth]
     ) -> tuple[list[CameraHealth], list[CameraHealth]]:

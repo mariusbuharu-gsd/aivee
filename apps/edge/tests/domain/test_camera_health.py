@@ -75,3 +75,14 @@ def test_watch_reports_a_camera_that_is_down_from_the_start() -> None:
     all_, changed = watch.observe(61.0, T0, {"cam-01": never})
     assert [h.state for h in changed] == ["down"]
     assert all_[0].last_frame_at is None
+
+
+def test_a_forgotten_camera_starts_afresh_when_it_comes_back() -> None:
+    watch = CameraWatch()
+    never = _h(connected=False, age=None, fps=0, reconnects=0)
+    watch.observe(0.0, T0, {"cam-01": never})
+    watch.forget("cam-01")
+    # Re-added 100 s later with a new source: its first open is under way, not "down".
+    all_, changed = watch.observe(100.0, T0, {"cam-01": never})
+    assert all_[0].state == "ok" and changed == []
+    watch.forget("cam-09")  # unknown: nothing to do

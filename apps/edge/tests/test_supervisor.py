@@ -92,3 +92,54 @@ def test_one_ended_camera_does_not_end_the_others() -> None:
     stop.set()
     thread.join(5)
     assert not thread.is_alive()
+
+
+def test_cameras_join_and_leave_a_running_supervisor_without_touching_the_others() -> None:
+    first, second = Steady(), Steady()
+    sources = [Source(), Source()]
+    sup = Supervisor([CameraRun("cam-01", first, sources[0])], keep_running=True)
+    stop = threading.Event()
+    thread = threading.Thread(target=sup.run, args=(stop,))
+    thread.start()
+    _until(first.running.is_set)
+    sup.add(CameraRun("cam-02", second, sources[1]))
+    _until(second.running.is_set)
+    assert sup.camera_ids() == ["cam-01", "cam-02"]
+
+    sup.remove("cam-01")
+    assert sources[0].closed and not sources[1].closed
+    assert sup.camera_ids() == ["cam-02"]
+    time.sleep(0.05)
+    assert thread.is_alive() and first.runs == 1 and second.runs == 1  # no restart of cam-02
+
+    sup.remove("cam-02")
+    time.sleep(0.05)
+    assert thread.is_alive()  # an edge box waits for its next camera
+    stop.set()
+    thread.join(5)
+    assert not thread.is_alive()
+
+
+def test_adding_a_camera_twice_is_refused() -> None:
+    sup = Supervisor([CameraRun("cam-01", Steady(), Source())])
+    try:
+        sup.add(CameraRun("cam-01", Steady(), Source()))
+    except ValueError as e:
+        assert "cam-01" in str(e)
+    else:
+        raise AssertionError("expected ValueError")
+    sup.remove("cam-09")  # unknown: nothing to do
+
+
+def test_the_tick_runs_while_no_camera_runs() -> None:
+    ticks: list[int] = []
+    stop = threading.Event()
+
+    def tick() -> None:
+        ticks.append(1)
+        if len(ticks) >= 3:
+            stop.set()
+
+    sup = Supervisor([], keep_running=True, tick=tick, tick_s=0.01)
+    assert sup.run(stop) == 0
+    assert len(ticks) >= 3
