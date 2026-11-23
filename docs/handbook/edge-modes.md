@@ -27,10 +27,12 @@ on-site compose file (`infra/edge/compose.yml`). Only the machine differs.
    `docker build -f apps/edge/Dockerfile -t aivee-edge:dev .` and `docker save`), until we
    publish it to a registry.
 4. `cp edge.env.example edge.env` and fill in the broker address, this device's MQTT credential,
-   the location id, and the camera URL.
-5. `docker compose -f compose.yml up -d`, then `docker compose -f compose.yml logs -f` should
-   show `edge started` and `metrics fps=…`. The device appears online on the dashboard's
-   **Dispozitive** page.
+   the location id, and the cameras: `CAMERAS=cam-01=rtsp://…;cam-02=rtsp://…` (all cameras
+   of the device in one process; see [ip-cameras.md](ip-cameras.md)), or `SOURCE` for one.
+5. `docker compose -f compose.yml up -d --remove-orphans`, then `docker compose -f compose.yml
+   logs -f` should show one `edge started` line per camera and `metrics fps=…`. The device
+   appears online on the dashboard's **Dispozitive** page. Check cameras first with
+   `make camera-check` from a checkout on the same network.
 
 ## Limits today
 
