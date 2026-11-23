@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { Suspense, useCallback, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import type { Capabilities, Permission } from '../api/client';
 import { useApi } from '../api/context';
@@ -11,6 +11,7 @@ import { LeaveGuardContext, type LeaveGuard, type LeaveGuardApi } from '../state
 import { Banner } from '../ui/Banner';
 import { Dialog } from '../ui/Dialog';
 import { Select } from '../ui/Select';
+import { Skeleton } from '../ui/controls';
 import { useToast } from '../ui/toast';
 import { PHONE, useMedia } from '../ui/useMedia';
 import { openAlerts } from '../live/room';
@@ -215,7 +216,10 @@ export function Layout() {
         <main id="main" className="main">
           <OfflineBanner />
           {error && <LoadBanner error={error} onRetry={retry} />}
-          <Outlet />
+          {/* Pages load as their own chunks (App.tsx); the shell stays while one arrives. */}
+          <Suspense fallback={<Skeleton rows={2} label="Se încarcă pagina" />}>
+            <Outlet />
+          </Suspense>
         </main>
         {phone && can('alerts.view') && <div className="pulse-dock">{pulse(true)}</div>}
         {phone && (
