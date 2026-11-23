@@ -144,19 +144,23 @@ reports its health every second:
 | `camera_up camera=cam-02` | frames again |
 | `camera_health cam-01=ok fps=15.0 size=1280x720 age_s=0.1 cam-02=down …` | every minute |
 
-What the dashboard shows today, without a contract change:
+The same state goes onto the device's retained `status` as `camera_health` (one entry per live
+camera: `state`, `last_frame_at`, `fps`), at once when a camera changes state and otherwise
+once a minute. This works with `CAMERAS` and with a single `SOURCE` camera. Ingest stores the
+list (`devices.camera_health`) and `GET /api/cameras` returns each camera's `stream_state` and
+`last_frame_at`. On the dashboard:
 
-- The device's metrics combine all its cameras, because the API keeps one `Metrics` per
-  device. `fps` is the **slowest** camera's, and a camera that sent nothing for 15 s counts as
-  0, so one dark camera shows as `FPS 0.0` on the camera cards (**Detalii tehnice**).
-- When **every** camera of the device is dark, metrics stop and after 60 s the cards turn to
-  „fără imagine”, as with a single camera.
+- A camera whose stream is `down` shows as „Cameră offline” with the camera as the cause,
+  even while its device and the other cameras stay online. `reconnecting` shows as
+  „Se reconectează…”. The card shows when the last frame arrived.
+- A camera of an offline device is `down` too, with the device as the cause.
+- A camera the edge reports nothing about (an older edge, a clip, a cloud camera) follows its
+  device, as before.
+- The device's metrics still combine all its cameras, because the API keeps one `Metrics` per
+  device: `fps` is the **slowest** camera's, and a camera that sent nothing for 15 s counts
+  as 0, so one dark camera shows as `FPS 0.0` under **Detalii tehnice**.
 - One camera down never stops the others. A pipeline that crashes is logged
   (`camera_failed`) and restarted after 5 s.
-
-A per-camera „Cameră offline” needs a per-camera field in the contracts (see the open items
-in the edge PR); the edge already computes it (`aivee_edge.health`, state `ok` /
-`reconnecting` / `down`, `last_frame_at`, `fps`).
 
 ## 6. Cost of each camera
 
