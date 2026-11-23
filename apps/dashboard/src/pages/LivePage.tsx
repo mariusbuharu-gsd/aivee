@@ -9,7 +9,7 @@ import { RoomStatus } from '../components/RoomStatus';
 import { SetupChecklist } from '../components/SetupChecklist';
 import { SuggestionCard } from '../components/SuggestionCard';
 import { useAuth } from '../auth/context';
-import { useLiveData, zoneName } from '../state/context';
+import { useLiveData } from '../state/context';
 import { openAlerts, elapsed, tick } from '../live/room';
 import { useNow } from '../live/useNow';
 import { EmptyState, Skeleton } from '../ui/controls';
@@ -20,7 +20,7 @@ const RECENT_CLOSED = 5;
 
 /** What is happening now. Writing rules lives on Reguli, device numbers on Dispozitive. */
 export function LivePage() {
-  const { cameras, rules, alerts, suggestions, metrics, loading, dropSuggestion, cases } =
+  const { cameras, rules, alerts, suggestions, metrics, loading, dropSuggestion, cases, zoneName } =
     useLiveData();
   const { can } = useAuth();
   // Open alerts lead the page as bands; the side column keeps the last few closed ones, in the
@@ -60,7 +60,7 @@ export function LivePage() {
       <OpenAlerts
         items={open}
         cases={cases}
-        zoneName={(id) => zoneName(cameras, id)}
+        zoneName={zoneName}
         cameraName={(id) => cameras.find((c) => c.id === id)?.name ?? id}
       />
       <SetupChecklist />
@@ -104,7 +104,7 @@ export function LivePage() {
           <AlertFeed
             variant="rows"
             items={recent}
-            zoneName={(id) => zoneName(cameras, id)}
+            zoneName={zoneName}
             cases={cases}
             limit={limit}
             empty={

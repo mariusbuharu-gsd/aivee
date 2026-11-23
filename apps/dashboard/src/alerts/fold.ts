@@ -18,6 +18,8 @@ export interface AlertItem {
   verification?: AlertView['verification'];
   /** `object_gone` only: the frame before the object disappeared (`snapshot_url` is after). */
   before_snapshot_url?: string | null;
+  /** The zone's name as the API sent it (folded updates); used when the zone is gone. */
+  zone_name?: string;
 }
 
 const situation = (e: AlertView) => `${e.camera_id}|${e.rule_id}|${e.zone_id}`;
@@ -25,7 +27,9 @@ const situation = (e: AlertView) => `${e.camera_id}|${e.rule_id}|${e.zone_id}`;
 /**
  * Pair opened/closed events per (camera, rule, zone) into alerts, newest first.
  * Duplicate event ids are ignored, so replaying the socket after a reconnect is safe; a repeated
- * `opened` event only refreshes the AI verification (pending → confirmed arrives that way).
+ * `opened` event only refreshes the AI verification (pending → confirmed arrives that way). The
+ * socket also sends each alert folded, under its opening id: a `closed` one closes the alert even
+ * when the raw `closed` row never arrived.
  */
 export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
   const byId = new Map<string, AlertItem | null>();
@@ -35,7 +39,15 @@ export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
   for (const e of sorted) {
     if (byId.has(e.event_id)) {
       const known = byId.get(e.event_id);
-      if (known && e.state === 'opened') withVerification(known, e);
+      if (!known) continue;
+      if (e.zone_name) known.zone_name = e.zone_name;
+      if (e.state === 'opened') withVerification(known, e);
+      if (e.state === 'closed' && known.closed_at === null) {
+        known.closed_at = e.at;
+        if (e.closed_by === 'system') known.closed_reason = e.closed_reason ?? null;
+        const key = situation(e);
+        if (open.get(key) === known) open.delete(key);
+      }
       continue;
     }
     byId.set(e.event_id, null);
@@ -52,6 +64,7 @@ export function foldAlerts(events: readonly AlertView[]): AlertItem[] {
         closed_at: null,
         snapshot: e.snapshot ?? false,
         snapshot_url: e.snapshot_url ?? null,
+        ...(e.zone_name ? { zone_name: e.zone_name } : {}),
       };
       withVerification(item, e);
       byId.set(e.event_id, item);

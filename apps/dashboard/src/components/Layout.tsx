@@ -14,7 +14,6 @@ import { Select } from '../ui/Select';
 import { useToast } from '../ui/toast';
 import { PHONE, useMedia } from '../ui/useMedia';
 import { openAlerts } from '../live/room';
-import { zoneName } from '../state/context';
 import { Icon, Logo, type IconName } from './Icon';
 import { RoomPulse } from './RoomPulse';
 import './live.css';
@@ -73,7 +72,7 @@ const TABS = 4;
 export function Layout() {
   const api = useApi();
   const { me, location, setLocation, can, logout } = useAuth();
-  const { error, retry, alerts, cameras, cases } = useLiveData();
+  const { error, retry, alerts, cases, zoneName } = useLiveData();
   const toast = useToast();
   const navigate = useNavigate();
   const phone = useMedia(PHONE);
@@ -98,7 +97,7 @@ export function Layout() {
     <RoomPulse
       open={open}
       compact={compact}
-      zoneName={(id) => zoneName(cameras, id)}
+      zoneName={zoneName}
       takenBy={(key) => cases[key]?.acknowledged_by ?? null}
     />
   );

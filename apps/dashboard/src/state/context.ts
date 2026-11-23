@@ -44,6 +44,8 @@ export interface LiveData {
   hasOlder: boolean;
   /** Load the next page of older events (and their lifecycles) into `events`. */
   loadOlder: () => Promise<void>;
+  /** The zone's name for an alert row; never the raw id (see `zoneName`). */
+  zoneName: (zoneId: string) => string;
 }
 
 export const LiveDataContext = createContext<LiveData | null>(null);
@@ -54,13 +56,37 @@ export function useLiveData(): LiveData {
   return v;
 }
 
-/** Zone name lookup across all cameras, falling back to the raw id. */
-export function zoneName(cameras: CameraView[], zoneId: string): string {
+/** Shown for a zone nobody knows the name of any more (never the raw id). */
+export const UNKNOWN_ZONE = 'Zonă ștearsă';
+
+/**
+ * Zone name lookup across the location's cameras, then the names the API sent with the alerts
+ * (`known`: zone id → name), so an alert of a redrawn or deleted zone keeps a readable name.
+ */
+export function zoneName(
+  cameras: CameraView[],
+  zoneId: string,
+  known: Readonly<Record<string, string>> = {},
+): string {
   for (const c of cameras) {
     const z = c.zones?.find((x) => x.id === zoneId);
     if (z) return z.name;
   }
-  return zoneId;
+  return known[zoneId] ?? UNKNOWN_ZONE;
+}
+
+/**
+ * Whether a live alert belongs to the location on screen. The socket streams every location
+ * the user may see: folded updates name their location; raw event rows don't, so their camera
+ * must be one of this location's.
+ */
+export function belongsHere(
+  e: Pick<AlertView, 'location_id' | 'camera_id'>,
+  locationId: string | null,
+  cameraIds: ReadonlySet<string>,
+): boolean {
+  if (e.location_id != null) return e.location_id === locationId;
+  return cameraIds.has(e.camera_id);
 }
 
 /** Network failures and missing permissions are told apart from other errors. */
