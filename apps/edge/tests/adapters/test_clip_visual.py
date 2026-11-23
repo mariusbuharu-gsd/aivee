@@ -1,7 +1,6 @@
 """CLIP visual scorer ports with a fake model (tools/visual_probe.py runs the real one)."""
 
 import threading
-import time
 from collections.abc import Sequence
 from typing import Any
 
@@ -14,6 +13,8 @@ NAMES = {0: "person", 21: "bear", 16: "dog", 41: "cup", 39: "bottle", 40: "wine 
 NAMES |= {42: "fork", 43: "knife", 44: "spoon", 45: "bowl"}
 
 JOB = VisualJob(("fire", "anywhere", 0), None, ("fire",), ("room",))
+HANG_GUARD_S = 60.0
+"""Only stops a broken test from hanging; every wait below ends on an event, not a clock."""
 
 
 class FakeClip:
@@ -32,17 +33,10 @@ class FakeClip:
 
     def score_jobs(self, ts: float, image: Any, jobs: Sequence[VisualJob]) -> list[VisualSample]:
         if self.gate is not None:
-            self.gate.wait(2)
+            assert self.gate.wait(HANG_GUARD_S)
         if self.fail:
             raise RuntimeError("boom")
         return [VisualSample(ts, j.key, float(np.mean(image)) / 255) for j in jobs]
-
-
-def wait_for(cond: Any, timeout: float = 2.0) -> None:
-    deadline = time.monotonic() + timeout
-    while not cond():
-        assert time.monotonic() < deadline, "timed out"
-        time.sleep(0.005)
 
 
 def test_crop_box_cuts_the_normalised_box_and_falls_back_to_the_frame() -> None:
@@ -76,8 +70,9 @@ def test_background_scorer_keeps_one_frame_in_flight() -> None:
     assert not scorer.submit(1.5, img, [JOB])  # still busy with 1.0
     assert scorer.collect() == []
     gate.set()
-    wait_for(lambda: scorer.submit(2.0, img, [JOB]))
-    wait_for(lambda: len(scorer._done) == 2)
+    assert scorer.wait_idle(HANG_GUARD_S)
+    assert scorer.submit(2.0, img, [JOB])
+    assert scorer.wait_idle(HANG_GUARD_S)
     assert [s.ts for s in scorer.collect()] == [1.0, 2.0]
     assert scorer.last_ms is not None
     scorer.close()
@@ -90,9 +85,16 @@ def test_background_scorer_prepares_prompts_and_survives_a_failure() -> None:
     scorer.prepare(["a photo of fire"])
     img = np.zeros((4, 4, 3), np.uint8)
     assert scorer.submit(1.0, img, [JOB])
-    wait_for(lambda: scorer.submit(2.0, img, [JOB]))  # free again after the failure
+    assert scorer.wait_idle(HANG_GUARD_S)
+    assert scorer.submit(2.0, img, [JOB])  # free again after the failure
+    assert scorer.wait_idle(HANG_GUARD_S)
     assert clip.prepared == ["a photo of fire"] and scorer.collect() == []
     scorer.close()
+
+
+def test_wait_idle_is_true_at_once_when_nothing_was_submitted() -> None:
+    scorer = BackgroundVisualScorer(lambda: FakeClip(), threads=0)  # type: ignore[arg-type, return-value]
+    assert scorer.wait_idle(0)
 
 
 def test_detector_adds_rule_classes_and_reports_unknown_ones() -> None:
