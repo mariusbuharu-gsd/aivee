@@ -19,12 +19,14 @@ from aivee_api.alerts.router import router as alerts_router
 from aivee_api.audit.router import router as audit_router
 from aivee_api.auth.router import router as auth_router
 from aivee_api.cameras.router import router as cameras_router
+from aivee_api.cameras.setup import router as camera_setup_router
 from aivee_api.capabilities import router as capabilities_router
 from aivee_api.db.session import make_engine, make_session_factory
 from aivee_api.deps import Services
 from aivee_api.devices.router import router as devices_router
 from aivee_api.edge.live import LiveDetections
 from aivee_api.edge.publisher import MqttEdgeLink, RecordingPublisher
+from aivee_api.edge.requests import EdgeRequests
 from aivee_api.edge.sync import EdgeCommands, EdgeSync, LoggingEdgeCommands, MqttEdgeCommands
 from aivee_api.errors import install_handlers
 from aivee_api.events.router import router as events_router
@@ -57,12 +59,15 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
     task: asyncio.Task[None] | None = None
     commands: EdgeCommands
     frames = LiveFrames()
+    edge_requests: EdgeRequests | None = None
     if settings.mqtt_enabled:
         link = MqttEdgeLink(settings, metrics, live=live)
         sync = EdgeSync(sessions, link, settings.site, settings.device)
         link.on_connect = sync.publish_all  # the broker gets the full state on every connect
         commands = MqttEdgeCommands(link, settings.site, settings.device)
         frames = LiveFrames(link)
+        edge_requests = EdgeRequests(link, settings.site)
+        link.replies = edge_requests
         task = asyncio.create_task(link.run())
     else:
         sync = EdgeSync(sessions, RecordingPublisher(), settings.site, settings.device)
@@ -89,6 +94,7 @@ async def _real_services(settings: ApiSettings) -> AsyncIterator[Services]:
             telegram_bot=TelegramBotUsername(
                 settings.telegram_bot_username, settings.telegram_bot_token
             ),
+            edge_requests=edge_requests,
         )
     finally:
         await videos.stop()
@@ -119,7 +125,8 @@ def create_app(services: Services | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Frame-At"],  # the time of /api/cameras/{id}/frame
+        # The time of /api/cameras/{id}/frame and /api/cameras/test; the test's frame size.
+        expose_headers=["X-Frame-At", "X-Frame-Size"],
     )
     install_handlers(app)
     for router in (
@@ -127,6 +134,7 @@ def create_app(services: Services | None = None) -> FastAPI:
         locations_router,
         invites_router,
         audit_router,
+        camera_setup_router,  # before cameras_router: /api/cameras/test is not a camera id
         cameras_router,
         zones_router,
         rules_router,

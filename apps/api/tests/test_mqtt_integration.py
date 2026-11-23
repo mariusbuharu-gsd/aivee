@@ -118,3 +118,59 @@ async def test_commands_reach_the_edge_and_detections_come_back(broker: Any, sit
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+async def test_a_request_reaches_the_edge_and_its_reply_comes_back(broker: Any, site: str) -> None:
+    """Request/reply through the real ACL: the API writes `commands`, the device writes
+    `replies` (its own only), the API reads them."""
+    from aivee_api.edge.requests import EdgeRequests
+    from aivee_contracts.commands import DiscoveredCamera, EdgeReply, EdgeRequest
+    from aivee_edge.adapters.mqtt import MqttEdgeClient
+
+    settings = ApiSettings(
+        site=site,
+        mqtt_host=broker.host,
+        mqtt_port=broker.port,
+        mqtt_api_user=broker.api[0],
+        mqtt_api_password=broker.api[1],
+    )
+    connected = asyncio.Event()
+
+    async def on_connect() -> None:
+        connected.set()
+
+    link = MqttEdgeLink(settings, MetricsCache(), on_connect=on_connect)
+    requests = EdgeRequests(link, site)
+    link.replies = requests
+    device = broker.edge[0]
+    edge = MqttEdgeClient(
+        broker.host, broker.port, broker.edge[0], broker.edge[1], site, device, multi_camera=True
+    )
+    tapo = DiscoveredCamera(ip="192.168.1.21", brand="tapo", rtsp_paths=["/stream2"])
+
+    def answer(request: EdgeRequest) -> None:  # on paho's network thread, like EdgeJobs.submit
+        edge.publish_reply(
+            EdgeReply(
+                request_id=request.request_id,
+                kind=request.kind,
+                device=device,
+                ok=True,
+                cameras=[tapo],
+                at=datetime.now(UTC),
+            )
+        )
+
+    edge.on_request = answer
+    task = asyncio.create_task(link.run())
+    try:
+        await asyncio.wait_for(connected.wait(), 10)
+        await asyncio.to_thread(edge.start)
+        await asyncio.sleep(0.5)  # the edge's subscription to `commands` is in place
+        reply = await requests.ask(device, "discover_cameras", timeout_s=10)
+        assert reply.ok and reply.device == device and reply.cameras == [tapo]
+        assert requests.pending == 0
+    finally:
+        await asyncio.to_thread(edge.stop)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
