@@ -914,6 +914,32 @@ details summary {
 .add-camera {
   max-width: 560px;
 }
+.add-camera .field-pair {
+  align-items: start;
+}
+.camera-test {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.camera-test-shot {
+  margin: 0;
+  width: 100%;
+}
+.camera-test-shot img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--night-2);
+  border-radius: var(--radius-sm);
+}
+.camera-test-shot figcaption {
+  margin-top: 6px;
+  color: var(--ok);
+  font-weight: 600;
+}
 .draft-editor {
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-sm);

@@ -10,6 +10,7 @@ import {
   type AlertPageQuery,
   type AlertView,
   type ApiClient,
+  type Capabilities,
   type CameraFrame,
   type CameraView,
   type DeviceView,
@@ -671,6 +672,30 @@ export class MockApi implements ApiClient {
     };
   }
 
+  /**
+   * The demo answers like a camera would: the password "gresit" is refused and an address
+   * ending in ".0" is unreachable; anything else sends back an empty room.
+   */
+  async testCameraSource(source: string): Promise<CameraFrame> {
+    await wait(this.latency * 3);
+    const auth = /^[a-z]+:\/\/[^:@/]*:([^@/]*)@/i.exec(source)?.[1];
+    if (auth !== undefined && decodeURIComponent(auth) === 'gresit') {
+      throw new ApiError(
+        'Camera a refuzat utilizatorul sau parola. Verifică contul camerei.',
+        'camera_auth',
+        422,
+      );
+    }
+    if (/@?[\d.]+\.0(:\d+)?\//.test(source)) {
+      throw new ApiError(
+        'Camera nu răspunde la adresa asta. E pornită și în aceeași rețea?',
+        'camera_unreachable',
+        422,
+      );
+    }
+    return { url: roomSketch([]), at: new Date().toISOString(), release: () => undefined };
+  }
+
   async saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones> {
     const cam = this.cameras.find((c) => c.id === cameraId);
     if (!cam) throw new Error(`Camera necunoscută: ${cameraId}`);
@@ -999,8 +1024,8 @@ export class MockApi implements ApiClient {
   }
 
   /** The mock runs everything. */
-  getCapabilities() {
-    return this.delay({ videos: true, enrol: true });
+  getCapabilities(): Promise<Capabilities> {
+    return this.delay({ videos: true, enrol: true, camera_test: true });
   }
 
   async listVideos() {

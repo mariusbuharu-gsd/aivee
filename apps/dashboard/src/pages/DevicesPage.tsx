@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { CameraPatch, CameraView, DashboardMetrics, DeviceView } from '../api/client';
 import { useApi } from '../api/context';
-import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
+import { AddCameraForm, DEFAULT_CAMERA_ID, DEFAULT_DEVICE } from '../components/AddCameraForm';
 import { Icon } from '../components/Icon';
 import { QrCode } from '../components/QrCode';
 import { StaffCaptureButton } from '../components/StaffCapture';
@@ -11,6 +11,7 @@ import { CameraThumb } from '../devices/CameraThumb';
 import { cameraHealth, type CameraHealth, type CameraHealthState } from '../devices/health';
 import { lastSeenRo, sinceRo } from '../devices/lastSeen';
 import { maskSource } from '../devices/maskSource';
+import { checkHost, maskPassword, parseSourceUrl, replaceCredentials } from '../devices/rtsp';
 import { useDevices } from '../devices/useDevices';
 import { useNow } from '../live/useNow';
 import { isCloudFrames } from '../live/source';
@@ -18,7 +19,7 @@ import { isCloudCamera } from '../phone/sender';
 import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
-import { EmptyState, Skeleton } from '../ui/controls';
+import { EmptyState, PasswordInput, Skeleton } from '../ui/controls';
 import { plural } from '../ui/plural';
 import { useToast } from '../ui/toast';
 import './DevicesPage.css';
@@ -46,6 +47,8 @@ export function DevicesPage() {
   const taken = new Set(cameras.map((c) => c.id));
   let next = DEFAULT_CAMERA_ID;
   for (let n = 2; taken.has(next); n++) next = `cam-${String(n).padStart(2, '0')}`;
+  // A second IP camera goes on the box that already serves this location's cameras.
+  const device = cameras.find((c) => !isCloudCamera(c))?.device ?? DEFAULT_DEVICE;
 
   return (
     <div className="page">
@@ -98,10 +101,17 @@ export function DevicesPage() {
           <AddCameraForm
             key={next}
             defaultId={next}
+            defaultDevice={device}
             onCancel={() => setAdding(false)}
             onCreated={(c) => {
               addCamera(c);
               setAdding(false);
+              // A phone first needs to be started with the QR; zones come once it sends images.
+              if (isCloudCamera(c)) {
+                toast({ title: `Camera „${c.name}” a fost adăugată`, text: 'Scanează codul.' });
+                setPhone(c);
+                return;
+              }
               toast({
                 title: `Camera „${c.name}” a fost adăugată`,
                 text: 'Desenează acum mesele și intrarea pe imagine.',
@@ -363,20 +373,39 @@ function PhoneQr({ camera, onClose }: { camera: CameraView; onClose: () => void 
   );
 }
 
-/** Name and source; the only place the full source address (with any password) is shown. */
+/**
+ * Name and source. A source with a password is edited as IP, user and a new password (empty
+ * keeps the stored one), so the stored password is never shown; a phone camera's source is not
+ * editable; any other source (no secret in it) stays one field.
+ */
 function EditCamera({ camera, onClose }: { camera: CameraView; onClose: () => void }) {
   const api = useApi();
   const toast = useToast();
   const { addCamera } = useLiveData();
+  const parts = parseSourceUrl(camera.source);
+  const mode: 'credentials' | 'raw' | 'none' = isCloudCamera(camera)
+    ? 'none'
+    : parts?.password
+      ? 'credentials'
+      : 'raw';
   const [name, setName] = useState(camera.name);
-  const [source, setSource] = useState(camera.source);
+  const [source, setSource] = useState(mode === 'raw' ? camera.source : '');
+  const [host, setHost] = useState(parts?.host ?? '');
+  const [user, setUser] = useState(parts?.user ?? '');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     const n = name.trim();
-    const src = source.trim();
     if (!n) return setError('Camera are nevoie de un nume.');
+    let src = camera.source;
+    if (mode === 'raw') src = source.trim();
+    if (mode === 'credentials') {
+      const bad = checkHost(host);
+      if (bad) return setError(bad);
+      src = replaceCredentials(camera.source, { host, user, password });
+    }
     if (!src) return setError('Scrie adresa RTSP din aplicația camerei.');
     const patch: CameraPatch = {};
     if (n !== camera.name) patch.name = n;
@@ -429,19 +458,60 @@ function EditCamera({ camera, onClose }: { camera: CameraView; onClose: () => vo
             }}
           />
         </label>
-        <label className="field">
-          <span>Adresa sursei</span>
-          <input
-            className="input mono"
-            value={source}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => setSource(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void save();
-            }}
-          />
-        </label>
+        {mode === 'raw' && (
+          <label className="field">
+            <span>Adresa sursei</span>
+            <input
+              className="input mono"
+              value={source}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => setSource(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save();
+              }}
+            />
+          </label>
+        )}
+        {mode === 'credentials' && (
+          <>
+            <label className="field">
+              <span>Adresa IP</span>
+              <input
+                className="input mono"
+                value={host}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setHost(e.target.value)}
+              />
+            </label>
+            <div className="field-pair">
+              <label className="field">
+                <span>Utilizator</span>
+                <input
+                  className="input"
+                  value={user}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setUser(e.target.value)}
+                />
+              </label>
+              <PasswordInput
+                label="Parolă nouă"
+                value={password}
+                autoComplete="new-password"
+                placeholder="neschimbată"
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <p className="muted small">
+              Lasă parola goală ca să rămână cea salvată. Adresa:{' '}
+              <span className="mono">
+                {maskPassword(replaceCredentials(camera.source, { host, user, password }))}
+              </span>
+            </p>
+          </>
+        )}
         {error && (
           <small className="field-error" role="alert">
             {error}

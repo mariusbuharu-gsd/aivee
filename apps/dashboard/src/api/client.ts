@@ -248,6 +248,11 @@ export interface Capabilities {
   videos: boolean;
   /** Staff profiles (photos, live capture). */
   enrol: boolean;
+  /**
+   * "Testează camera" in Adaugă cameră (`testCameraSource`). No API sends it yet, so absent
+   * means the button stays hidden; see docs/handbook/frontend.md "Known gaps" for the endpoint.
+   */
+  camera_test?: boolean;
 }
 
 export interface ApiClient extends AccountApi {
@@ -264,6 +269,12 @@ export interface ApiClient extends AccountApi {
    * Rejects with an ApiError (404 `not_found` until the camera has sent one).
    */
   captureFrame(cameraId: string): Promise<CameraFrame>;
+  /**
+   * "Testează camera" before it is saved: the location's device opens `source` once and sends
+   * back one face-blurred still. Only call it when `Capabilities.camera_test` is true. Rejects
+   * with the API's Romanian reason (wrong password, unreachable, no stream at that path).
+   */
+  testCameraSource(source: string, device?: string): Promise<CameraFrame>;
   /**
    * `GET /api/cameras/{id}/live.mjpg` for an `<img>`: the frames a connector posts over HTTPS
    * (cloud mode). 404 while none came recently. Null when the API has no such stream (mock).

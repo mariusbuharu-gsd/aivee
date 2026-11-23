@@ -213,6 +213,32 @@ export class HttpApi implements ApiClient {
     };
   }
 
+  /**
+   * TODO(api): `POST /api/cameras/test` does not exist yet; the dashboard calls this only when
+   * `GET /api/capabilities` says `camera_test: true`. Proposed contract: body `{source, device?}`
+   * (devices.manage, location-scoped) → 200 `image/jpeg` (blurred, `X-Frame-At`), or 422
+   * `{detail: {code, message_ro}}` with code `camera_auth` | `camera_unreachable` |
+   * `camera_no_stream`, or 504 when the device does not answer within 10 s.
+   */
+  async testCameraSource(source: string, device?: string): Promise<CameraFrame> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}${this.scoped('/api/cameras/test')}`, {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(device ? { source, device } : { source }),
+      });
+    } catch {
+      throw new ApiError('Serverul nu răspunde. Verificați conexiunea.', 'network');
+    }
+    if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    if (!res.ok) throw await toApiError(res);
+    const url = URL.createObjectURL(await res.blob());
+    return { url, at: res.headers.get('X-Frame-At'), release: () => URL.revokeObjectURL(url) };
+  }
+
   saveZones(cameraId: string, zones: Zone[]) {
     return this.request<SavedZones>(
       `/api/cameras/${encodeURIComponent(cameraId)}/zones?warnings=true`,

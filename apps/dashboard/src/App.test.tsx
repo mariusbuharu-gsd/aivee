@@ -245,7 +245,9 @@ describe('App with the mock API', () => {
     await user.click(screen.getByRole('button', { name: 'Adaugă cameră' }));
     expect(screen.getByLabelText('Id cameră')).toHaveValue('cam-01');
     await user.type(screen.getByLabelText('Nume'), 'Bar');
-    await user.type(screen.getByLabelText(/Adresa sursei/), 'rtsp://bar/1');
+    await user.type(screen.getByLabelText('Adresa IP'), '192.168.1.30');
+    await user.type(screen.getByLabelText('Utilizator'), 'bar');
+    await user.type(screen.getByLabelText('Parolă'), 'pw');
     await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
     expect(await screen.findByRole('heading', { name: /Zone · Bar/ })).toBeInTheDocument();
     expect(screen.getByText('Camera „Bar” a fost adăugată')).toBeInTheDocument();
