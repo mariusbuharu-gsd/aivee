@@ -22,6 +22,7 @@ from aivee_edge.adapters.mqtt import CameraClient, MqttEdgeClient
 from aivee_edge.domain.observation import BBox
 from aivee_edge.domain.ports import FrameSource, Image, PersonDetector, VisualScorer
 from aivee_edge.domain.role import StaffWeights
+from aivee_edge.health import CameraHealthMonitor, LogHealth
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.redact import redact_url
 from aivee_edge.settings import CameraSpec, EdgeSettings
@@ -55,6 +56,9 @@ def clip_clock(epoch: datetime) -> Callable[[float], datetime]:
 
 EXIT_NO_STATE = 4
 """Offline clip run: the retained config or rules did not arrive in time."""
+
+HEALTH_TICK_S = 1.0
+"""How often the camera health of a multi-camera run is checked (camera_down logs)."""
 
 OFFLINE_DETECTIONS_INTERVAL_S = 1e9
 """An offline clip run publishes no live boxes: nobody watches it, and at many times real
@@ -360,8 +364,9 @@ def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> 
             spec.id,
             redact_url(spec.source),
         )
+    health = CameraHealthMonitor({r.camera_id: r.source for r in runs}, [LogHealth()])
     try:
-        code = Supervisor(runs).run(stop)
+        code = Supervisor(runs, tick=health.tick, tick_s=HEALTH_TICK_S).run(stop)
         log.info("edge stopped cameras=%d", len(runs))
     finally:
         client.stop()
