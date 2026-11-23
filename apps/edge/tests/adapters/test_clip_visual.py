@@ -69,7 +69,8 @@ def test_inline_scorer_loads_lazily_and_scores_inside_submit() -> None:
 def test_background_scorer_keeps_one_frame_in_flight() -> None:
     gate = threading.Event()
     clip = FakeClip(gate)
-    scorer = BackgroundVisualScorer(lambda: clip)  # type: ignore[arg-type, return-value]
+    # threads=0: no torch import on the worker (seconds when cold), the model is a fake.
+    scorer = BackgroundVisualScorer(lambda: clip, threads=0)  # type: ignore[arg-type, return-value]
     img = np.zeros((4, 4, 3), np.uint8)
     assert scorer.submit(1.0, img, [JOB])
     assert not scorer.submit(1.5, img, [JOB])  # still busy with 1.0
@@ -84,7 +85,8 @@ def test_background_scorer_keeps_one_frame_in_flight() -> None:
 
 def test_background_scorer_prepares_prompts_and_survives_a_failure() -> None:
     clip = FakeClip(fail=True)
-    scorer = BackgroundVisualScorer(lambda: clip)  # type: ignore[arg-type, return-value]
+    # threads=0: no torch import on the worker (seconds when cold), the model is a fake.
+    scorer = BackgroundVisualScorer(lambda: clip, threads=0)  # type: ignore[arg-type, return-value]
     scorer.prepare(["a photo of fire"])
     img = np.zeros((4, 4, 3), np.uint8)
     assert scorer.submit(1.0, img, [JOB])
