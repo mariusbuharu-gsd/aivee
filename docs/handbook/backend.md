@@ -237,6 +237,12 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
   stable 15 fps, while venue Wi-Fi stalled the MJPEG stream up to 1.8 s. `Cv2Source` emits a frame only after
   1/`TARGET_FPS` s, so set `TARGET_FPS` above the source rate (≥ 2×, e.g. 30 for 15): the default 10 against a
   15 fps stream drops every other frame and runs at ~7 fps.
+- Tracker (`adapters/yolo.py`): YOLO runs at conf 0.10 and feeds ByteTrack through a config generated per
+  detector (`tracker_config`): `track_high_thresh` = `new_track_thresh` = 0.35 (a person needs 0.35 to start a
+  track, as before), `track_low_thresh` 0.10 (low-score boxes only extend existing tracks through occlusion),
+  `track_buffer` = ceil(fps × 4 s), so a lost track survives 4 s at any frame rate (log `tracker bytetrack
+  fps=… track_buffer=…`). Objects below 0.35 are dropped, as before. `fps` is the `YoloDetector(fps=…)` argument
+  (TARGET_FPS); if the CPU cannot reach it, tracks survive proportionally longer.
 - Engine `grace_s=5` (`GRACE_S`): a guest missing for up to 5 s still counts as present, so an alert closes ~5 s after
   the guest leaves (1.5 s closed alerts on detector flicker at low fps); tracks forgotten after 5 s; role hysteresis 0.7 / 0.4 (staff at ≥ 0.7, back to guest at ≤ 0.4); owner confirm / reject overrides.
 - Staff score (`domain/role.py`): `(w_a·appearance + w_s·standing + w_b·behaviour) / Σ w of the signals available`,
