@@ -252,10 +252,10 @@ describe('AddCameraForm', () => {
     await user.type(screen.getByLabelText('Utilizator'), 'ana');
     await user.type(screen.getByLabelText('Parolă'), 'pw');
     await user.click(test);
-    expect(api.testCameraSource).toHaveBeenCalledWith(
-      'rtsp://ana:pw@192.168.1.20:554/stream2',
-      'edge-01',
-    );
+    expect(api.testCamera).toHaveBeenCalledWith({
+      source: 'rtsp://ana:pw@192.168.1.20:554/stream2',
+      device: 'edge-01',
+    });
     expect(await screen.findByRole('img', { name: /Imagine de test/ })).toBeInTheDocument();
     // Another address: the old result goes.
     await user.type(screen.getByLabelText('Adresa IP'), '1');

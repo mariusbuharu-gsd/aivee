@@ -12,6 +12,8 @@ import {
   type ApiClient,
   type Capabilities,
   type CameraFrame,
+  type CameraTestInput,
+  type DiscoveredCamera,
   type CameraView,
   type DeviceView,
   type SuggestionView,
@@ -37,6 +39,7 @@ import {
   type VideoAlert,
   type VideoUpload,
 } from './client';
+import { usesIp } from '../devices/discovery';
 import { fromContract } from '../live/detections';
 
 /** A person-shaped placeholder thumbnail for the mock capture (no real camera here). */
@@ -250,8 +253,50 @@ const RULE_HISTORY: Record<string, number[]> = {
 
 /** Cameras of the locations the mock does not serve cameras for (only `demo` has real ones). */
 const OTHER_CAMERAS: Record<string, { total: number; online: number }> = {
-  centru: { total: 2, online: 1 },
+  centru: { total: 2, online: 0 },
 };
+
+/**
+ * The boxes of those other locations. Bistro Centru's is switched off, so "Adaugă cameră"
+ * there shows what an owner sees when the box is not connected.
+ */
+const OTHER_DEVICES: Record<string, string[]> = {
+  centru: ['edge-centru'],
+};
+
+/**
+ * What the demo box "finds" on the venue network when asked to look: two Tapo cameras and
+ * a Hikvision. `already_added` is worked out from the cameras the location has.
+ */
+const NETWORK: Omit<DiscoveredCamera, 'already_added'>[] = [
+  {
+    ip: '192.168.1.20',
+    port: 554,
+    brand: 'tapo',
+    model: 'C200',
+    name: 'Sala',
+    onvif: true,
+    rtsp_paths: ['/stream2', '/stream1'],
+  },
+  {
+    ip: '192.168.1.23',
+    port: 554,
+    brand: 'tapo',
+    model: 'C210',
+    name: null,
+    onvif: true,
+    rtsp_paths: ['/stream2', '/stream1'],
+  },
+  {
+    ip: '192.168.1.31',
+    port: 554,
+    brand: 'hikvision',
+    model: 'DS-2CD1043G2-I',
+    name: null,
+    onvif: true,
+    rtsp_paths: ['/Streaming/Channels/102', '/Streaming/Channels/101'],
+  },
+];
 
 const utcDay = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);
 
@@ -635,17 +680,44 @@ export class MockApi implements ApiClient {
   }
 
   listDevices(): Promise<DeviceView[]> {
-    return this.delay(
-      this.cameras.map((c) => ({
-        device: c.device,
-        state: c.online ? 'online' : 'offline',
+    return this.delay(this.devices());
+  }
+
+  /**
+   * One entry per device of the current location: online while any of its cameras is (as the
+   * edge's status would say). Other locations have only their (switched-off) boxes.
+   */
+  private devices(): DeviceView[] {
+    const here = this.location ?? 'demo';
+    if (here !== 'demo') {
+      return (OTHER_DEVICES[here] ?? []).map((device) => ({
+        device,
+        state: 'offline',
         version: '0.1.0',
-        cameras: [c.id],
+        cameras: [],
+        site: here,
+        last_seen: this.offlineSince,
+      }));
+    }
+    const byId = new Map<string, DeviceView>();
+    for (const c of this.cameras) {
+      const d: DeviceView = byId.get(c.device) ?? {
+        device: c.device,
+        state: 'offline',
+        version: '0.1.0',
+        cameras: [],
         site: 'demo',
+        last_seen: this.offlineSince,
+      };
+      d.cameras = [...(d.cameras ?? []), c.id];
+      if (c.online) {
+        d.state = 'online';
         // Online edges send metrics every ~5 s, so the last one is a couple of seconds old.
-        last_seen: c.online ? new Date(Date.now() - 2_000).toISOString() : this.offlineSince,
-      })),
-    );
+        d.last_seen = new Date(Date.now() - 2_000).toISOString();
+      }
+      byId.set(c.device, d);
+    }
+    return [...byId.values()];
   }
 
   /** No connector in mock mode: the live view keeps its placeholder. */
@@ -673,11 +745,36 @@ export class MockApi implements ApiClient {
   }
 
   /**
-   * The demo answers like a camera would: the password "gresit" is refused and an address
-   * ending in ".0" is unreachable; anything else sends back an empty room.
+   * The demo answers like a camera would: the password "gresit" is refused, an address ending
+   * in ".0" is unreachable, and a camera whose box is off cannot be tested; anything else sends
+   * back an empty room.
    */
-  async testCameraSource(source: string): Promise<CameraFrame> {
+  async testCamera(input: CameraTestInput): Promise<CameraFrame> {
     await wait(this.latency * 3);
+    let source = input.source ?? null;
+    let device = input.device ?? null;
+    if (input.camera_id) {
+      const cam = this.cameras.find((c) => c.id === input.camera_id);
+      if (!cam) throw new ApiError('Camera nu există.', 'not_found', 404);
+      source = cam.source;
+      device = cam.device;
+    }
+    if (!source) throw new ApiError('Lipsește adresa camerei.', 'invalid', 422);
+    const boxes = this.devices();
+    if (!device) {
+      const online = boxes.filter((d) => d.state === 'online');
+      if (online.length > 1) {
+        throw new ApiError('Locația are mai multe cutii AiVee: alege una.', 'device_required', 422);
+      }
+      device = online[0]?.device ?? boxes[0]?.device ?? null;
+    }
+    if (boxes.find((d) => d.device === device)?.state !== 'online') {
+      throw new ApiError(
+        'Cutia AiVee nu e conectată, așa că nu poate testa camera acum.',
+        'device_offline',
+        409,
+      );
+    }
     const auth = /^[a-z]+:\/\/[^:@/]*:([^@/]*)@/i.exec(source)?.[1];
     if (auth !== undefined && decodeURIComponent(auth) === 'gresit') {
       throw new ApiError(
@@ -693,7 +790,30 @@ export class MockApi implements ApiClient {
         422,
       );
     }
-    return { url: roomSketch([]), at: new Date().toISOString(), release: () => undefined };
+    return {
+      url: roomSketch([]),
+      at: new Date().toISOString(),
+      size: '640x360',
+      release: () => undefined,
+    };
+  }
+
+  /** The demo network, after a pause like the real scan's (up to ~10 s on the box). */
+  async discoverCameras(deviceId: string): Promise<DiscoveredCamera[]> {
+    await wait(this.latency * 10);
+    const box = this.devices().find((d) => d.device === deviceId);
+    if (!box) throw new ApiError('Cutia AiVee nu există.', 'not_found', 404);
+    if (box.state !== 'online') {
+      throw new ApiError(
+        'Cutia AiVee nu e conectată, așa că nu poate căuta camere acum.',
+        'device_offline',
+        409,
+      );
+    }
+    return NETWORK.map((c) => ({
+      ...structuredClone(c),
+      already_added: this.cameras.some((cam) => usesIp(cam, c.ip)),
+    }));
   }
 
   async saveZones(cameraId: string, zones: Zone[]): Promise<SavedZones> {
@@ -1025,7 +1145,7 @@ export class MockApi implements ApiClient {
 
   /** The mock runs everything. */
   getCapabilities(): Promise<Capabilities> {
-    return this.delay({ videos: true, enrol: true, camera_test: true });
+    return this.delay({ videos: true, enrol: true, camera_test: true, camera_discovery: true });
   }
 
   async listVideos() {
