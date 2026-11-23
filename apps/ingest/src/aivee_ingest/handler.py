@@ -106,18 +106,24 @@ class IngestHandler:
             else None
         )
         view: AlertView | None = None
+        early: list[str] = []
         async with self._sessions() as s:
             inserted = await EventRepository(s).insert_if_new(event, t.device, path, before)
             if inserted:
                 # Same transaction: the row, its alert's folded times and the audit entry.
                 alerts = AlertRepository(s)
                 alert_id, folded = await alerts.link_folded(event, t.device)
+                if event.state == "opened":
+                    # Its `arrived` / `closed` may have come first (R2): fold them now.
+                    early = await alerts.adopt_early(event, t.device)
                 if event.state == "opened" and self._verification is None:
                     await alerts.save_verification(event.event_id, UNAVAILABLE, datetime.now(UTC))
                 view = await alerts.view(alert_id) if alert_id and folded else None
-                entry = device_entry(view, event.state) if view and not upload else None
-                if entry is not None:
-                    await self._audit.append(s, entry)
+                if view is not None and not upload:
+                    for state in [event.state, *early]:
+                        entry = device_entry(view, state)
+                        if entry is not None:
+                            await self._audit.append(s, entry)
             await s.commit()
         if not inserted:
             log.info("duplicate event %s ignored", event.event_id)
@@ -138,6 +144,14 @@ class IngestHandler:
             event.camera_id,
             event.zone_id,
         )
+        if early:
+            # It ended before it reached us: nothing left for the staff to do.
+            log.info(
+                "notify_skipped reason=already_%s alert=%s",
+                "closed" if "closed" in early else "arrived",
+                event.event_id,
+            )
+            return
         # Queued per alert (the opened event's id), so its jobs keep their order.
         if event.state == "opened" and self._verification is not None:
             folder = f"{t.site}/{t.device}"
