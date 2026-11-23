@@ -1,11 +1,16 @@
 import itertools
+import os
+import queue
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import cv2
 import numpy as np
 import pytest
-from aivee_edge.adapters.capture import Cv2Source, FileSource, rotate
+from aivee_edge.adapters.capture import Cv2Source, FileSource, next_due, rotate
 
 
 @pytest.fixture
@@ -67,6 +72,7 @@ def test_cv2_source_drops_frames_by_wall_clock(clip: Path) -> None:
     source = Cv2Source(str(clip), target_fps=5, clock=clock, max_reconnects=0)
     first = source.read()
     second = source.read()
+    source.close()
     assert first is not None and second is not None
     assert second[0] - first[0] >= 0.2 - 1e-9
 
@@ -140,29 +146,263 @@ class _FakeCapture:
 @pytest.mark.parametrize(
     "url", ["rtsp://mediamtx:8554/cam-01", "rtsps://h/cam", "http://192.168.1.30:8080/video"]
 )
-def test_network_sources_decode_on_one_thread(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+def test_network_sources_decode_on_one_thread_with_timeouts(
+    monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
     # Frame threading holds about one frame per decoder thread: at 5 fps on 12 cores that is
-    # ~2.4 s of lag behind the camera. One thread keeps the reader live.
+    # ~2.4 s of lag behind the camera. One thread keeps the reader live. The timeouts stop a
+    # dead camera from blocking the grabber forever.
     _FakeCapture.calls = []
     monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
-    assert Cv2Source(url, target_fps=5)._open()
-    assert _FakeCapture.calls == [(url, cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])]
+    assert Cv2Source(url, target_fps=5, timeout_s=4)._open() is not None
+    [(opened, backend, params)] = _FakeCapture.calls
+    assert (opened, backend) == (url, cv2.CAP_FFMPEG)
+    assert isinstance(params, list)
+    assert dict(zip(params[::2], params[1::2], strict=True)) == {
+        cv2.CAP_PROP_N_THREADS: 1,
+        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC: 4000,
+        cv2.CAP_PROP_READ_TIMEOUT_MSEC: 4000,
+    }
+
+
+def test_network_sources_force_rtsp_over_tcp(monkeypatch: pytest.MonkeyPatch) -> None:
+    # UDP over Wi-Fi loses packets and smears the picture; TCP is what NVRs use.
+    monkeypatch.delenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", raising=False)
+    monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
+    Cv2Source("rtsp://cam/stream2", target_fps=5, timeout_s=4)._open()
+    options = os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"].split("|")
+    assert "rtsp_transport;tcp" in options
+    assert "timeout;4000000" in options  # FFmpeg socket I/O timeout, microseconds
+
+
+def test_ffmpeg_options_set_by_the_operator_are_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;udp")
+    monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
+    Cv2Source("rtsp://cam/stream2", target_fps=5)._open()
+    assert os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] == "rtsp_transport;udp"
 
 
 def test_webcam_index_opens_with_default_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     _FakeCapture.calls = []
     monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
-    assert Cv2Source("0", target_fps=5)._open()
+    assert Cv2Source("0", target_fps=5)._open() is not None
     assert _FakeCapture.calls == [(0,)]
 
 
 def test_cv2_source_logs_the_camera_without_its_password(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     url = "rtsp://admin:s3cr3t@127.0.0.1:1/stream2"
-    monkey_open = Cv2Source(url, target_fps=5, max_reconnects=1, sleep=lambda _s: None)
-    monkey_open._open = lambda: False  # type: ignore[method-assign]
+    source = Cv2Source(url, target_fps=5, max_reconnects=1, sleep=lambda _s: None)
+    source._open = lambda: None  # type: ignore[method-assign]
     with caplog.at_level("WARNING"):
-        assert monkey_open.read() is None
+        assert source.read() is None
     assert "s3cr3t" not in caplog.text
     assert "rtsp://admin:***@127.0.0.1:1/stream2" in caplog.text
+
+
+# -- latest-frame grabber ------------------------------------------------------------------
+
+
+def _frame(level: int, w: int = 64, h: int = 48) -> np.ndarray:
+    return np.full((h, w, 3), level, dtype=np.uint8)
+
+
+class _Camera:
+    """One `cv2.VideoCapture` of a live camera: `read()` blocks until the test pushes a
+    frame and moves the shared fake clock to that frame's capture time. Pushing None makes
+    the read fail (the stream dropped)."""
+
+    def __init__(self, clock: list[float], opens: bool = True) -> None:
+        self._clock = clock
+        self._opens = opens
+        self.frames: queue.Queue[tuple[float, np.ndarray] | None] = queue.Queue()
+        self.released = threading.Event()
+
+    def push(self, ts: float, image: np.ndarray) -> None:
+        self.frames.put((ts, image))
+
+    def isOpened(self) -> bool:
+        return self._opens
+
+    def set(self, *_a: object) -> bool:
+        return True
+
+    def get(self, _prop: int) -> float:
+        return 0.0
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        try:
+            item = self.frames.get(timeout=0.5)  # the read timeout of a silent camera
+        except queue.Empty:
+            return False, None
+        if item is None:
+            return False, None
+        self._clock[0] = item[0]
+        return True, item[1]
+
+    def release(self) -> None:
+        self.released.set()
+
+
+def _until(cond: Callable[[], bool], timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not cond():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.002)
+
+
+@pytest.fixture
+def cameras(monkeypatch: pytest.MonkeyPatch) -> tuple[list[float], list[_Camera]]:
+    """The fake clock, and the cameras `cv2.VideoCapture` hands out in order (then ones
+    that fail to open)."""
+    clock = [0.0]
+    queued: list[_Camera] = []
+
+    def video_capture(*_a: object) -> _Camera:
+        return queued.pop(0) if queued else _Camera(clock, opens=False)
+
+    monkeypatch.setattr(cv2, "VideoCapture", video_capture)
+    return clock, queued
+
+
+def _source(clock: list[float], target_fps: float) -> Cv2Source:
+    return Cv2Source(
+        "rtsp://u:p4ss@cam/stream2",
+        target_fps,
+        clock=lambda: clock[0],
+        sleep=lambda _s: time.sleep(0.01),
+    )
+
+
+def test_read_returns_the_newest_frame_not_the_backlog(cameras: Any) -> None:
+    clock, queued = cameras
+    cam = _Camera(clock)
+    queued.append(cam)
+    source = _source(clock, target_fps=10)
+    source.start()
+    for i in range(5):  # a 25 fps camera while the pipeline was busy for 160 ms
+        cam.push(i * 0.04, _frame(10 * i))
+    _until(lambda: source.health().frames == 5)
+    item = source.read()
+    source.close()
+    assert item is not None
+    ts, image = item
+    assert ts == pytest.approx(0.16)
+    assert int(image.mean()) == 40
+
+
+def test_read_never_returns_the_same_frame_twice(cameras: Any) -> None:
+    clock, queued = cameras
+    cam = _Camera(clock)
+    queued.append(cam)
+    source = _source(clock, target_fps=0)
+    cam.push(0.0, _frame(1))
+    first = source.read()
+    got: list[Any] = []
+    reader = threading.Thread(target=lambda: got.append(source.read()))
+    reader.start()
+    time.sleep(0.1)
+    assert got == []  # no new frame yet: read waits instead of repeating frame 1
+    cam.push(0.5, _frame(2))
+    reader.join(5)
+    source.close()
+    assert first is not None and int(first[1].mean()) == 1
+    assert got and got[0] is not None and int(got[0][1].mean()) == 2
+
+
+def test_close_wakes_a_waiting_read(cameras: Any) -> None:
+    clock, queued = cameras
+    queued.append(_Camera(clock))
+    source = _source(clock, target_fps=10)
+    threading.Timer(0.1, source.close).start()
+    assert source.read() is None
+
+
+@pytest.mark.parametrize(
+    ("due", "ts", "after"),
+    [
+        (-float("inf"), 0.0, 0.1),  # first frame: the next one a period later
+        (0.1, 0.12, 0.2),  # on schedule: keep the grid, so 25 fps paced to 10 stays 10
+        (0.1, 0.9, 1.0),  # far behind (slow pipeline, a gap): restart from this frame
+    ],
+)
+def test_next_due_keeps_the_target_rate(due: float, ts: float, after: float) -> None:
+    assert next_due(due, ts, 0.1) == pytest.approx(after)
+
+
+def test_a_25fps_camera_is_paced_to_the_target_fps(cameras: Any) -> None:
+    clock, queued = cameras
+    cam = _Camera(clock)
+    queued.append(cam)
+    source = _source(clock, target_fps=10)
+    out: list[float] = []
+
+    def reader() -> None:
+        while (item := source.read()) is not None:
+            out.append(item[0])
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    for i in range(26):  # 1 s of a 25 fps camera
+        cam.push(i * 0.04, _frame(i))
+        _until(lambda n=i + 1: source.health().frames == n)
+        time.sleep(0.005)  # let the reader take it
+    source.close()
+    thread.join(5)
+    assert 9 <= len(out) <= 11
+    assert all(b - a >= 0.08 - 1e-9 for a, b in itertools.pairwise(out))
+
+
+def test_reconnects_after_the_stream_drops(cameras: Any, caplog: pytest.LogCaptureFixture) -> None:
+    clock, queued = cameras
+    first, second = _Camera(clock), _Camera(clock)
+    queued.extend([first, second])
+    source = _source(clock, target_fps=0)
+    first.push(0.0, _frame(1))
+    assert source.read() is not None
+    with caplog.at_level("WARNING"):
+        first.frames.put(None)  # the camera rebooted
+        assert first.released.wait(5)
+        second.push(3.0, _frame(2))
+        item = source.read()
+    source.close()
+    assert item is not None and int(item[1].mean()) == 2
+    assert source.health().reconnects >= 1
+    assert "p4ss" not in caplog.text and "u:***@cam" in caplog.text
+
+
+def test_health_reports_fps_resolution_age_and_connection(cameras: Any) -> None:
+    clock, queued = cameras
+    cam = _Camera(clock)
+    queued.append(cam)
+    source = _source(clock, target_fps=5)
+    assert source.health().connected is False
+    assert source.health().last_frame_age_s is None
+    source.start()
+    for i in range(11):  # 10 fps for 1 s, 1280x720
+        cam.push(i * 0.1, _frame(i, 1280, 720))
+    _until(lambda: source.health().frames == 11)
+    health = source.health()
+    assert health.connected is True
+    assert health.fps == pytest.approx(10.0)
+    assert (health.width, health.height) == (1280, 720)
+    assert health.last_frame_age_s == pytest.approx(0.0)
+    clock[0] = 3.0
+    assert source.health().last_frame_age_s == pytest.approx(2.0)
+    source.close()
+
+
+def test_health_is_disconnected_while_the_camera_is_unreachable(cameras: Any) -> None:
+    clock, _queued = cameras  # nothing queued: every open fails
+    sleeps: list[float] = []
+    source = Cv2Source(
+        "rtsp://cam/stream2", target_fps=5, clock=lambda: clock[0], sleep=sleeps.append
+    )
+    source.start()
+    _until(lambda: len(sleeps) >= 5)
+    health = source.health()
+    source.close()
+    assert health.connected is False
+    assert health.reconnects >= 5
+    assert sleeps[:5] == [0.5, 1.0, 2.0, 4.0, 8.0]  # exponential backoff
