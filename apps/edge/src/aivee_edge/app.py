@@ -23,6 +23,7 @@ from aivee_edge.domain.observation import BBox
 from aivee_edge.domain.ports import FrameSource, Image, PersonDetector, VisualScorer
 from aivee_edge.domain.role import StaffWeights
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
+from aivee_edge.redact import redact_url
 from aivee_edge.settings import EdgeSettings
 
 log = logging.getLogger("aivee_edge")
@@ -273,7 +274,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         settings.site,
         settings.device,
         settings.camera_id,
-        settings.source,
+        redact_url(settings.source),
     )
     try:
         frames = pipeline.run(stop)

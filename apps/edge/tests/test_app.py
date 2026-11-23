@@ -205,3 +205,41 @@ def test_crop_failure_gives_none() -> None:
 
     snaps = app.BlurredJpeg(Broken(), lambda img: b"x")
     assert snaps.crop(np.zeros((10, 10, 3)), (0, 0, 1, 1)) is None
+
+
+class _EndedSource:
+    def read(self) -> None:
+        return None
+
+
+class _QuietClient:
+    """Stands in for MqttEdgeClient: no broker, no rules, no commands."""
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def rules(self) -> list[Any]:
+        return []
+
+    def camera(self) -> Any:
+        raise LookupError
+
+    def profiles(self) -> None:
+        return None
+
+    def take_commands(self) -> list[Any]:
+        return []
+
+
+def test_run_logs_the_source_without_its_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    vision = app.Vision(_EndedSource(), object(), None, None, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", lambda _s: _QuietClient())
+    settings = EdgeSettings(source="rtsp://admin:s3cr3t@10.0.0.5:554/stream2", _env_file=None)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert "s3cr3t" not in caplog.text
+    assert "source=rtsp://admin:***@10.0.0.5:554/stream2" in caplog.text

@@ -154,3 +154,15 @@ def test_webcam_index_opens_with_default_backend(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(cv2, "VideoCapture", _FakeCapture)
     assert Cv2Source("0", target_fps=5)._open()
     assert _FakeCapture.calls == [(0,)]
+
+
+def test_cv2_source_logs_the_camera_without_its_password(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    url = "rtsp://admin:s3cr3t@127.0.0.1:1/stream2"
+    monkey_open = Cv2Source(url, target_fps=5, max_reconnects=1, sleep=lambda _s: None)
+    monkey_open._open = lambda: False  # type: ignore[method-assign]
+    with caplog.at_level("WARNING"):
+        assert monkey_open.read() is None
+    assert "s3cr3t" not in caplog.text
+    assert "rtsp://admin:***@127.0.0.1:1/stream2" in caplog.text

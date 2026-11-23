@@ -10,6 +10,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from aivee_edge.redact import redact_url
+
 log = logging.getLogger(__name__)
 
 Image = np.ndarray
@@ -98,7 +100,9 @@ class Cv2Source:
             attempts += 1
             if self._max_reconnects is not None and attempts > self._max_reconnects:
                 return False
-            log.warning("camera %s unavailable, retrying in %.1fs", self._source, backoff)
+            log.warning(
+                "camera %s unavailable, retrying in %.1fs", redact_url(self._source), backoff
+            )
             self._sleep(backoff)
             backoff = min(backoff * 2, self._max_backoff)
         return True
@@ -110,7 +114,7 @@ class Cv2Source:
             assert self._cap is not None
             ok, image = self._cap.read()
             if not ok or image is None:
-                log.warning("camera %s read failed, reconnecting", self._source)
+                log.warning("camera %s read failed, reconnecting", redact_url(self._source))
                 self._cap.release()
                 self._cap = None
                 continue
