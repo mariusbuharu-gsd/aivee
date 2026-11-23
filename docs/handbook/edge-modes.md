@@ -34,6 +34,32 @@ on-site compose file (`infra/edge/compose.yml`). Only the machine differs.
    appears online on the dashboard's **Dispozitive** page. Check cameras first with
    `make camera-check` from a checkout on the same network.
 
+## INT8 calibration on venue frames
+
+The INT8 models are quantised (NNCF) on calibration images. `tools/download_models.py` uses
+`coco128.yaml` (128 COCO images) for the detector and `coco8-pose.yaml` for pose by default; both
+download automatically. COCO is not a restaurant at night through a dome camera, so before a pilot
+calibrate on the venue's own cameras (no labels needed):
+
+1. Record 5-10 minutes per camera across the day, crowded and quiet, lights on and dimmed:
+   `make record-cams CAMS="cam-01=$CAM_01_URL cam-02=$CAM_02_URL" SECONDS=600` (clips land in
+   `recordings/eval/`, see [evals/vision/README.md](../../evals/vision/README.md)).
+2. Re-export INT8 from those clips, one frame every 2 s (300+ frames is what ultralytics recommends):
+
+   ```bash
+   uv run python tools/download_models.py --calib-clips recordings/eval/*.mp4 --calib-every-s 2 --force-int8
+   ```
+
+   Or from a folder of frames you picked yourself: `--calib-frames recordings/calib/`. Other datasets:
+   `--calib-data my.yaml` (detector) and `--calib-pose-data my-pose.yaml` (pose), any ultralytics
+   dataset YAML.
+3. `--force-int8` replaces `models/*_int8_openvino_model/`; the FP32 exports and `.pt` weights stay.
+   Check the result with `make eval-vision` on labelled clips before and after, and keep the old
+   folders until it is at least as good.
+
+Frames contain guests: keep them on the machine, out of git (`recordings/` is gitignored), and delete
+them when the export is done.
+
 ## Limits today
 
 - The device credential is created by hand in the broker. Pairing with a one-time code from the

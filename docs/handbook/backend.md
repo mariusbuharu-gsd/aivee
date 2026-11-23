@@ -22,7 +22,7 @@
 | `make vapid` | generate the Web Push VAPID keys into `.env` (never printed; kept if already set) |
 
 `.env` holds every secret (names in `.env.example`); never print or commit values.
-Models: `uv run python tools/download_models.py` → `models/` (gitignored).
+Models: `uv run python tools/download_models.py` → `models/` (gitignored); INT8 calibrates on coco128 by default, or on venue frames (`--calib-clips`, see `edge-modes.md`).
 
 ## Environment (names only)
 
