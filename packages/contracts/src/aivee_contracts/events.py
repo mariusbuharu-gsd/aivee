@@ -56,13 +56,39 @@ class AlertEvent(BaseModel):
     )
 
 
+StreamState = Literal["ok", "reconnecting", "down"]
+
+
+class CameraStreamHealth(BaseModel):
+    """How one live camera stream of a device is doing, as the edge sees it.
+
+    ok: frames are arriving (or the first open is under way) · reconnecting: the stream
+    dropped and the edge is retrying · down: no frame for over a minute.
+    """
+
+    camera_id: str
+    state: StreamState
+    last_frame_at: datetime | None = Field(
+        default=None, description="When the newest frame was decoded; None before the first one"
+    )
+    fps: float = Field(default=0.0, ge=0, description="Frames per second the camera delivers")
+
+
 class DeviceStatus(BaseModel):
-    """Retained on `status`; the broker publishes `offline` as the device's last will."""
+    """Retained on `status`; the broker publishes `offline` as the device's last will.
+
+    An online edge republishes it when a camera's stream state changes, and about once a
+    minute otherwise, with `camera_health`. Cameras without a live stream (clips, cloud
+    frames) are not listed there; neither is any camera in an `offline` status.
+    """
 
     device: str
     state: Literal["online", "offline"]
     version: str = "0.1.0"
     cameras: list[str] = Field(default_factory=list)
+    camera_health: list[CameraStreamHealth] = Field(
+        default_factory=list, description="Per live camera; empty from older edges"
+    )
 
 
 class Metrics(BaseModel):

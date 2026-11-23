@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import DetectedObject, DetectedTrack, Detections
@@ -256,3 +258,42 @@ def test_old_rule_payloads_without_the_new_fields_stay_valid() -> None:
     }
     rule = Rule.model_validate(old)
     assert rule.all_of[0].positive == [] and rule.all_of[0].label_ro == ""
+
+
+def test_device_status_without_camera_health_stays_valid() -> None:
+    from aivee_contracts.events import DeviceStatus
+
+    old = DeviceStatus.model_validate({"device": "edge-01", "state": "online", "cameras": ["c"]})
+    assert old.camera_health == []
+
+
+def test_device_status_carries_each_camera_stream_health() -> None:
+    from aivee_contracts.events import CameraStreamHealth, DeviceStatus
+
+    status = DeviceStatus.model_validate(
+        {
+            "device": "edge-01",
+            "state": "online",
+            "cameras": ["c1", "c2"],
+            "camera_health": [
+                {
+                    "camera_id": "c1",
+                    "state": "ok",
+                    "last_frame_at": "2026-11-23T10:00:00Z",
+                    "fps": 15,
+                },
+                {"camera_id": "c2", "state": "down", "last_frame_at": None, "fps": 0},
+            ],
+        }
+    )
+    assert status.camera_health[0] == CameraStreamHealth(
+        camera_id="c1",
+        state="ok",
+        last_frame_at=datetime(2026, 11, 23, 10, 0, tzinfo=UTC),
+        fps=15.0,
+    )
+    assert status.camera_health[1].last_frame_at is None
+    with pytest.raises(ValidationError):
+        CameraStreamHealth(camera_id="c", state="frozen", last_frame_at=None, fps=0)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        CameraStreamHealth(camera_id="c", state="ok", last_frame_at=None, fps=-1)
