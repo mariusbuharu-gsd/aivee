@@ -162,5 +162,3 @@ Static HTML/CSS, built by `apps/site/build.mjs`, deployed to GitHub Pages by `.g
   `{source, device?}`; the API asks the location's edge (an `EdgeCommand`) to open the source once and send
   back one face-blurred still; 200 `image/jpeg` with `X-Frame-At`, 422 `{detail: {code, message_ro}}` with
   `camera_auth` | `camera_unreachable` | `camera_no_stream`, 504 when the device does not answer in 10 s.
-- Staff no longer get live video in the UI, but the API still serves `GET /api/cameras/{id}/live.mjpg` to any
-  `alerts.view` user; it should require `devices.manage`.

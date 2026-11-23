@@ -8,7 +8,9 @@
                                             claimed by an organisation;
                                           - the dashboard session ("Folosește telefonul ca
                                             cameră") with devices.manage, cloud cameras only
-    GET  /api/cameras/{camera_id}/live.mjpg   session cookie, alerts.view on the camera's location
+    GET  /api/cameras/{camera_id}/live.mjpg   session cookie, devices.manage on the camera's
+                                          location: the frames are not face-blurred, so
+                                          owners and managers only, never staff (S7)
 
 See `aivee_api.frames.store` (in memory, single replica, never on disk).
 """
@@ -26,7 +28,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from aivee_api.auth.deps import COOKIE, CurrentUser, current_principal
-from aivee_api.auth.permissions import ALERTS_VIEW, DEVICES_MANAGE
+from aivee_api.auth.permissions import DEVICES_MANAGE
 from aivee_api.auth.scope import authorize_camera
 from aivee_api.cameras.schemas import ID_PATTERN
 from aivee_api.db.models import Camera, Device, Site
@@ -178,9 +180,9 @@ async def live_mjpeg(
     camera_id: CameraId, request: Request, svc: ServicesDep, p: CurrentUser
 ) -> StreamingResponse:
     """MJPEG of the frames the connector posts, for a dashboard `<img>`; 404 while none came in
-    the last seconds. Ends when the client goes away."""
+    the last seconds. Ends when the client goes away. Unblurred: devices.manage (S7)."""
     async with svc.sessions() as s:  # not a request-long session: the stream may run for hours
-        await authorize_camera(s, p, ALERTS_VIEW, camera_id)
+        await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
     if svc.frames.latest(camera_id) is None:
         raise NotFound(NO_LIVE_RO)
     return StreamingResponse(

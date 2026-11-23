@@ -87,6 +87,27 @@ async def test_frames_need_an_existing_camera_and_stream_to_its_location(
     await other.aclose()
 
 
+async def test_live_mjpeg_is_for_managers_not_staff(
+    app_parts: tuple[Any, Services], login: Any
+) -> None:
+    """S7: the live stream is not face-blurred; staff (waiters) see alerts, not the stream."""
+    app, _ = app_parts
+    owner = await _client(app, login, "owner@t.ro")
+    r = await owner.post("/api/cameras", json={"id": "cam1", "name": "Sala", "source": "x"})
+    assert r.status_code == 201, r.text
+    assert (
+        await owner.post("/api/ingest/frames/cam1", content=JPEG, headers=AUTH)
+    ).status_code == 204
+
+    staff = await _client(app, login, "staff@t.ro")
+    assert (await staff.get("/api/cameras/cam1/live.mjpg")).status_code == 403
+    assert (await staff.get("/api/cameras/cam1")).status_code == 200  # still sees the camera
+    manager = await _client(app, login, "manager@t.ro")
+    assert (await manager.get("/api/cameras/cam1/live.mjpg")).status_code == 200
+    for c in (owner, staff, manager):
+        await c.aclose()
+
+
 async def test_a_dashboard_session_can_push_frames_to_a_cloud_camera(
     app_parts: tuple[Any, Services], publisher: RecordingPublisher, login: Any
 ) -> None:
