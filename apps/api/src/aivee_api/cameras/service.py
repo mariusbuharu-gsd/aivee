@@ -36,12 +36,15 @@ class CameraService:
         self._devices = DeviceRepository(session)
         self._sync = sync
 
-    async def _online(self) -> set[str]:
-        return {d.id for d in await self._devices.list_all() if d.state == "online"}
+    async def _online(self, location_id: str | None = None) -> set[str]:
+        devices = await self._devices.list_all(site_id=location_id)
+        return {d.id for d in devices if d.state == "online"}
 
-    async def list_all(self) -> list[CameraOut]:
-        online = await self._online()
-        return [_out(r, online) for r in await self._cameras.list_all()]
+    async def list_all(self, location_id: str | None = None) -> list[CameraOut]:
+        """Every camera, or (in the query) only those of one location."""
+        online = await self._online(location_id)
+        rows = await self._cameras.list_all(location_id=location_id)
+        return [_out(r, online) for r in rows]
 
     async def get(self, camera_id: str) -> CameraOut:
         row = await self._cameras.get(camera_id)

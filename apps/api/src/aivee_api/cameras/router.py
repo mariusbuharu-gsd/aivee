@@ -11,7 +11,7 @@ from aivee_api.audit.repository import Target
 from aivee_api.auth.deps import Access, CurrentUser, require
 from aivee_api.auth.permissions import ALERTS_VIEW, DEVICES_MANAGE
 from aivee_api.auth.principal import Principal
-from aivee_api.auth.scope import authorize_at, authorize_camera, camera_ids_at, device_location
+from aivee_api.auth.scope import authorize_at, authorize_camera, device_location
 from aivee_api.cameras.frame import latest_frame
 from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.cameras.service import CameraService
@@ -40,10 +40,9 @@ async def _check_device(s: SessionDep, loc: str, device: str | None) -> None:
 async def list_cameras(
     s: SessionDep, svc: ServicesDep, access: Annotated[Access, Depends(require(ALERTS_VIEW))]
 ) -> list[CameraOut]:
-    ids = await camera_ids_at(s, access.location_id)
-    cameras = await CameraService(s, svc.sync).list_all()
+    cameras = await CameraService(s, svc.sync).list_all(access.location_id)
     # Uploaded clips' virtual cameras live on the Analiză video page, not among cameras.
-    return [c for c in cameras if c.id in ids and not is_upload_device(c.device)]
+    return [c for c in cameras if not is_upload_device(c.device)]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

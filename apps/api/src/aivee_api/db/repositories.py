@@ -56,8 +56,11 @@ class DeviceRepository:
             insert(Device).values(id=device_id, site_id=site_id).on_conflict_do_nothing()
         )
 
-    async def list_all(self) -> Sequence[Device]:
-        return (await self.s.scalars(select(Device).order_by(Device.id))).all()
+    async def list_all(self, site_id: str | None = None) -> Sequence[Device]:
+        stmt = select(Device).order_by(Device.id)
+        if site_id is not None:
+            stmt = stmt.where(Device.site_id == site_id)
+        return (await self.s.scalars(stmt)).all()
 
     async def ids_for_site(self, site_id: str) -> list[str]:
         rows = await self.s.scalars(select(Device.id).where(Device.site_id == site_id))
@@ -114,10 +117,16 @@ class CameraRepository:
     async def get(self, camera_id: str) -> Camera | None:
         return await self.s.get(Camera, camera_id)
 
-    async def list_all(self, device_id: str | None = None) -> Sequence[Camera]:
+    async def list_all(
+        self, device_id: str | None = None, location_id: str | None = None
+    ) -> Sequence[Camera]:
         stmt = select(Camera).order_by(Camera.id)
         if device_id is not None:
             stmt = stmt.where(Camera.device_id == device_id)
+        if location_id is not None:
+            stmt = stmt.join(Device, Device.id == Camera.device_id).where(
+                Device.site_id == location_id
+            )
         return (await self.s.scalars(stmt)).all()
 
     async def set_zones(self, camera_id: str, zones: Sequence[Zone]) -> None:
@@ -165,10 +174,18 @@ class RuleRepository:
         row = await self.s.get(RuleRow, rule_id)
         return Rule.model_validate(row.rule) if row else None
 
-    async def list_all(self, camera_id: str | None = None) -> list[Rule]:
+    async def list_all(
+        self, camera_id: str | None = None, location_id: str | None = None
+    ) -> list[Rule]:
         stmt = select(RuleRow).order_by(RuleRow.created_at, RuleRow.id)
         if camera_id is not None:
             stmt = stmt.where(RuleRow.camera_id == camera_id)
+        if location_id is not None:
+            stmt = (
+                stmt.join(Camera, Camera.id == RuleRow.camera_id)
+                .join(Device, Device.id == Camera.device_id)
+                .where(Device.site_id == location_id)
+            )
         return [Rule.model_validate(r.rule) for r in await self.s.scalars(stmt)]
 
     async def for_device(self, device_id: str) -> list[Rule]:

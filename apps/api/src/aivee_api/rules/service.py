@@ -25,8 +25,10 @@ class RuleService:
         self._cameras = CameraRepository(session)
         self._sync = sync
 
-    async def list_all(self, camera_id: str | None = None) -> list[Rule]:
-        return await self._rules.list_all(camera_id)
+    async def list_all(
+        self, camera_id: str | None = None, location_id: str | None = None
+    ) -> list[Rule]:
+        return await self._rules.list_all(camera_id, location_id)
 
     async def get(self, rule_id: str) -> Rule:
         rule = await self._rules.get(rule_id)

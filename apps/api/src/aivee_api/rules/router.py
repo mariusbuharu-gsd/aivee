@@ -9,7 +9,7 @@ from aivee_api.audit.repository import Target
 from aivee_api.auth.deps import Access, CurrentUser, require
 from aivee_api.auth.permissions import RULES_MANAGE
 from aivee_api.auth.principal import Principal
-from aivee_api.auth.scope import authorize_camera, authorize_rule, camera_ids_at, rule_location
+from aivee_api.auth.scope import authorize_camera, authorize_rule, rule_location
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Conflict
 from aivee_api.rules.schemas import FromTextIn, FromTextOut, RuleIn, RulePatch, RuleStats
@@ -52,14 +52,9 @@ async def list_rules(
 ) -> list[Rule]:
     if camera_id is not None:
         await authorize_camera(s, access.principal, RULES_MANAGE, camera_id)
-    ids = await camera_ids_at(s, access.location_id)
-    rules = await RuleService(s, svc.sync).list_all(camera_id)
+    rules = await RuleService(s, svc.sync).list_all(camera_id, access.location_id)
     # A clip's copied rules show only when asked for by its camera id.
-    return [
-        r
-        for r in rules
-        if r.camera_id in ids and (camera_id is not None or not is_upload_camera(r.camera_id))
-    ]
+    return [r for r in rules if camera_id is not None or not is_upload_camera(r.camera_id)]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
