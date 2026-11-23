@@ -2,7 +2,7 @@
 
 The detector keeps only `DEFAULT_CLASSES` (the restaurant table subset) unless rules ask
 for more: `set_extra_classes` adds the COCO classes of `object_present` rules ("bear",
-"dog", "knife"…) at run time. Names the model does not know are logged and skipped.
+"dog"…) at run time. Names the model does not know are logged and skipped.
 """
 
 from __future__ import annotations
@@ -18,14 +18,15 @@ log = logging.getLogger("aivee_edge.yolo")
 
 PERSON = "person"
 # COCO subset relevant to a restaurant table ("dining table" is excluded on purpose:
-# tables are drawn as zones, detecting them only adds noise).
+# tables are drawn as zones, detecting them only adds noise). "knife" is excluded too:
+# every table has one, so detecting it by default only feeds false alerts; an
+# `object_present` rule that really asks for it still adds it via `set_extra_classes`.
 DEFAULT_CLASSES: tuple[str, ...] = (
     PERSON,
     "bottle",
     "wine glass",
     "cup",
     "fork",
-    "knife",
     "spoon",
     "bowl",
 )

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aivee_edge.adapters.yolo import DEFAULT_CLASSES, class_ids_for, map_results
+from aivee_edge.adapters.yolo import DEFAULT_CLASSES, class_ids_for, map_results, with_extra
 from aivee_edge.domain.observation import ObjectObs, TrackObs
 
 NAMES = {0: "person", 41: "cup", 39: "bottle", 60: "dining table"}
@@ -64,6 +64,16 @@ def test_class_ids_for_excludes_dining_table_and_rejects_unknown() -> None:
     assert class_ids_for(NAMES, ["person", "cup"]) == [0, 41]
     with pytest.raises(ValueError):
         class_ids_for(NAMES, ["unicorn"])
+
+
+def test_knife_is_not_a_default_class_but_a_rule_can_still_ask_for_it() -> None:
+    # Every restaurant table has knives: detecting them by default only feeds false alerts.
+    names = {0: "person", 41: "cup", 42: "fork", 43: "knife", 44: "spoon"}
+    assert "knife" not in DEFAULT_CLASSES
+    assert {"person", "cup", "fork", "spoon"} <= set(DEFAULT_CLASSES)
+    base = [c for c in DEFAULT_CLASSES if c in names.values()]
+    ids, unknown = with_extra(names, base, ["knife"])
+    assert 43 in ids and unknown == []
 
 
 MODEL = Path(__file__).parents[4] / "models" / "yolo11n_openvino_model"
