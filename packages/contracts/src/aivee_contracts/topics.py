@@ -48,6 +48,10 @@ class Topics:
         return self._t("commands")
 
     @property
+    def replies(self) -> str:  # edge → api, QoS 1, not retained (EdgeReply to an EdgeRequest)
+        return self._t("replies")
+
+    @property
     def detections(self) -> str:  # edge → QoS 0, not retained, <= 5 Hz (Detections)
         return self._t("detections")
 

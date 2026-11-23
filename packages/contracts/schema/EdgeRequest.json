@@ -1,0 +1,43 @@
+{
+  "description": "Sent by the API on `commands` (QoS 1, not retained): a one-off job for the edge.\n\ndiscover_cameras: look for IP cameras on the device's network · test_camera: open\n`source` once and send back one face-blurred still. The edge answers on `replies`.",
+  "properties": {
+    "request_id": {
+      "description": "UUID; the reply carries it back",
+      "title": "Request Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "discover_cameras",
+        "test_camera"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "test_camera: the camera URL, credentials included",
+      "title": "Source"
+    }
+  },
+  "required": [
+    "request_id",
+    "kind",
+    "at"
+  ],
+  "title": "EdgeRequest",
+  "type": "object"
+}
