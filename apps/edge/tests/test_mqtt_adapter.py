@@ -348,3 +348,78 @@ def test_camera_views_publish_events_on_the_device_topics(client: Any) -> None:
     view.publish_alert(_event(), None)
     view.publish_detections(Detections(camera_id="cam1", ts=datetime.now(UTC)))
     assert [t for t, _, _ in sent] == [edge.topics.events, edge.topics.detections]
+
+
+# -- per-camera stream health on the retained status -------------------------------------------
+
+
+def _health(camera_id: str, state: str) -> Any:
+    from aivee_contracts.events import CameraStreamHealth
+
+    return CameraStreamHealth(
+        camera_id=camera_id,
+        state=state,  # type: ignore[arg-type]
+        last_frame_at=datetime(2026, 11, 23, 12, 0, tzinfo=UTC),
+        fps=15.0,
+    )
+
+
+def _retained(monkeypatch: pytest.MonkeyPatch, edge: MqttEdgeClient) -> list[tuple[str, Any, bool]]:
+    sent: list[tuple[str, Any, bool]] = []
+
+    def fake_publish(topic: str, payload: Any = None, qos: int = 0, retain: bool = False) -> _Info:
+        sent.append((topic, payload, retain))
+        return _Info()
+
+    monkeypatch.setattr(edge._client, "publish", fake_publish)
+    return sent
+
+
+def test_camera_health_republishes_the_retained_online_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    edge, _one, _two = _two_cameras()
+    sent = _retained(monkeypatch, edge)
+    edge.connected.set()
+    edge.publish_camera_health([_health("cam-01", "ok"), _health("cam-02", "down")])
+    [(topic, payload, retain)] = sent
+    status = DeviceStatus.model_validate_json(payload)
+    assert topic == edge.topics.status and retain is True
+    assert status.state == "online" and status.cameras == ["cam-01", "cam-02"]
+    assert [(h.camera_id, h.state) for h in status.camera_health] == [
+        ("cam-01", "ok"),
+        ("cam-02", "down"),
+    ]
+
+
+def test_camera_health_waits_for_the_connection_and_goes_out_on_connect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    edge, _one, _two = _two_cameras()
+    sent = _retained(monkeypatch, edge)
+    monkeypatch.setattr(edge._client, "subscribe", lambda *_a, **_k: None)
+    edge.publish_camera_health([_health("cam-02", "reconnecting")])
+    assert sent == []  # not connected: the next connect carries it
+
+    class Ok:
+        is_failure = False
+
+    edge._on_connect(edge._client, None, None, Ok(), None)  # type: ignore[arg-type]
+    [(_topic, payload, _retain)] = sent
+    assert DeviceStatus.model_validate_json(payload).camera_health[0].state == "reconnecting"
+
+
+def test_offline_status_and_last_will_carry_no_camera_health(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    edge, _one, _two = _two_cameras()
+    sent = _retained(monkeypatch, edge)
+    monkeypatch.setattr(edge._client, "disconnect", lambda *_a, **_k: None)
+    monkeypatch.setattr(edge._client, "loop_stop", lambda *_a, **_k: None)
+    edge.connected.set()
+    edge.publish_camera_health([_health("cam-01", "ok")])
+    edge.stop()
+    offline = DeviceStatus.model_validate_json(sent[-1][1])
+    assert offline.state == "offline" and offline.camera_health == []
+    will = DeviceStatus.model_validate_json(edge._client._will_payload)
+    assert will.state == "offline" and will.camera_health == []

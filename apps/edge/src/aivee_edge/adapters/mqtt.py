@@ -12,6 +12,8 @@
   camera's pipeline a `CameraClient` view. Its `camera()` is that camera, its commands are the
   ones naming that camera, and its metrics are combined into one `Metrics` per device
   (`DeviceMetrics`). `DeviceStatus.cameras` lists every camera.
+- Per-camera stream health (`publish_camera_health`, fed by `health.MqttHealth`) rides on the
+  retained `online` status as `camera_health`; the LWT and the `offline` status carry none.
 - Transport: plain TCP by default; `transport="websockets"` (+ `ws_path`) and `tls=True` let a
   remote edge reach the broker as `wss://host:443/path` through an HTTPS reverse proxy.
 """
@@ -28,6 +30,7 @@ from aivee_contracts.commands import EdgeCommand
 from aivee_contracts.detections import Detections
 from aivee_contracts.events import (
     AlertEvent,
+    CameraStreamHealth,
     DeviceStatus,
     Metrics,
     StaffProfiles,
@@ -87,6 +90,7 @@ class MqttEdgeClient:
         self._views: dict[str, CameraClient] = {}
         self._metrics_interval_s = metrics_interval_s
         self._device_metrics: DeviceMetrics | None = None
+        self._camera_health: list[CameraStreamHealth] = []
         self.connected = threading.Event()
 
         self._client = mqtt.Client(
@@ -186,6 +190,14 @@ class MqttEdgeClient:
         if combined is not None:
             self.publish_metrics(combined)
 
+    def publish_camera_health(self, health: list[CameraStreamHealth]) -> None:
+        """Republish the retained `online` status with each live camera's stream health.
+        While disconnected it is only kept: the status sent on the next connect carries it."""
+        with self._lock:
+            self._camera_health = list(health)
+        if self.connected.is_set():
+            self._client.publish(self.topics.status, self._status("online"), qos=1, retain=True)
+
     # -- ConfigSource --------------------------------------------------------------
 
     def rules(self) -> list[Rule]:
@@ -258,8 +270,15 @@ class MqttEdgeClient:
             else:
                 camera = self._configured_camera() or self._camera
                 cameras = [camera.id] if camera else []
+            health = list(self._camera_health) if state == "online" else []
         return DeviceStatus.model_validate(
-            {"device": self._device, "state": state, "version": self._version, "cameras": cameras}
+            {
+                "device": self._device,
+                "state": state,
+                "version": self._version,
+                "cameras": cameras,
+                "camera_health": health,
+            }
         ).model_dump_json()
 
     def _on_connect(

@@ -22,7 +22,7 @@ from aivee_edge.adapters.mqtt import CameraClient, MqttEdgeClient
 from aivee_edge.domain.observation import BBox
 from aivee_edge.domain.ports import FrameSource, Image, PersonDetector, VisualScorer
 from aivee_edge.domain.role import StaffWeights
-from aivee_edge.health import CameraHealthMonitor, LogHealth
+from aivee_edge.health import CameraHealthMonitor, LogHealth, MqttHealth, tick_until
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.redact import redact_url
 from aivee_edge.settings import CameraSpec, EdgeSettings
@@ -58,7 +58,7 @@ EXIT_NO_STATE = 4
 """Offline clip run: the retained config or rules did not arrive in time."""
 
 HEALTH_TICK_S = 1.0
-"""How often the camera health of a multi-camera run is checked (camera_down logs)."""
+"""How often the live cameras' health is checked (camera_down logs, `camera_health` status)."""
 
 OFFLINE_DETECTIONS_INTERVAL_S = 1e9
 """An offline clip run publishes no live boxes: nobody watches it, and at many times real
@@ -283,6 +283,11 @@ def _close(source: object) -> None:
         close()
 
 
+def _health_monitor(client: MqttEdgeClient, sources: dict[str, object]) -> CameraHealthMonitor:
+    """Every live camera's health to the log and onto the device's retained status."""
+    return CameraHealthMonitor(sources, [LogHealth(), MqttHealth(client)])
+
+
 def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
     """Run the live edge; returns the process exit code."""
     if settings.multi_camera:
@@ -308,6 +313,10 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         client.stop()
         return EXIT_NO_STATE
     pipeline = build_pipeline(settings, vision, client, settings.camera_id)
+    health = _health_monitor(client, {settings.camera_id: vision.source})
+    done = threading.Event()
+    if health.watching:
+        tick_until(health.tick, stop, done, HEALTH_TICK_S)
     log.info(
         "edge started site=%s device=%s camera=%s source=%s",
         settings.site,
@@ -319,6 +328,7 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         frames = pipeline.run(stop)
         log.info("edge stopped frames=%d", frames)
     finally:
+        done.set()
         client.stop()
         _close(vision.source)
     return 0
@@ -364,7 +374,7 @@ def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> 
             spec.id,
             redact_url(spec.source),
         )
-    health = CameraHealthMonitor({r.camera_id: r.source for r in runs}, [LogHealth()])
+    health = _health_monitor(client, {r.camera_id: r.source for r in runs})
     try:
         code = Supervisor(runs, tick=health.tick, tick_s=HEALTH_TICK_S).run(stop)
         log.info("edge stopped cameras=%d", len(runs))
