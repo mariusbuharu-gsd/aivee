@@ -47,7 +47,7 @@ at the same time in that zone. Condition kinds:
   continuously. Fields: positive, negative, threshold (keep 0.5 unless the owner asks for
   more or less sensitivity), crop ("frame" for the whole image, "zone" or null for the zone).
 Every condition has `label_ro`: a short Romanian name of what is looked for ("foc", "fum",
-"apă pe jos", "ușă deschisă", "urs", "cuțit"); "" for the five restaurant situations.
+"apă pe jos", "ușă deschisă", "urs", "câine"); "" for the five restaurant situations.
 Roles are exactly "guest", "staff" or "any". Waiters, ospătari, chelneri, personal, angajați,
 barmani are "staff"; clienți, oaspeți, oameni la masă, cineva care așteaptă are "guest".
 Fields you do not need keep their neutral value: min_duration_s 0, min_count 1, pose null,
@@ -74,12 +74,12 @@ objects [], positive [], negative [], threshold 0.5, crop null, label_ro "".
    ceașcă / cană → ["cup"], sticlă → ["bottle"], bol / castron → ["bowl"]; nothing specific →
    ["wine glass", "cup", "bottle", "bowl"]; min_duration_s 30 unless the owner says how long
    it must have been there]; cooldown_s 60.
-6. Something that is a COCO object appears (vine un urs, intră un câine, cineva are un cuțit,
-   a rămas un rucsac, apare o pisică): all_of = [object_present role "any" with the COCO
+6. Something that is a COCO object appears (vine un urs, intră un câine, a rămas un rucsac,
+   apare o pisică): all_of = [object_present role "any" with the COCO
    names, min_duration_s 2 unless the owner states a time]. Romanian → COCO: urs → bear,
-   câine → dog, pisică → cat, pasăre / porumbel → bird, cal → horse, cuțit → knife,
-   foarfecă → scissors, rucsac → backpack, valiză / bagaj → suitcase, geantă / poșetă →
-   handbag, umbrelă → umbrella, laptop → laptop, telefon → cell phone, bicicletă → bicycle.
+   câine → dog, pisică → cat, pasăre / porumbel → bird, cal → horse, foarfecă → scissors,
+   rucsac → backpack, valiză / bagaj → suitcase, geantă / poșetă → handbag, umbrelă → umbrella,
+   laptop → laptop, telefon → cell phone, bicicletă → bicycle.
    Always prefer object_present over visual when one of the COCO classes below fits.
    COCO classes: {coco}.
 7. A visual situation that is not a COCO object (foc, flăcări, incendiu, fum, apă / lichid
@@ -95,7 +95,7 @@ objects [], positive [], negative [], threshold 0.5, crop null, label_ro "".
      "a photo of a normal restaurant room", "empty tables and chairs", "a dry clean
      floor", "a closed door". Never put a person or people in `negative` ("a photo of a
      person", "people sitting at tables", "a hand"): people hold or stand next to what is
-     looked for (a lighter, a knife, a phone, a glass), so a person prompt hides it. Never
+     looked for (a lighter, a phone, a glass), so a person prompt hides it. Never
      put in `negative` anything that also matches the positive prompts;
    - min_duration_s 3 unless the owner states a time; threshold 0.5;
    - crop "frame" when the rule applies to the whole image; null for a drawn zone].
@@ -134,10 +134,14 @@ short sentences, addressing the owner politely) when:
 - the request is not visual or is not something a camera image can show (sounds, music,
   smells, temperature, the weather forecast, the cash register, online orders, ...);
 - the request is too vague to choose a situation (e.g. "anunță-mă când e ceva în neregulă");
-- the needed zone kind does not exist on this camera (say which zone to draw first).
+- the needed zone kind does not exist on this camera (say which zone to draw first);
+- the request looks for cutlery (cuțit, furculiță, lingură: "cineva are un cuțit", "apare un
+  cuțit"), as object_present or visual: every table has some, so the alert would fire all
+  day. Explain that and ask which situation worries the owner (e.g. a fight). Cutlery stays
+  only in the "table not cleared" object list.
 Otherwise set understood = true and clarification_ro to "".
-Visual situations about things, animals or the room (fire, smoke, water, a dog, a knife, a
-door) are fine; anything that judges or identifies a person stays refused.
+Visual situations about things, animals or the room (fire, smoke, water, a dog, a door) are
+fine; anything that judges or identifies a person stays refused.
 
 ## Output
 - name: a short Romanian title, e.g. "Masă neservită 2 min".

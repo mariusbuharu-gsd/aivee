@@ -22,7 +22,7 @@
 | `make vapid` | generate the Web Push VAPID keys into `.env` (never printed; kept if already set) |
 
 `.env` holds every secret (names in `.env.example`); never print or commit values.
-Models: `uv run python tools/download_models.py` → `models/` (gitignored).
+Models: `uv run python tools/download_models.py` → `models/` (gitignored); INT8 calibrates on coco128 by default, or on venue frames (`--calib-clips`, see `edge-modes.md`).
 
 ## Environment (names only)
 
@@ -237,6 +237,12 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
   stable 15 fps, while venue Wi-Fi stalled the MJPEG stream up to 1.8 s. `Cv2Source` emits a frame only after
   1/`TARGET_FPS` s, so set `TARGET_FPS` above the source rate (≥ 2×, e.g. 30 for 15): the default 10 against a
   15 fps stream drops every other frame and runs at ~7 fps.
+- Tracker (`adapters/yolo.py`): YOLO runs at conf 0.10 and feeds ByteTrack through a config generated per
+  detector (`tracker_config`): `track_high_thresh` = `new_track_thresh` = 0.35 (a person needs 0.35 to start a
+  track, as before), `track_low_thresh` 0.10 (low-score boxes only extend existing tracks through occlusion),
+  `track_buffer` = ceil(fps × 4 s), so a lost track survives 4 s at any frame rate (log `tracker bytetrack
+  fps=… track_buffer=…`). Objects below 0.35 are dropped, as before. `fps` is the `YoloDetector(fps=…)` argument
+  (TARGET_FPS); if the CPU cannot reach it, tracks survive proportionally longer.
 - Engine `grace_s=5` (`GRACE_S`): a guest missing for up to 5 s still counts as present, so an alert closes ~5 s after
   the guest leaves (1.5 s closed alerts on detector flicker at low fps); tracks forgotten after 5 s; role hysteresis 0.7 / 0.4 (staff at ≥ 0.7, back to guest at ≤ 0.4); owner confirm / reject overrides.
 - Staff score (`domain/role.py`): `(w_a·appearance + w_s·standing + w_b·behaviour) / Σ w of the signals available`,
@@ -251,6 +257,12 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
   leg: ≥ 150° standing (also mid-stride), ≤ 120° seated. Without a decisive leg, the box's pixel height / width:
   ≥ 2.2 standing, ≤ 1.6 seated, else unknown. The trajectory buffer keeps 3 s of known stances per track;
   `standing_ratio` = standing share × min(1, known span / 2 s), so a guest who just stood up does not count at once.
+- Raised hand (`domain/pose.py`), people in table zones only: per frame, a visible wrist above the highest head
+  point (nose, eyes or ears) by 0.03, so guests seen from the side or from behind count; with no head point, above
+  the shoulder line by 0.75 shoulder widths (pixel space); one shoulder and no head, or no shoulder, is "not
+  raised". `RaisedHandFilter` then holds it per track: the hand counts after 1.0 s up (`raised_hand_s`) and gaps
+  up to 0.6 s (`raised_hand_drop_s`) neither reset the hold nor end it, so a wave or one bad frame opens nothing.
+  A raised-hand alert therefore opens ~1 s after the hand goes up.
 - `arrived`: a staff track's foot point in the alert's zone ≥ `ARRIVE_S` (default 5 s), once per alert.
 - Appearance is off by default (`APPEARANCE` / `--appearance`), ~0.6 s per crop, at most once per 2 s per person.
 - `ROTATE=90` for a sideways phone (D13). Live alert time is wall clock.
@@ -279,9 +291,12 @@ each run also writes `drafts.json` (raw model output per case), the source of `t
 ## Reguli libere (open rules: `object_present`, `visual`)
 
 The owner can ask for anything a camera image shows: „anunță-mă dacă vine un urs”, „dacă e foc”,
-„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă cineva are un cuțit”, „dacă ușa
-rămâne deschisă”. Refusals do not change: faces, identifying people, age, gender, ethnicity and any
-judgement of a person's appearance stay refused; theft is only `object_gone` (an object gone from a table).
+„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă ușa rămâne deschisă”. Refusals do
+not change: faces, identifying people, age, gender, ethnicity and any judgement of a person's appearance
+stay refused; theft is only `object_gone` (an object gone from a table). Cutlery is not a rule: „dacă
+cineva are un cuțit” gets a clarifying question, because every table has a knife and neither YOLO nor
+CLIP can tell a table knife from a weapon (`service.py: looks_for_cutlery`, eval case `refuse-knife`).
+`knife` is also not in the detector's `DEFAULT_CLASSES`.
 
 **How it works.**
 1. *Translation* (`rules/prompt.py`, situations 6 and 7). A COCO class → `object_present` (`objects`,

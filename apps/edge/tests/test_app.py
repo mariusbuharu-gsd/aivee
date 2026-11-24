@@ -84,16 +84,23 @@ def test_build_vision_passes_rotation_to_the_capture_adapter(
 
     class Yolo:
         @staticmethod
-        def YoloDetector(model: str) -> object:
+        def YoloDetector(model: str, *, fps: float) -> object:
+            seen["detector_fps"] = fps
             return object()
 
     modules = {"capture": Capture, "yolo": Yolo}
     monkeypatch.setattr(app, "_adapter", lambda name: modules[name])
     settings = EdgeSettings(
-        source="http://phone/video", rotate=90, pose_model="", blur=False, _env_file=None
+        source="http://phone/video",
+        rotate=90,
+        target_fps=6.0,
+        pose_model="",
+        blur=False,
+        _env_file=None,
     )  # type: ignore[call-arg]
     app.build_vision(settings)
-    assert seen == {"rotate": 90}
+    # The tracker sizes its lost-track buffer in seconds, so it must know the real frame rate.
+    assert seen == {"rotate": 90, "detector_fps": 6.0}
 
 
 def test_build_vision_subscribes_to_cloud_frames_as_this_device(
@@ -109,7 +116,7 @@ def test_build_vision_subscribes_to_cloud_frames_as_this_device(
 
     class Yolo:
         @staticmethod
-        def YoloDetector(model: str) -> object:
+        def YoloDetector(model: str, *, fps: float) -> object:
             return object()
 
     modules = {"capture": object(), "mqtt_frames": Frames, "yolo": Yolo}

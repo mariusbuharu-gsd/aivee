@@ -2,12 +2,23 @@
 
 The detector keeps only `DEFAULT_CLASSES` (the restaurant table subset) unless rules ask
 for more: `set_extra_classes` adds the COCO classes of `object_present` rules ("bear",
-"dog", "knife"…) at run time. Names the model does not know are logged and skipped.
+"dog"…) at run time. Names the model does not know are logged and skipped.
+
+Tracker. ByteTrack matches confident boxes first, then uses low-score boxes (a person
+half hidden behind a waiter) to keep existing tracks alive. So the model runs at
+`TRACK_LOW_CONF` and the tracker config, generated per detector, carries the thresholds:
+a new track still needs `PERSON_CONF`, and objects below it are dropped as before.
+ByteTrack's `track_buffer` counts frames, so it is derived from the expected fps to keep
+a lost track for `lost_track_s` seconds whatever the frame rate.
 """
 
 from __future__ import annotations
 
+import atexit
 import logging
+import math
+import os
+import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -18,17 +29,63 @@ log = logging.getLogger("aivee_edge.yolo")
 
 PERSON = "person"
 # COCO subset relevant to a restaurant table ("dining table" is excluded on purpose:
-# tables are drawn as zones, detecting them only adds noise).
+# tables are drawn as zones, detecting them only adds noise). "knife" is excluded too:
+# every table has one, so detecting it by default only feeds false alerts; an
+# `object_present` rule that really asks for it still adds it via `set_extra_classes`.
 DEFAULT_CLASSES: tuple[str, ...] = (
     PERSON,
     "bottle",
     "wine glass",
     "cup",
     "fork",
-    "knife",
     "spoon",
     "bowl",
 )
+
+
+PERSON_CONF = 0.35
+"""Confidence a box needs to start a track (person) or to count at all (object)."""
+TRACK_LOW_CONF = 0.1
+"""Lowest score fed to ByteTrack, for its second (low-score) association."""
+LOST_TRACK_S = 4.0
+"""How long a track that lost its box is kept for re-association."""
+TRACK_MATCH_THRESH = 0.8
+
+
+def track_buffer_frames(fps: float, seconds: float) -> int:
+    """ByteTrack's `track_buffer` (frames) that keeps a lost track for `seconds` at `fps`."""
+    if fps <= 0:
+        raise ValueError("fps must be positive")
+    return max(1, math.ceil(fps * seconds - 1e-9))
+
+
+def tracker_config(
+    fps: float,
+    lost_track_s: float = LOST_TRACK_S,
+    person_conf: float = PERSON_CONF,
+    low_conf: float = TRACK_LOW_CONF,
+) -> dict[str, Any]:
+    """An ultralytics ByteTrack config (the keys of its `bytetrack.yaml`)."""
+    if not 0 <= low_conf < person_conf <= 1:
+        raise ValueError("need 0 <= low_conf < person_conf <= 1")
+    return {
+        "tracker_type": "bytetrack",
+        "track_high_thresh": person_conf,
+        "track_low_thresh": low_conf,
+        "new_track_thresh": person_conf,
+        "track_buffer": track_buffer_frames(fps, lost_track_s),
+        "match_thresh": TRACK_MATCH_THRESH,
+        "fuse_score": True,
+    }
+
+
+def write_tracker_yaml(cfg: Mapping[str, Any], directory: str | Path | None = None) -> Path:
+    """Write `cfg` as a tracker YAML file (flat scalars only) and return its path."""
+    fd, name = tempfile.mkstemp(prefix="aivee-bytetrack-", suffix=".yaml", dir=directory)
+    lines = [f"{k}: {str(v).lower() if isinstance(v, bool) else v}" for k, v in cfg.items()]
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(lines) + "\n")
+    return Path(name)
 
 
 def _clamp(v: float) -> float:
@@ -49,11 +106,14 @@ def map_results(
     width: int,
     height: int,
     ts: float = 0.0,
+    min_object_conf: float = 0.0,
 ) -> Frame:
     """Pure mapping from raw detector output (pixel boxes) to a domain Frame.
 
     Persons without a track id (tracker not yet confirmed) are skipped; objects do
-    not need one. `track_ids=None` means the tracker returned no ids at all.
+    not need one. `track_ids=None` means the tracker returned no ids at all. Objects
+    below `min_object_conf` are dropped; a tracked person is kept at any score (the
+    tracker only lets a low score extend a track that started confident).
     """
     tracks: list[TrackObs] = []
     objects: list[ObjectObs] = []
@@ -65,7 +125,7 @@ def map_results(
             if tid is None:
                 continue
             tracks.append(TrackObs(track_id=int(tid), bbox=bbox, confidence=float(conf)))
-        else:
+        elif conf >= min_object_conf:
             objects.append(ObjectObs(label=label, bbox=bbox, confidence=float(conf)))
     aspect = width / height if height else None
     return Frame(ts=ts, tracks=tuple(tracks), objects=tuple(objects), aspect=aspect)
@@ -100,11 +160,18 @@ class YoloDetector:
     def __init__(
         self,
         model_path: str | Path,
-        conf: float = 0.35,
+        conf: float = PERSON_CONF,
         classes: Sequence[str] = DEFAULT_CLASSES,
         imgsz: int = 640,
-        tracker: str = "bytetrack.yaml",
+        tracker: str | None = None,
+        *,
+        fps: float = 10.0,
+        lost_track_s: float = LOST_TRACK_S,
+        low_conf: float = TRACK_LOW_CONF,
     ) -> None:
+        """`fps`: the rate frames will really arrive at (TARGET_FPS), for the tracker
+        buffer. `tracker`: an ultralytics tracker YAML to use as is instead of the
+        generated ByteTrack config (then `conf` is applied before it, as ultralytics does)."""
         from ultralytics import YOLO
 
         self._model: Any = YOLO(str(model_path), task="detect")
@@ -114,7 +181,22 @@ class YoloDetector:
         self._extra: list[str] = []
         self._conf = conf
         self._imgsz = imgsz
-        self._tracker = tracker
+        if tracker is None:
+            cfg = tracker_config(fps, lost_track_s, person_conf=conf, low_conf=low_conf)
+            path = write_tracker_yaml(cfg)
+            atexit.register(path.unlink, missing_ok=True)
+            self._tracker = str(path)
+            self._detect_conf = low_conf
+            log.info(
+                "tracker bytetrack fps=%.1f track_buffer=%d high=%.2f low=%.2f",
+                fps,
+                cfg["track_buffer"],
+                conf,
+                low_conf,
+            )
+        else:
+            self._tracker = tracker
+            self._detect_conf = conf
         self.last_result: Any = None
 
     def set_extra_classes(self, extra: Sequence[str]) -> None:
@@ -134,7 +216,7 @@ class YoloDetector:
             persist=True,
             tracker=self._tracker,
             classes=self._class_ids,
-            conf=self._conf,
+            conf=self._detect_conf,
             imgsz=self._imgsz,
             verbose=False,
         )
@@ -152,4 +234,5 @@ class YoloDetector:
             width=int(width),
             height=int(height),
             ts=ts,
+            min_object_conf=self._conf,
         )
