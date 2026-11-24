@@ -31,6 +31,6 @@ async def list_devices(
             site=d.site_id,
             last_seen=d.last_seen,
         )
-        for d in await DeviceRepository(s).list_all()
-        if d.site_id == access.location_id and not is_upload_device(d.id)
+        for d in await DeviceRepository(s).list_all(site_id=access.location_id)
+        if not is_upload_device(d.id)
     ]

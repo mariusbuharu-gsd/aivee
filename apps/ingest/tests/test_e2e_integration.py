@@ -303,4 +303,5 @@ async def test_snapshot_published_with_an_event_is_served_by_the_api(stack: Stac
         e for e in (await stack.http.get("/api/events")).json() if e["event_id"] == event.event_id
     ]
     assert stored["snapshot_url"]
-    assert (stack.snapshots / f"{event.event_id}.jpg").read_bytes() == jpeg
+    stored_file = stack.snapshots / stack.edge.topics.site / stack.device / f"{event.event_id}.jpg"
+    assert stored_file.read_bytes() == jpeg

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import cast
 
 from aivee_contracts.events import AlertEvent, Verification, VerificationStatus, before_snapshot_id
-from sqlalchemy import ColumnElement, Select, func, select, update
+from sqlalchemy import ColumnElement, Select, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -26,6 +26,11 @@ from aivee_api.db.models import Camera, Device, EventRow
 from aivee_api.videos.kind import not_upload
 
 STATE_FILTERS = ("opened", "acknowledged", "arrived", "closed", "open")
+
+
+def _key_text(event: AlertEvent, device_id: str) -> str:
+    """The lock key of an alert's events: one device, camera, rule and zone."""
+    return f"alert:{device_id}/{event.camera_id}/{event.rule_id}/{event.zone_id}"
 
 
 def verification_of(row: EventRow) -> Verification | None:
@@ -119,19 +124,28 @@ class AlertRepository:
 
     async def link_folded(self, event: AlertEvent, device_id: str) -> tuple[str | None, bool]:
         """`link`, and whether the event changed the alert (False for a late `closed`
-        after the system already closed it, or a repeated `arrived`)."""
+        after the system already closed it, or a repeated `arrived`).
+
+        An `arrived` or `closed` whose `opened` is not stored yet (another replica, a
+        redelivery) stays unlinked; `adopt_early` folds it when the `opened` comes (R2).
+        Both run under a per-alert-key advisory lock, so two replicas never miss each
+        other's row."""
+        same_key = self._same_key(event, device_id)
+        await self.s.execute(
+            select(func.pg_advisory_xact_lock(func.hashtext(_key_text(event, device_id))))
+        )
         if event.state == "opened":
             alert_id: str | None = event.event_id
         else:
             alert_id = await self.s.scalar(
                 select(EventRow.event_id)
                 .where(
+                    *same_key,
                     EventRow.state == "opened",
-                    EventRow.device_id == device_id,
-                    EventRow.camera_id == event.camera_id,
-                    EventRow.rule_id == event.rule_id,
-                    EventRow.zone_id == event.zone_id,
                     EventRow.at <= event.at,
+                    # An alert that ended before this event is not its alert: its own
+                    # `opened` is still on the way.
+                    or_(EventRow.closed_at.is_(None), EventRow.closed_at >= event.at),
                 )
                 .order_by(EventRow.at.desc())
                 .limit(1)
@@ -151,6 +165,57 @@ class AlertRepository:
             .returning(EventRow.id)
         )
         return alert_id, folded.first() is not None
+
+    @staticmethod
+    def _same_key(event: AlertEvent, device_id: str) -> list[ColumnElement[bool]]:
+        return [
+            EventRow.device_id == device_id,
+            EventRow.camera_id == event.camera_id,
+            EventRow.rule_id == event.rule_id,
+            EventRow.zone_id == event.zone_id,
+        ]
+
+    async def adopt_early(self, opened: AlertEvent, device_id: str) -> list[str]:
+        """After linking an `opened`: fold the `arrived` / `closed` rows of its alert that
+        were stored before it (unlinked, at or after it, before the next `opened`).
+        Returns the states folded in, e.g. ["closed"]. Call inside `link_folded`'s
+        transaction (its lock)."""
+        same_key = self._same_key(opened, device_id)
+        next_opened = await self.s.scalar(
+            select(func.min(EventRow.at)).where(
+                *same_key, EventRow.state == "opened", EventRow.at > opened.at
+            )
+        )
+        early = select(EventRow).where(
+            *same_key,
+            EventRow.alert_id.is_(None),
+            EventRow.state.in_(("arrived", "closed")),
+            EventRow.at >= opened.at,
+        )
+        if next_opened is not None:
+            early = early.where(EventRow.at < next_opened)
+        rows = list(await self.s.scalars(early.order_by(EventRow.at)))
+        if not rows:
+            return []
+        await self.s.execute(
+            update(EventRow)
+            .where(EventRow.id.in_([r.id for r in rows]))
+            .values(alert_id=opened.event_id)
+        )
+        folded: list[str] = []
+        for state, column in (("arrived", EventRow.arrived_at), ("closed", EventRow.closed_at)):
+            first = next((r.at for r in rows if r.state == state), None)
+            if first is None:
+                continue
+            done = await self.s.execute(
+                update(EventRow)
+                .where(EventRow.event_id == opened.event_id, column.is_(None))
+                .values({column.key: first})
+                .returning(EventRow.id)
+            )
+            if done.first() is not None:
+                folded.append(state)
+        return folded
 
     async def claim_realerts(self, now: datetime, after_s: float) -> list[AlertView]:
         """Mark (and return) the alerts acknowledged more than `after_s` ago that nobody

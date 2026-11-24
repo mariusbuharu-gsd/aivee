@@ -8,13 +8,14 @@ from aivee_contracts.events import BEFORE_SUFFIX
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from aivee_api.alerts.live import AlertFeed
 from aivee_api.auth.deps import COOKIE, Access, CurrentUser, require
 from aivee_api.auth.permissions import ALERTS_VIEW, STAFF_REVIEW
 from aivee_api.auth.principal import principal_for_token
 from aivee_api.auth.scope import authorize_at, event_location, events_at, suggestion_location
-from aivee_api.db.models import EventRow
+from aivee_api.db.models import EventRow, SuggestionRow
 from aivee_api.deps import Services, ServicesDep, SessionDep
 from aivee_api.errors import NotFound
 from aivee_api.events.schemas import DetectionsMessage, EventOut, event_out
@@ -58,15 +59,25 @@ async def get_snapshot(
     """The blurred JPEG of an event (alerts.view) or of a staff suggestion (staff.review).
     `<event_id>-before` is the "before" image of an object change, with its event's rights."""
     missing = "Imaginea nu există."
-    loc = await event_location(s, event_id.removesuffix(BEFORE_SUFFIX))
+    owner_id = event_id.removesuffix(BEFORE_SUFFIX)
+    loc = await event_location(s, owner_id)
+    stored: str | None
     if loc is not None:
         authorize_at(p, ALERTS_VIEW, loc, missing)
+        row = await s.scalar(select(EventRow).where(EventRow.event_id == owner_id))
+        before = owner_id != event_id
+        stored = (row.before_snapshot_path if before else row.snapshot_path) if row else None
     else:
         loc = await suggestion_location(s, event_id)
         if loc is None:
             raise NotFound(missing)
         authorize_at(p, STAFF_REVIEW, loc, missing)
-    path = snapshot_file(svc.settings.snapshot_dir, event_id)
+        stored = await s.scalar(
+            select(SuggestionRow.snapshot_path).where(SuggestionRow.suggestion_id == event_id)
+        )
+    # The row says where its image is (`<site>/<device>/<id>.jpg`, or `<id>.jpg` for rows
+    # stored before snapshots were keyed by device); never a path built from the URL.
+    path = snapshot_file(svc.settings.snapshot_dir, stored)
     return FileResponse(path, media_type="image/jpeg")
 
 

@@ -469,7 +469,7 @@ async def test_pending_suggestions_link_the_blurred_crop_when_the_edge_sent_one(
 async def test_confirm_with_snapshot_learns_the_crop(
     api: httpx.AsyncClient, sessions: Any, settings: ApiSettings, publisher: RecordingPublisher
 ) -> None:
-    sid = await _suggestion(sessions)
+    sid = await _suggestion(sessions, snapshot=True)
     (settings.snapshot_dir / f"{sid}.jpg").write_bytes(bytes([8]))
     r = await api.post(f"/api/staff/suggestions/{sid}/confirm")
     assert r.json()["examples_added"] == 1

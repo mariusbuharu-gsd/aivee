@@ -29,14 +29,14 @@ class CameraFrame:
 
 async def latest_frame(s: AsyncSession, snapshot_dir: Path, camera_id: str) -> CameraFrame | None:
     rows = await s.execute(
-        select(EventRow.event_id, EventRow.at)
+        select(EventRow.snapshot_path, EventRow.at)
         .where(EventRow.camera_id == camera_id, EventRow.snapshot_path.is_not(None))
         .order_by(EventRow.at.desc(), EventRow.id.desc())
         .limit(LOOKBACK)
     )
-    for event_id, at in rows:
+    for stored, at in rows:
         try:
-            return CameraFrame(snapshot_file(snapshot_dir, event_id), at)
+            return CameraFrame(snapshot_file(snapshot_dir, stored), at)
         except NotFound:
             continue
     return None

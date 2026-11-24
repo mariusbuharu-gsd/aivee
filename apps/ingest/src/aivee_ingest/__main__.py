@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_ingest.alert_message import AlertContext
 from aivee_ingest.config import IngestSettings
+from aivee_ingest.dispatch import NotifyDispatcher, RetryingNotifier
 from aivee_ingest.handler import IngestHandler
 from aivee_ingest.locations import alert_context, telegram_chat_for
 from aivee_ingest.notify import LogNotifier, Notifier
@@ -36,14 +37,25 @@ from aivee_ingest.worker import run_worker
 log = logging.getLogger("aivee_ingest")
 
 
+def retrying(channel: Notifier, settings: IngestSettings) -> Notifier:
+    """A channel that retries a failed send itself, so the others are not sent twice."""
+    return RetryingNotifier(channel, attempts=settings.notify_attempts)
+
+
 def build_notifier(
     settings: IngestSettings,
     sessions: async_sessionmaker[AsyncSession] | None = None,
     vapid: VapidSettings | None = None,
 ) -> Notifier:
     notifiers: list[Notifier] = []
-    if settings.telegram_bot_token and (settings.telegram_chat_id or sessions is not None):
-        log.info("notifier: Telegram (location chat, else TELEGRAM_CHAT_ID)")
+    if settings.telegram_chat_id and not settings.telegram_single_tenant:
+        log.warning("TELEGRAM_CHAT_ID ignored: set TELEGRAM_SINGLE_TENANT=true to use it")
+    fallback = settings.telegram_fallback_chat
+    if settings.telegram_bot_token and (fallback or sessions is not None):
+        log.info(
+            "notifier: Telegram (the location's chat%s)",
+            ", else TELEGRAM_CHAT_ID" if fallback else "; none: not sent",
+        )
 
         async def chat_for(event_id: str) -> str | None:
             return await telegram_chat_for(sessions, event_id) if sessions is not None else None
@@ -58,14 +70,17 @@ def build_notifier(
             context_for = names_for
 
         notifiers.append(
-            TelegramNotifier(
-                settings.telegram_bot_token,
-                settings.telegram_chat_id,
-                prefix=settings.telegram_prefix,
-                chat_for=chat_for,
-                context_for=context_for,
-                dashboard_url=settings.public_dashboard_url,
-                sent=DbSentMessages(sessions) if sessions is not None else None,
+            retrying(
+                TelegramNotifier(
+                    settings.telegram_bot_token,
+                    fallback,
+                    prefix=settings.telegram_prefix,
+                    chat_for=chat_for,
+                    context_for=context_for,
+                    dashboard_url=settings.public_dashboard_url,
+                    sent=DbSentMessages(sessions) if sessions is not None else None,
+                ),
+                settings,
             )
         )
     else:
@@ -74,7 +89,7 @@ def build_notifier(
     vapid = vapid or VapidSettings()
     if sessions is not None and vapid.enabled:
         log.info("notifier: Web Push")
-        notifiers.append(WebPushNotifier(sessions, WebPushSender(vapid)))
+        notifiers.append(retrying(WebPushNotifier(sessions, WebPushSender(vapid)), settings))
     else:
         log.info("notifier: no Web Push (VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set)")
     return notifiers[0] if len(notifiers) == 1 else CompositeNotifier(notifiers)
@@ -99,7 +114,12 @@ async def main() -> None:
         else None
     )
     handler = IngestHandler(
-        sessions, settings.snapshot_dir, notifier, audit=audit, verification=verification
+        sessions,
+        settings.snapshot_dir,
+        notifier,
+        audit=audit,
+        verification=verification,
+        dispatcher=NotifyDispatcher(settings.notify_workers, settings.notify_queue_size),
     )
     realerter = Realerter(sessions, notifier, audit, settings.realert_after_s)
 
@@ -113,7 +133,7 @@ async def main() -> None:
         bot_api = HttpBotApi(settings.telegram_bot_token)
         callbacks = AlertCallbacks(
             bot_api,
-            DbAckStore(sessions, audit, settings.telegram_chat_id),
+            DbAckStore(sessions, audit, settings.telegram_fallback_chat),
             prefix=settings.telegram_prefix,
             dashboard_url=settings.public_dashboard_url,
         )
@@ -131,6 +151,10 @@ async def main() -> None:
         loop.add_signal_handler(sig, task.cancel)
     with contextlib.suppress(asyncio.CancelledError):
         await task
+    # Best effort: send what is already queued, briefly (no outbox yet, R1).
+    with contextlib.suppress(TimeoutError):
+        await asyncio.wait_for(handler.drain(), timeout=5)
+    await handler.aclose()
     await engine.dispose()
     log.info("ingest stopped")
 

@@ -12,6 +12,7 @@ from aivee_contracts.events import AlertEvent
 from aivee_contracts.geometry import CameraConfig, Zone
 from aivee_ingest.__main__ import build_notifier
 from aivee_ingest.config import IngestSettings
+from aivee_ingest.dispatch import RetryingNotifier
 from aivee_ingest.notify import LogNotifier
 from aivee_ingest.webpush import CompositeNotifier, WebPushNotifier
 
@@ -84,7 +85,9 @@ def test_build_notifier_adds_web_push_only_with_vapid_keys() -> None:
     assert isinstance(build_notifier(settings, sessions, VapidSettings()), LogNotifier)
     both = build_notifier(settings, sessions, VAPID)
     assert isinstance(both, CompositeNotifier)
-    assert [type(n) for n in both.notifiers] == [LogNotifier, WebPushNotifier]
+    assert [type(n) for n in both.notifiers] == [LogNotifier, RetryingNotifier]
+    assert isinstance(both.notifiers[1], RetryingNotifier)
+    assert isinstance(both.notifiers[1].inner, WebPushNotifier)  # retried per channel (R3)
 
 
 # ---------- integration (real Postgres) ----------

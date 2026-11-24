@@ -271,13 +271,14 @@ class AlertVerification:
         self._timeout_s = timeout_s
         self._snapshot_wait_s = snapshot_wait_s
 
-    async def run(self, event: AlertEvent) -> Verification | None:
-        """Verify, store and notify one opened alert; None if it was already claimed."""
+    async def run(self, event: AlertEvent, folder: str = "") -> Verification | None:
+        """Verify, store and notify one opened alert; None if it was already claimed.
+        `folder`: the producing `<site>/<device>` under the snapshot dir (S4)."""
         if not await self._store.claim(event.event_id):
             log.info("verification of %s already claimed", event.event_id)
             return None
-        after = await self._file(event.event_id) if event.snapshot else None
-        verification = await self._verify(event, after)
+        after = await self._file(folder, event.event_id) if event.snapshot else None
+        verification = await self._verify(event, after, folder)
         await self._store.save(event.event_id, verification)
         log.info(
             "verification event_id=%s rule=%s status=%s model=%s latency_ms=%s summary=%r",
@@ -299,10 +300,11 @@ class AlertVerification:
             log.exception("notifier failed for event %s", event.event_id)
         return verification
 
-    async def _file(self, snapshot_id: str) -> Path | None:
-        return await wait_for_file(self._snapshots / f"{snapshot_id}.jpg", self._snapshot_wait_s)
+    async def _file(self, folder: str, snapshot_id: str) -> Path | None:
+        file = self._snapshots / folder / f"{snapshot_id}.jpg"
+        return await wait_for_file(file, self._snapshot_wait_s)
 
-    async def _verify(self, event: AlertEvent, after: Path | None) -> Verification:
+    async def _verify(self, event: AlertEvent, after: Path | None, folder: str) -> Verification:
         if after is None:
             return UNAVAILABLE
         change = event.object_change
@@ -311,7 +313,7 @@ class AlertVerification:
         images = [after.read_bytes()]
         if change is not None:
             before = (
-                await self._file(before_snapshot_id(event.event_id))
+                await self._file(folder, before_snapshot_id(event.event_id))
                 if change.before_snapshot
                 else None
             )

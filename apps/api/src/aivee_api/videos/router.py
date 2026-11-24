@@ -113,6 +113,7 @@ async def upload_video(
         after=out.model_dump(mode="json"),
         camera=source or "",
     )
+    assert svc.videos is not None  # videos_available() checked it
     svc.videos.submit(row.id)
     return out
 

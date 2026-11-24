@@ -25,6 +25,7 @@ TEMPLATES: dict[str, str] = {
     "camera.created": "{actor} a adăugat camera {target}",
     "camera.updated": "{actor} a modificat camera {target}",
     "camera.deleted": "{actor} a șters camera {target}",
+    "camera.push_key_created": "{actor} a generat o cheie nouă de publicare pentru camera {target}",
     "zones.updated": "{actor} a modificat zonele camerei {target}",
     "rule.created": "{actor} a creat regula „{target}”",
     "rule.updated": "{actor} a modificat regula „{target}”",

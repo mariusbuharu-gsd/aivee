@@ -126,13 +126,13 @@ async def test_event_with_snapshot_is_stored_once_and_notified(
         path = await s.scalar(
             text("SELECT snapshot_path FROM events WHERE event_id = :id"), {"id": event.event_id}
         )
-    assert path == f"{event.event_id}.jpg"
+    assert path == f"{site}/{broker.edge[0]}/{event.event_id}.jpg"  # keyed by its device (S4)
 
 
 async def test_suggestion_crop_is_stored_like_an_event_snapshot(
     broker: Any, sessions: async_sessionmaker[AsyncSession], site: str, tmp_path: Path
 ) -> None:
-    """The API learns a confirmed suggestion from SNAPSHOT_DIR/<suggestion_id>.jpg."""
+    """The API learns a confirmed suggestion from SNAPSHOT_DIR/<site>/<device>/<id>.jpg."""
     suggestion = StaffSuggestion(
         suggestion_id=str(uuid.uuid4()),
         camera_id="cam1",
@@ -140,24 +140,25 @@ async def test_suggestion_crop_is_stored_like_an_event_snapshot(
         staff_score=0.8,
         reason_ro="vizitează 3 mese",
     )
+    crop = tmp_path / site / broker.edge[0] / f"{suggestion.suggestion_id}.jpg"
     async with _workers(broker, sessions, tmp_path, 1):
         edge = await _edge(broker, site)
         edge.publish_suggestion(suggestion, b"\xff\xd8person")
 
         async def stored() -> bool:
             n = await _count(sessions, "SELECT count(*) FROM suggestions")
-            return n == 1 and (tmp_path / f"{suggestion.suggestion_id}.jpg").is_file()
+            return n == 1 and crop.is_file()
 
         await _until(stored)
         await asyncio.to_thread(edge.stop)
 
-    assert (tmp_path / f"{suggestion.suggestion_id}.jpg").read_bytes() == b"\xff\xd8person"
+    assert crop.read_bytes() == b"\xff\xd8person"
     async with sessions() as s:
         path = await s.scalar(
             text("SELECT snapshot_path FROM suggestions WHERE suggestion_id = :id"),
             {"id": suggestion.suggestion_id},
         )
-    assert path == f"{suggestion.suggestion_id}.jpg"  # the API links it as snapshot_url
+    assert path == f"{site}/{broker.edge[0]}/{suggestion.suggestion_id}.jpg"
 
 
 async def test_last_will_marks_device_offline(

@@ -89,7 +89,7 @@ def _gone_event() -> AlertEvent:
 async def _handle(handler: IngestHandler, event: AlertEvent, tmp: Path) -> None:
     await handler.handle(T.snapshot(event.event_id), b"\xff\xd8after")
     await handler.handle(T.snapshot_before(event.event_id), b"\xff\xd8before")
-    assert (tmp / f"{before_snapshot_id(event.event_id)}.jpg").is_file()
+    assert (tmp / SITE / DEVICE / f"{before_snapshot_id(event.event_id)}.jpg").is_file()
     await handler.handle(T.events, event.model_dump_json().encode())
     await handler.drain()
 

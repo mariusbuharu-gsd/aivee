@@ -12,6 +12,7 @@ from aivee_api.db.repositories import StaffRepository, SuggestionRepository
 from aivee_api.edge.sync import EdgeCommands, EdgeSync, SuggestionDecision
 from aivee_api.errors import Conflict, Invalid, NotFound, Unavailable
 from aivee_api.events.schemas import SuggestionOut, suggestion_out
+from aivee_api.events.service import snapshot_file
 from aivee_api.staff.capture import capture_candidates
 from aivee_api.staff.enrol import Enroller, Upload, l2_normalise
 from aivee_api.staff.schemas import DecisionOut, EnrolOut, ProfileOut
@@ -155,7 +156,7 @@ class StaffService:
         await self._suggestions.set_status(suggestion_id, status)
         added = 0
         if confirmed:
-            added = await self._learn_from_snapshot(suggestion_id, profile_id, profile_name)
+            added = await self._learn_from_snapshot(row.snapshot_path, profile_id, profile_name)
         await self._s.commit()
         if added:
             await self._sync.publish_profiles()
@@ -166,10 +167,13 @@ class StaffService:
         )
         return DecisionOut(suggestion_id=suggestion_id, status=status, examples_added=added)
 
-    async def _learn_from_snapshot(self, suggestion_id: str, profile_id: str, name: str) -> int:
+    async def _learn_from_snapshot(self, stored: str | None, profile_id: str, name: str) -> int:
         """If the edge sent a snapshot for the suggestion, its crop becomes a staff example."""
-        path = self._snapshots / f"{suggestion_id}.jpg"
-        if self._enroller is None or not path.is_file():
+        try:
+            path = snapshot_file(self._snapshots, stored)
+        except NotFound:
+            return 0
+        if self._enroller is None:
             return 0
         upload = Upload(path.name, "image/jpeg", path.read_bytes())
         result = await asyncio.to_thread(self._enroller.enrol, [upload])
