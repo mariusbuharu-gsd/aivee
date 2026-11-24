@@ -98,7 +98,37 @@ export interface CameraFrame {
   url: string;
   /** ISO time the frame was taken, null when unknown. */
   at: string | null;
+  /** `X-Frame-Size` of a test still ("640x360"), when the API sends it. */
+  size?: string | null;
   release(): void;
+}
+
+/** Brands the AiVee box recognises on the venue network; `unknown` for anything else. */
+export type DiscoveredBrand = 'tapo' | 'hikvision' | 'dahua' | 'reolink' | 'unknown';
+
+/** One camera the box found (`POST /api/devices/{id}/discover`). */
+export interface DiscoveredCamera {
+  ip: string;
+  port: number;
+  brand: DiscoveredBrand;
+  model: string | null;
+  /** The name the camera gives itself (ONVIF), if any. */
+  name: string | null;
+  onvif: boolean;
+  /** Stream paths to try, best (the substream) first. */
+  rtsp_paths: string[];
+  /** A camera of this location already uses this IP. */
+  already_added: boolean;
+}
+
+/**
+ * `POST /api/cameras/test`: either a `source` not saved yet (with the `device` that should open
+ * it), or a saved camera by `camera_id`, so its password is never sent again.
+ */
+export interface CameraTestInput {
+  source?: string | null;
+  camera_id?: string | null;
+  device?: string | null;
 }
 
 /** What the "Adaugă cameră" form sends. `id` must match the edge's CAMERA_ID. */
@@ -251,11 +281,13 @@ export interface Capabilities {
   videos: boolean;
   /** Staff profiles (photos, live capture). */
   enrol: boolean;
-  /**
-   * "Testează camera" in Adaugă cameră (`testCameraSource`). No API sends it yet, so absent
-   * means the button stays hidden; see docs/handbook/frontend.md "Known gaps" for the endpoint.
-   */
+  /** "Testează camera" (`testCamera`): absent or false hides every test button. */
   camera_test?: boolean;
+  /**
+   * "Caută camere" (`discoverCameras`): the add-camera wizard. Absent or false keeps the manual
+   * brand + IP form.
+   */
+  camera_discovery?: boolean;
 }
 
 export interface ApiClient extends AccountApi {
@@ -273,11 +305,17 @@ export interface ApiClient extends AccountApi {
    */
   captureFrame(cameraId: string): Promise<CameraFrame>;
   /**
-   * "Testează camera" before it is saved: the location's device opens `source` once and sends
-   * back one face-blurred still. Only call it when `Capabilities.camera_test` is true. Rejects
-   * with the API's Romanian reason (wrong password, unreachable, no stream at that path).
+   * "Testează camera": the device opens the source (a new one, or a saved camera's by
+   * `camera_id`) once and sends back one face-blurred still. Only call it when
+   * `Capabilities.camera_test` is true. Rejects with an ApiError whose code is a
+   * `CameraProblemCode` (wrong password, unreachable, no stream, device offline or slow).
    */
-  testCameraSource(source: string, device?: string): Promise<CameraFrame>;
+  testCamera(input: CameraTestInput): Promise<CameraFrame>;
+  /**
+   * "Caută camere": the device scans the venue network (up to ~10 s). Rejects with
+   * `device_offline` (409) or `device_timeout` (504). Only when `Capabilities.camera_discovery`.
+   */
+  discoverCameras(deviceId: string): Promise<DiscoveredCamera[]>;
   /**
    * `GET /api/cameras/{id}/live.mjpg` for an `<img>`: the frames a connector posts over HTTPS
    * (cloud mode). 404 while none came recently. Null when the API has no such stream (mock).

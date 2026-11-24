@@ -4,7 +4,9 @@
 
 - Stack: Vite 8, React 19, React Router, TypeScript strict, Vitest, ESLint + Prettier. No UI kit.
 - Run against the mock: `npm ci && npm run dev` (no `VITE_API_URL`) — a demo timeline plays, and the login
-  page offers the demo accounts.
+  page offers the demo accounts. Camere → Adaugă cameră demos the whole setup: the box of *Terasa demo*
+  finds two Tapo cameras and a Hikvision (the Tapo at `192.168.1.20` is already added), the password
+  `gresit` is refused (`camera_auth`), and *Bistro Centru*'s box is switched off (the "no box" state).
 - Run against the real stack: `make data-dirs && make up && make seed` in the repo root, then
   `VITE_API_URL=http://localhost:8000 npm run dev` and log in as `owner@aivee.demo` (password `DEMO_PASSWORD`
   in `.env`). Live video: `VITE_WHEP_BASE` (default `http://localhost:8889`).
@@ -22,7 +24,8 @@
   API's CORS allows. These tests are read-only.
 - `e2e/mock/` covers sign-in and `?next=`, sign-out, invites, the role matrix per page, the location switcher,
   the alert timeline (no "Preiau"), history filters, metrics, two cameras on one location (Live, staff
-  without video, the zone editor's camera switch) and adding an IP camera by brand (`cameras.spec.ts`).
+  without video, the zone editor's camera switch) adding an IP camera by brand (`cameras.spec.ts`), and the "Caută camere" wizard: discover → pick → test →
+  name → zones, a refused Tapo password with the guide, no box online (`camera-setup.spec.ts`).
   `e2e/real/` asserts each role loads its pages
   without any 4xx from the API (the anonymous `/api/auth/me` probe excepted).
 - Failures keep a trace and screenshot in `test-results/`; open one with `npx playwright show-trace <zip>`.
@@ -38,7 +41,7 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 | `/alerte` | Alerte | `alerts.view` | alerts with the timeline Deschisă → Ajuns → Închisă with the wait (no "Preiau": the camera closes alerts; a "Preluată" step shows only on old alerts that were taken); AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare: median and p90, from arrival times; the Reacție and Drum tiles are hidden since nobody takes alerts), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text; open rules („dacă e foc”, „dacă vine un urs”) read Unde / Ce caută / Cât timp / Atunci, `anywhere` shows as „oriunde în imagine” (`src/rules/chips.ts`) |
-| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | one card per camera with its state (as on Live), "Adaugă cameră": *Cameră IP* (brand Tapo / Hikvision / Dahua / Reolink / Altă marcă, IP, user, password → the substream RTSP address from `src/devices/rtsp.ts`, e.g. Tapo `rtsp://{user}:{pass}@{ip}:554/stream2`, shown only with the password masked under "Avansat, pentru instalator"; "Testează camera" only when `/api/capabilities` says `camera_test`), *Telefon* (a cloud camera, then the QR) or *Altă sursă* (raw address); a second camera defaults to the device of the first; "Editează camera" asks IP, user and a new password (empty keeps it) and never shows the stored one; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile; device id, source, FPS/CPU and the latency line sit under "Detalii tehnice"; an online device silent for > 60 s shows "fără imagine"; the offline checklist asks about the laptop script and `/telefon` for `mqtt-frames://` sources |
+| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | one card per camera with its state (as on Live), "Testează" on IP camera cards (`camera_test`: the box opens the saved camera by `camera_id`, the password is never resent; dialog with the still or the problem and a fix hint), "Adaugă cameră": when `/api/capabilities` says `camera_discovery`, a wizard (`components/AddCameraWizard.tsx`) with no IPs, RTSP, ids or box names on the owner's way: 1 the box (picked by itself when the location has one online; none → „Cutia AiVee nu e pornită sau nu e conectată” and what to check; several → „Cutia AiVee 1/2” with the cameras each serves), 2 „Caută camere” (up to ~10 s with a progress bar; brand, model or name, IP; `already_added` greyed out as „Deja adăugată”; „Nu-mi găsești camera? Adaug-o manual” opens the form below), 3 user and password + „Testează” (Tapo: an inline, collapsible 3-step guide to the camera account, opened by a `camera_auth`; other brands one line), 4 a name (id generated from it, `src/devices/discovery.ts`), 5 the zone editor. The source is built from IP, port, the first `rtsp_paths` entry and the account. Without `camera_discovery`, or by „Adaug-o manual”: *Cameră IP* (brand Tapo / Hikvision / Dahua / Reolink / Altă marcă, IP, user, password → the substream RTSP address from `src/devices/rtsp.ts`, e.g. Tapo `rtsp://{user}:{pass}@{ip}:554/stream2`, shown only with the password masked under "Avansat, pentru instalator"; "Testează camera" only when `/api/capabilities` says `camera_test`), *Telefon* (a cloud camera, then the QR) or *Altă sursă* (raw address); a second camera defaults to the device of the first; "Editează camera" asks IP, user and a new password (empty keeps it) and never shows the stored one; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile; device id, source, FPS/CPU and the latency line sit under "Detalii tehnice"; an online device silent for > 60 s shows "fără imagine"; the offline checklist asks about the laptop script and `/telefon` for `mqtt-frames://` sources |
 | `/angajat-nou` | Adaugă angajat (one phone) | `staff.enrol` | the phone films the employee itself, no stream: name or existing profile → `getUserMedia` preview (back camera, front/back toggle, `object-fit: contain`) → Start: a JPEG every 1.5 s for 20 s (`src/staff/burst.ts`, long side ≤ 640 px) → `POST /api/staff/capture/frames` → untick candidates → confirm. Camera tracks stop after the upload. Linked from the Personal card and as a QR in the camera dialog ("Fă-o de pe telefon") |
 | `/telefon` | Telefonul ca cameră | `devices.manage` | the phone browser becomes a cloud camera: `getUserMedia` (back camera, front/back toggle) → always a 640x360 canvas, the video contain-fitted with black bars (a portrait phone arrives whole, never cropped, so zones and boxes line up with the 16:9 Live tile and zone editor; the preview is 16:9 too, with the hint "Ține telefonul pe orizontală pentru imagine întreagă") → JPEG 0.7 → `POST /api/ingest/frames/<id>` with the session cookie at 5 fps, one request in flight (`src/phone/sender.ts` skips frames instead of queueing); status Trimite / Reconectare… / Oprit, frames/s, Screen Wake Lock. Needs HTTPS (or localhost) |
 | `/camere/:cameraId/zone` | Zone editor | `devices.manage` | a "Camera" switch when the location has several (asks about unsaved changes first); draw polygons on the live frame, else the camera's newest blurred still (`captureFrame`), or an uploaded still; zones save per camera; tags `table`, `entrance`, `staff` (shown as „Zonă angajați”) |
@@ -70,7 +73,9 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/login` · `/register` · `/logout` | login / register return `Me` and set the cookie |
-| GET | `/api/capabilities` | `{videos, enrol, camera_test?}`: optional features this server runs; `videos: false` hides „Testează pe un clip” and sends `/video` to Live (a failed call hides nothing) |
+| GET | `/api/capabilities` | `{videos, enrol, camera_test?, camera_discovery?}`: optional features this server runs; `videos: false` hides „Testează pe un clip” and sends `/video` to Live (a failed call hides nothing); `camera_test` shows every „Testează”, `camera_discovery` the add-camera wizard |
+| POST | `/api/devices/{device_id}/discover` | `discoverCameras()`: 200 `{cameras: [{ip, port, brand: tapo\|hikvision\|dahua\|reolink\|unknown, model, name, onvif, rtsp_paths, already_added}]}`; 409 `device_offline`, 504 `device_timeout` (takes up to ~10 s) |
+| POST | `/api/cameras/test?location_id=` | `testCamera()`: body `{source, camera_id, device}` (unset ones null; a saved camera by `camera_id` only) → 200 `image/jpeg` + `X-Frame-At`, `X-Frame-Size`; 422 `camera_auth` \| `camera_unreachable` \| `camera_no_stream` \| `device_required`, 409 `device_offline`, 504 `device_timeout`. The UI shows `message_ro`, with Romanian fallbacks and a fix hint per code (`src/devices/cameraProblems.ts`) |
 | GET | `/api/auth/me` | `{user, org, is_owner, locations: [{id, name, type, role, permissions}]}` |
 | GET/POST · PATCH/DELETE | `/api/locations` · `/api/locations/{id}` | owner |
 | POST · GET | `/api/locations/{id}/telegram/link` · `/api/locations/{id}/telegram` | owner; `{url, private_url, expires_at}` · `{connected, chat_title}` |
@@ -150,8 +155,7 @@ Static HTML/CSS, built by `apps/site/build.mjs`, deployed to GitHub Pages by `.g
 - Staff photo profiles are global (shared by every location), not per location.
 - Cameras can be added only at the API's own location (`SITE`); elsewhere "Adaugă cameră" gets an error.
 - Open alerts stay open when their device goes offline — being fixed in `fix/alert-edge-cases`.
-- **"Testează camera" has no endpoint.** The UI calls `testCameraSource` only when `/api/capabilities` has
-  `camera_test: true`. Proposed: `POST /api/cameras/test?location_id=` (`devices.manage`), body
-  `{source, device?}`; the API asks the location's edge (an `EdgeCommand`) to open the source once and send
-  back one face-blurred still; 200 `image/jpeg` with `X-Frame-At`, 422 `{detail: {code, message_ro}}` with
-  `camera_auth` | `camera_unreachable` | `camera_no_stream`, 504 when the device does not answer in 10 s.
+- **Generated camera ids.** The wizard names a camera `cam-<slug of its name>` (e.g. `cam-sala-mare`). An
+  edge box (`make edge-box`) runs whatever cameras the dashboard configures. Only an edge started with
+  the `CAMERAS` dev override ignores ids it does not know; for such an edge, add the camera with
+  „Adaug-o manual” and the id from `CAMERAS` under „Avansat”.

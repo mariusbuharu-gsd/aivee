@@ -23,6 +23,8 @@ import {
   type ServiceMetrics,
   type ApiClient,
   type CameraFrame,
+  type CameraTestInput,
+  type DiscoveredCamera,
   type CameraView,
   type DeviceView,
   type DashboardMetrics,
@@ -44,6 +46,7 @@ import {
   type VideoAlert,
   type VideoUpload,
 } from './client';
+import { asCameraProblem } from '../devices/cameraProblems';
 import { parseDetections } from '../live/detections';
 import { SharedSocket } from './socket';
 
@@ -214,13 +217,12 @@ export class HttpApi implements ApiClient {
   }
 
   /**
-   * TODO(api): `POST /api/cameras/test` does not exist yet; the dashboard calls this only when
-   * `GET /api/capabilities` says `camera_test: true`. Proposed contract: body `{source, device?}`
-   * (devices.manage, location-scoped) → 200 `image/jpeg` (blurred, `X-Frame-At`), or 422
-   * `{detail: {code, message_ro}}` with code `camera_auth` | `camera_unreachable` |
-   * `camera_no_stream`, or 504 when the device does not answer within 10 s.
+   * `POST /api/cameras/test?location_id=` with `{source, camera_id, device}` (unset ones null):
+   * 200 `image/jpeg` (face-blurred, `X-Frame-At`, `X-Frame-Size`); 422 `camera_auth` |
+   * `camera_unreachable` | `camera_no_stream` | `device_required`; 409 `device_offline`;
+   * 504 `device_timeout`. A saved camera goes by `camera_id`, so its password is not resent.
    */
-  async testCameraSource(source: string, device?: string): Promise<CameraFrame> {
+  async testCamera(input: CameraTestInput): Promise<CameraFrame> {
     let res: Response;
     try {
       res = await fetch(`${this.base}${this.scoped('/api/cameras/test')}`, {
@@ -228,15 +230,37 @@ export class HttpApi implements ApiClient {
         credentials: 'include',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(device ? { source, device } : { source }),
+        body: JSON.stringify({
+          source: input.source ?? null,
+          camera_id: input.camera_id ?? null,
+          device: input.device ?? null,
+        }),
       });
     } catch {
       throw new ApiError('Serverul nu răspunde. Verificați conexiunea.', 'network');
     }
     if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-    if (!res.ok) throw await toApiError(res);
+    if (!res.ok) throw asCameraProblem(await toApiError(res));
     const url = URL.createObjectURL(await res.blob());
-    return { url, at: res.headers.get('X-Frame-At'), release: () => URL.revokeObjectURL(url) };
+    return {
+      url,
+      at: res.headers.get('X-Frame-At'),
+      size: res.headers.get('X-Frame-Size'),
+      release: () => URL.revokeObjectURL(url),
+    };
+  }
+
+  /** `POST /api/devices/{id}/discover` → `{cameras}`; 409 `device_offline`, 504 `device_timeout`. */
+  async discoverCameras(deviceId: string): Promise<DiscoveredCamera[]> {
+    try {
+      const out = await this.request<{ cameras: DiscoveredCamera[] }>(
+        `/api/devices/${encodeURIComponent(deviceId)}/discover`,
+        { method: 'POST' },
+      );
+      return out.cameras;
+    } catch (e) {
+      throw e instanceof ApiError ? asCameraProblem(e) : e;
+    }
   }
 
   saveZones(cameraId: string, zones: Zone[]) {

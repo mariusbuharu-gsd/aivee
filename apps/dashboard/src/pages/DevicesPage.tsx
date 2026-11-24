@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { CameraPatch, CameraView, DashboardMetrics, DeviceView } from '../api/client';
 import { useApi } from '../api/context';
-import { AddCameraForm, DEFAULT_CAMERA_ID, DEFAULT_DEVICE } from '../components/AddCameraForm';
+import { DEFAULT_CAMERA_ID, DEFAULT_DEVICE } from '../components/AddCameraForm';
+import { AddCamera } from '../components/AddCameraWizard';
 import { Icon } from '../components/Icon';
 import { QrCode } from '../components/QrCode';
 import { StaffCaptureButton } from '../components/StaffCapture';
+import { TestCameraDialog } from '../components/TestCameraDialog';
 import type { Metrics } from '../contracts';
 import { CameraThumb } from '../devices/CameraThumb';
 import { cameraHealth, type CameraHealth, type CameraHealthState } from '../devices/health';
@@ -16,6 +18,7 @@ import { useDevices } from '../devices/useDevices';
 import { useNow } from '../live/useNow';
 import { isCloudFrames } from '../live/source';
 import { isCloudCamera } from '../phone/sender';
+import { useCapabilities } from '../state/capabilitiesContext';
 import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
@@ -42,7 +45,9 @@ export function DevicesPage() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<CameraView | null>(null);
   const [phone, setPhone] = useState<CameraView | null>(null);
+  const [testing, setTesting] = useState<CameraView | null>(null);
   const devices = useDevices();
+  const canTest = !!useCapabilities()?.camera_test;
   // Prefill the edge default only while it is free; otherwise suggest the next id.
   const taken = new Set(cameras.map((c) => c.id));
   let next = DEFAULT_CAMERA_ID;
@@ -83,6 +88,7 @@ export function DevicesPage() {
             health={metrics?.devices.find((d) => d.device === c.device) ?? null}
             onEdit={() => setEditing(c)}
             onPhone={isCloudCamera(c) ? () => setPhone(c) : undefined}
+            onTest={canTest && !isCloudCamera(c) ? () => setTesting(c) : undefined}
             onZones={() => navigate(zonesPath(c.id))}
             onRemove={() => setRemoving(c)}
           />
@@ -98,8 +104,9 @@ export function DevicesPage() {
 
       {adding && (
         <Dialog title="Adaugă o cameră" icon="devices" onClose={() => setAdding(false)}>
-          <AddCameraForm
+          <AddCamera
             key={next}
+            cameras={cameras}
             defaultId={next}
             defaultDevice={device}
             onCancel={() => setAdding(false)}
@@ -148,6 +155,7 @@ export function DevicesPage() {
       )}
       {editing && <EditCamera camera={editing} onClose={() => setEditing(null)} />}
       {phone && <PhoneQr camera={phone} onClose={() => setPhone(null)} />}
+      {testing && <TestCameraDialog camera={testing} onClose={() => setTesting(null)} />}
     </div>
   );
 }
@@ -158,6 +166,7 @@ function CameraCard({
   health,
   onEdit,
   onPhone,
+  onTest,
   onZones,
   onRemove,
 }: {
@@ -169,6 +178,8 @@ function CameraCard({
   onEdit: () => void;
   /** Cloud cameras only: show the QR that opens the phone-as-camera page. */
   onPhone?: () => void;
+  /** IP cameras, when the server can test: the box opens it once and sends a still. */
+  onTest?: () => void;
   onZones: () => void;
   onRemove: () => void;
 }) {
@@ -214,9 +225,16 @@ function CameraCard({
         {plural(c.zones?.length ?? 0, 'zonă', 'zone')}
       </p>
       {state !== 'online' && <OfflineChecklist camera={c} health={status} />}
-      <Link to={zonesPath(c.id)} className="btn">
-        Editează zonele
-      </Link>
+      <div className="row-actions device-card-actions">
+        <Link to={zonesPath(c.id)} className="btn">
+          Editează zonele
+        </Link>
+        {onTest && (
+          <button type="button" className="btn" onClick={onTest}>
+            Testează
+          </button>
+        )}
+      </div>
       <StaffCaptureButton camera={c} />
       {/* For whoever installs or debugs; the owner at the demo only needs the lines above. */}
       <details className="tech device-tech">

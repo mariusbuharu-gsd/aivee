@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import type { CameraFrame, CameraView } from '../api/client';
+import { useCallback, useState, type FormEvent } from 'react';
+import type { CameraView } from '../api/client';
 import { useApi } from '../api/context';
 import {
   BRANDS,
@@ -11,11 +11,14 @@ import {
   type CameraBrand,
 } from '../devices/rtsp';
 import { CLOUD_FRAMES_SCHEME } from '../live/source';
+import { useCameraTest } from '../devices/useCameraTest';
 import { useCapabilities } from '../state/capabilitiesContext';
 import { Banner } from '../ui/Banner';
 import { BusyLabel } from '../ui/Eyes';
 import { Select } from '../ui/Select';
 import { PasswordInput, Segmented } from '../ui/controls';
+import { CameraTestOutcome } from './CameraTestOutcome';
+import { TapoGuide } from './TapoGuide';
 
 /** The edge's CAMERA_ID default: the id here must match it or the edge ignores the config. */
 export const DEFAULT_CAMERA_ID = 'cam-01';
@@ -68,6 +71,8 @@ export function AddCameraForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Partial<Record<Field, string>>>({});
+  const [guideOpen, setGuideOpen] = useState(false);
+  const openGuide = useCallback(() => setGuideOpen(true), []);
 
   const info = brandInfo(brand);
   const ipSource = buildRtspUrl({ brand, host, user, password, path, port });
@@ -202,7 +207,11 @@ export function AddCameraForm({
               {msg('password')}
             </div>
           </div>
-          <p className="muted small">{info.hint}</p>
+          {brand === 'tapo' ? (
+            <TapoGuide open={guideOpen} onToggle={setGuideOpen} />
+          ) : (
+            <p className="muted small">{info.hint}</p>
+          )}
           {brand === 'other' && (
             <div className="field-pair">
               <div className="field">
@@ -236,9 +245,10 @@ export function AddCameraForm({
               source={ipSource}
               device={device.trim() || undefined}
               ready={!checkHost(host) && !!user.trim() && !!password}
+              tapo={brand === 'tapo'}
+              onAuthProblem={openGuide}
             />
           ) : (
-            // TODO(api): wire "Testează camera" once the API answers `camera_test: true`.
             <p className="muted small">
               După ce o adaugi, imaginea apare pe cardul camerei în câteva secunde.
             </p>
@@ -336,35 +346,24 @@ function CameraTest({
   source,
   device,
   ready,
+  tapo,
+  onAuthProblem,
 }: {
   source: string;
   device?: string;
   /** IP, user and password are filled in. */
   ready: boolean;
+  tapo: boolean;
+  /** The camera refused the account: the form opens the Tapo guide. */
+  onAuthProblem: () => void;
 }) {
-  const api = useApi();
-  const [busy, setBusy] = useState(false);
-  const [frame, setFrame] = useState<CameraFrame | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [tested, setTested] = useState<string | null>(null);
-
+  const test = useCameraTest();
   // A result belongs to the address it was taken with; editing a field hides it.
-  const stale = tested !== source;
-  useEffect(() => () => frame?.release(), [frame]);
+  const stale = test.key !== source;
 
   async function run() {
-    setBusy(true);
-    setError(null);
-    try {
-      const f = await api.testCameraSource(source, device);
-      setFrame(f);
-    } catch (e) {
-      setFrame(null);
-      setError(e instanceof Error ? e.message : 'Camera nu a răspuns.');
-    } finally {
-      setTested(source);
-      setBusy(false);
-    }
+    const problem = await test.run({ source, device: device ?? null }, source);
+    if (problem?.code === 'camera_auth') onAuthProblem();
   }
 
   return (
@@ -373,26 +372,14 @@ function CameraTest({
         type="button"
         className="btn"
         onClick={() => void run()}
-        disabled={busy || !ready}
+        disabled={test.busy || !ready}
         title={ready ? undefined : 'Completează adresa IP, utilizatorul și parola'}
       >
-        <BusyLabel busy={busy} idle="Testează camera">
+        <BusyLabel busy={test.busy} idle="Testează camera">
           Se testează…
         </BusyLabel>
       </button>
-      {frame && !stale && (
-        <figure className="camera-test-shot">
-          <img src={frame.url} alt="Imagine de test de la cameră, cu fețele estompate" />
-          <figcaption className="small" role="status">
-            Camera răspunde. Așa o vede AiVee.
-          </figcaption>
-        </figure>
-      )}
-      {error && !stale && (
-        <Banner tone="error" title="Testul nu a reușit.">
-          {error}
-        </Banner>
-      )}
+      {!stale && <CameraTestOutcome frame={test.frame} problem={test.problem} tapo={tapo} />}
     </div>
   );
 }

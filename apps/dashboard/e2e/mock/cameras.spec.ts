@@ -40,11 +40,13 @@ test('the zone editor switches between the two cameras', async ({ page }) => {
   await expect(page.getByAltText(/Ultima captură de la Terasă/)).toBeVisible();
 });
 
-test('an owner adds a Tapo camera by IP, user and password, and tests it', async ({ page }) => {
+test('an installer adds a Tapo camera by IP, user and password, and tests it', async ({ page }) => {
   const secret = 'Parola-Tapo-42';
   await signIn(page, 'owner', MOCK_PASSWORD, '/dispozitive');
   await page.getByRole('button', { name: 'Adaugă cameră' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Adaugă o cameră' });
+  // The installer's way in: past "Caută camere", straight to brand + IP.
+  await dialog.getByRole('button', { name: 'Adaug-o manual' }).click();
   await expect(dialog.getByRole('button', { name: 'Cameră IP' })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -84,6 +86,7 @@ test('a Hikvision camera gets its substream path', async ({ page }) => {
   await signIn(page, 'owner', MOCK_PASSWORD, '/dispozitive');
   await page.getByRole('button', { name: 'Adaugă cameră' }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Adaugă o cameră' });
+  await dialog.getByRole('button', { name: 'Adaug-o manual' }).click();
   await choose(page, 'Marca', 'Hikvision');
   await expect(dialog.getByLabel('Utilizator')).toHaveValue('admin');
   await dialog.getByLabel('Adresa IP').fill('10.0.0.8');

@@ -1,0 +1,347 @@
+/* Adding and testing a camera: the "Caută camere" wizard, the Tapo guide, test outcomes. */
+
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+}
+.wizard-manual {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* Where the owner is: done steps quiet, the current one in ink. */
+.wizard-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--muted-2);
+}
+.wizard-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.wizard-step-n {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+}
+.wizard-steps .is-done .wizard-step-n {
+  background: var(--surface-3);
+  border-color: var(--surface-3);
+}
+.wizard-steps .is-current {
+  color: var(--text);
+  font-weight: 600;
+}
+.wizard-steps .is-current .wizard-step-n {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+/* On a phone only the current step keeps its word; the others stay for screen readers. */
+@media (max-width: 480px) {
+  .wizard-steps li:not(.is-current) .wizard-step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+.wizard-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wizard-pane > .h3 {
+  margin: 0;
+}
+
+.wizard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.wizard-empty p {
+  margin: 0;
+}
+.wizard-checks {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wizard-none {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+/* A found camera or a box: the whole row is the button. (Beats `.dialog-body ul`.) */
+.wizard .wizard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wizard-choice {
+  width: 100%;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.wizard-choice:hover:not(:disabled) {
+  border-color: var(--ink);
+  background: var(--surface-2);
+}
+.wizard-choice:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.wizard-choice.is-added {
+  cursor: default;
+  background: var(--surface-2);
+  color: var(--muted-2);
+  border-style: dashed;
+}
+.wizard-choice-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+.wizard-choice-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wizard-choice-main {
+  font-weight: 600;
+}
+.wizard-choice-sub {
+  font-size: 0.83rem;
+  color: var(--muted-2);
+  overflow-wrap: anywhere;
+}
+.wizard-choice .pill {
+  flex: none;
+}
+
+.wizard-manual-link {
+  margin: 0;
+  color: var(--muted);
+}
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* "Caută camere" takes up to ~10 s: a bar that fills over that time. */
+.scan-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scan-progress p {
+  margin: 0;
+}
+.scan-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.scan-bar > span {
+  display: block;
+  height: 100%;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--live);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scan-bar > span {
+    width: 95%;
+    transform-origin: left;
+    animation: scan-fill 10s cubic-bezier(0.2, 0.6, 0.4, 1) forwards;
+  }
+}
+@keyframes scan-fill {
+  from {
+    transform: scaleX(0.04);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.picked-camera {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.picked-camera > svg {
+  flex: none;
+  color: var(--muted-2);
+}
+
+.name-ideas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.name-ideas .btn[aria-pressed='true'] {
+  border-color: var(--ink);
+  background: var(--surface-3);
+}
+.wizard-still {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: var(--night-2);
+  border-radius: var(--radius-sm);
+}
+
+.camera-test-outcome {
+  width: 100%;
+}
+
+/* A failed test: the API's sentence, then what to do now on its own line. */
+.camera-problem-hint {
+  display: block;
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+/* Tapo: the camera account, in three drawn steps. */
+.tapo-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.tapo-guide > p {
+  margin: 0;
+}
+.tapo-guide summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--coral-strong);
+}
+.tapo-steps {
+  list-style: none;
+  counter-reset: tapo;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tapo-steps li {
+  counter-increment: tapo;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.tapo-steps p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.tapo-steps p::before {
+  content: counter(tapo) '. ';
+  font-weight: 700;
+}
+.tapo-sketch {
+  flex: none;
+  width: 44px;
+  height: 72px;
+}
+.tapo-sketch .sk-frame {
+  fill: var(--surface);
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+.tapo-sketch .sk-notch,
+.tapo-sketch .sk-ink {
+  fill: var(--muted-2);
+}
+.tapo-sketch .sk-row {
+  fill: var(--surface-3);
+}
+.tapo-sketch .sk-field {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.tapo-sketch .sk-line {
+  fill: none;
+  stroke: var(--muted-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* The one thing to tap: coral, as everything that needs attention. */
+.tapo-sketch .sk-hit,
+.tapo-sketch .sk-switch {
+  fill: var(--coral);
+}
+.tapo-sketch .sk-row.is-hit {
+  fill: var(--coral-tint);
+  stroke: var(--coral);
+  stroke-width: 1.5;
+}
+.tapo-sketch .sk-knob {
+  fill: var(--surface);
+}
