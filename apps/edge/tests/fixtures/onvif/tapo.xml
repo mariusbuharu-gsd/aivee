@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:wsdd="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:tdn="http://www.onvif.org/ver10/network/wsdl">
+  <SOAP-ENV:Header>
+    <wsa:MessageID>uuid:2419d68a-2dd2-21b2-a205-1c61b4aa0b01</wsa:MessageID>
+    <wsa:RelatesTo>uuid:6f1f2b0e-9a49-4a4e-8b8a-0d6f9c2f3a11</wsa:RelatesTo>
+    <wsa:To SOAP-ENV:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</wsa:To>
+    <wsa:Action SOAP-ENV:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</wsa:Action>
+  </SOAP-ENV:Header>
+  <SOAP-ENV:Body>
+    <wsdd:ProbeMatches>
+      <wsdd:ProbeMatch>
+        <wsa:EndpointReference>
+          <wsa:Address>uuid:2419d68a-2dd2-21b2-a205-1c61b4aa0b01</wsa:Address>
+        </wsa:EndpointReference>
+        <wsdd:Types>tdn:NetworkVideoTransmitter</wsdd:Types>
+        <wsdd:Scopes>onvif://www.onvif.org/name/TP-IPC onvif://www.onvif.org/hardware/C210 onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/location/ShenZhen onvif://www.onvif.org/type/NetworkVideoTransmitter</wsdd:Scopes>
+        <wsdd:XAddrs>http://192.168.1.21:2020/onvif/device_service</wsdd:XAddrs>
+        <wsdd:MetadataVersion>1</wsdd:MetadataVersion>
+      </wsdd:ProbeMatch>
+    </wsdd:ProbeMatches>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

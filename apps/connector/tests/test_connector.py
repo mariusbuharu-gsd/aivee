@@ -248,6 +248,21 @@ def test_frame_request_has_path_and_basic_auth() -> None:
     assert path == "/aivee/api/ingest/frames/cam-01"
 
 
+def test_a_camera_push_key_is_sent_as_bearer_instead_of_the_shared_credential() -> None:
+    conf = c.Config.from_env(
+        {
+            "SOURCE": "0",
+            "CLOUD_PUSH_URL": "https://h",
+            "CLOUD_PUSH_KEY": "k3y",
+            "STREAM_PUBLISH_USER": "pub",
+            "STREAM_PUBLISH_PASSWORD": "pw",
+        }
+    )
+    _, headers = c.frame_request(conf)
+    assert headers["Authorization"] == "Bearer k3y"
+    assert "k3y" not in repr(conf)
+
+
 class FakeResponse:
     def __init__(self, status: int) -> None:
         self.status = status
@@ -330,3 +345,59 @@ def test_slow_server_drops_frames_instead_of_queueing() -> None:
     t.join(3)
     assert sent == [b"f0", b"f9"]
     assert slot.dropped == 8
+
+
+# --- camera credentials stay out of logs and printed commands (S11) --------------------------
+
+CAMERA = "rtsp://admin:camPass1@192.168.1.20:554/stream1"
+
+
+@pytest.mark.parametrize(
+    ("url", "shown"),
+    [
+        (CAMERA, "rtsp://admin:***@192.168.1.20:554/stream1"),
+        ("http://token@phone:8080/video", "http://***@phone:8080/video"),
+        (
+            "http://phone:8080/video?user=a&password=x",
+            "http://phone:8080/video?user=a&password=***",
+        ),
+        ("0", "0"),
+        ("/videos/sala.mp4", "/videos/sala.mp4"),
+    ],
+)
+def test_redact_url_masks_camera_secrets(url: str, shown: str) -> None:
+    assert c.redact_url(url) == shown
+
+
+class _Stop(Exception):
+    pass
+
+
+def _boom(*_a: object, **_k: object) -> None:
+    raise _Stop
+
+
+def test_rtsp_run_logs_the_camera_without_its_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(c.subprocess, "call", _boom)
+    with caplog.at_level("INFO"), pytest.raises(_Stop):
+        c.run(cfg(source=CAMERA))
+    assert "camPass1" not in caplog.text and "s3cret" not in caplog.text
+    assert "pushing rtsp://admin:***@192.168.1.20:554/stream1 -> " in caplog.text
+
+
+def test_https_push_logs_the_camera_without_its_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(c.subprocess, "Popen", _boom)
+    with caplog.at_level("INFO"), pytest.raises(_Stop):
+        c.run_push(cfg(source=CAMERA, push_url="https://app.example"))
+    assert "camPass1" not in caplog.text
+    assert "pushing rtsp://admin:***@192.168.1.20:554/stream1 -> https://app.example" in caplog.text
+
+
+def test_printed_command_hides_the_camera_password_too() -> None:
+    shown = " ".join(c.redact(c.ffmpeg_args(cfg(source=CAMERA)), "s3cret"))
+    assert "camPass1" not in shown and "s3cret" not in shown
+    assert "rtsp://admin:***@192.168.1.20:554/stream1" in shown

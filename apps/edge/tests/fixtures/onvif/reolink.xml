@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:wsdd="http://schemas.xmlsoap.org/ws/2005/04/discovery">
+  <SOAP-ENV:Body>
+    <wsdd:ProbeMatches>
+      <wsdd:ProbeMatch>
+        <wsdd:Types>dn:NetworkVideoTransmitter</wsdd:Types>
+        <wsdd:Scopes>onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/name/Reolink%20Cam onvif://www.onvif.org/hardware/RLC-510A</wsdd:Scopes>
+        <wsdd:XAddrs>http://192.168.1.30:8000/onvif/device_service</wsdd:XAddrs>
+      </wsdd:ProbeMatch>
+    </wsdd:ProbeMatches>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

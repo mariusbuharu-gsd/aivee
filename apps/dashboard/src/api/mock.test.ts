@@ -174,3 +174,63 @@ describe('MockApi devices and frames', () => {
     await expect(api.captureFrame('nope')).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe('MockApi camera setup', () => {
+  const fresh = () => new MockApi({ latencyMs: 0, autoplay: false });
+
+  it('lists each box once, online while one of its cameras is', async () => {
+    const api = fresh();
+    await api.createCamera({ id: 'cam-bar', name: 'Bar', source: 's', device: 'edge-sala' });
+    const devices = await api.listDevices();
+    expect(devices.map((d) => [d.device, d.state])).toEqual([
+      ['edge-sala', 'online'],
+      ['edge-terasa', 'offline'],
+    ]);
+    expect(devices[0]?.cameras).toEqual(['cam-sala', 'cam-bar']);
+  });
+
+  it('finds two Tapo cameras and a Hikvision, the one in use marked as added', async () => {
+    const api = fresh();
+    const found = await api.discoverCameras('edge-sala');
+    expect(found.map((c) => [c.brand, c.ip, c.already_added])).toEqual([
+      ['tapo', '192.168.1.20', true],
+      ['tapo', '192.168.1.23', false],
+      ['hikvision', '192.168.1.31', false],
+    ]);
+    await api.createCamera({
+      id: 'cam-bar',
+      name: 'Bar',
+      source: 'rtsp://a:b@192.168.1.23:554/stream2',
+      device: 'edge-sala',
+    });
+    expect((await api.discoverCameras('edge-sala'))[1]?.already_added).toBe(true);
+  });
+
+  it('cannot scan or test through a box that is off', async () => {
+    const api = fresh();
+    await expect(api.discoverCameras('edge-terasa')).rejects.toMatchObject({
+      code: 'device_offline',
+      status: 409,
+    });
+    await expect(api.testCamera({ camera_id: 'cam-terasa' })).rejects.toMatchObject({
+      code: 'device_offline',
+    });
+  });
+
+  it('refuses the password "gresit" and sends a still otherwise', async () => {
+    const api = fresh();
+    const bad = 'rtsp://ana:gresit@192.168.1.23:554/stream2';
+    await expect(api.testCamera({ source: bad, device: 'edge-sala' })).rejects.toMatchObject({
+      code: 'camera_auth',
+      status: 422,
+    });
+    const ok = await api.testCamera({ camera_id: 'cam-sala' });
+    expect(ok.url).toMatch(/^data:image\/svg\+xml,/);
+  });
+
+  it("shows Bistro Centru's box as switched off", async () => {
+    const api = fresh();
+    api.setLocation('centru');
+    expect(await api.listDevices()).toMatchObject([{ device: 'edge-centru', state: 'offline' }]);
+  });
+});

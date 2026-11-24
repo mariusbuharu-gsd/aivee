@@ -1,3 +1,6 @@
+from datetime import datetime
+
+from aivee_contracts.events import StreamState
 from aivee_contracts.geometry import CameraConfig, Zone
 from pydantic import BaseModel, Field
 
@@ -23,7 +26,15 @@ class CameraPatch(BaseModel):
 
 
 class CameraOut(CameraConfig):
-    """A camera plus the device that serves it (dashboard `CameraView`)."""
+    """A camera plus the device that serves it (dashboard `CameraView`).
+
+    `online`: its device is online and its stream is not `down`. `stream_state`: what the
+    edge last reported for this camera, `down` while its device is offline, None when unknown
+    (an older edge, a clip or cloud camera, no status yet). `last_frame_at`: when the edge
+    decoded its newest frame, as of that report; None when unknown or before the first one.
+    """
 
     device: str = ""
     online: bool = False
+    stream_state: StreamState | None = None
+    last_frame_at: datetime | None = None

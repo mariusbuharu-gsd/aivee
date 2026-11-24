@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aivee_edge.redact import redact_url
+
 if TYPE_CHECKING:
     from aivee_edge.domain.ports import FrameSource
 
@@ -81,14 +83,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270])
     p.add_argument("--out", type=Path, default=None, help="default recordings/clip-<time>.mp4")
     args = p.parse_args(argv)
+    shown = redact_url(args.source)
     out: Path = args.out or Path("recordings") / f"clip-{time.strftime('%Y%m%d-%H%M%S')}.mp4"
 
     try:
         source = open_source(args.source, args.fps, args.rotate)
     except (OSError, ValueError) as e:
-        print(f"record_clip: cannot open {args.source}: {e}", file=sys.stderr)
+        print(f"record_clip: cannot open {shown}: {e}", file=sys.stderr)
         return 2
-    print(f"record_clip: recording {args.seconds:.0f}s from {args.source} to {out}", flush=True)
+    print(f"record_clip: recording {args.seconds:.0f}s from {shown} to {out}", flush=True)
     try:
         frames = record(source, out, args.seconds, args.fps)
     except KeyboardInterrupt:
@@ -102,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         if close is not None:
             close()
     if frames == 0:
-        print(f"record_clip: no frames from {args.source}", file=sys.stderr)
+        print(f"record_clip: no frames from {shown}", file=sys.stderr)
         return 2
     print(f"record_clip: wrote {frames} frames ({frames / args.fps:.1f}s) to {out}")
     return 0

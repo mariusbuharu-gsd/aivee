@@ -1,0 +1,193 @@
+{
+  "$defs": {
+    "DiscoveredCamera": {
+      "description": "An IP camera the edge found on its network (ONVIF discovery or an open RTSP port).",
+      "properties": {
+        "ip": {
+          "title": "Ip",
+          "type": "string"
+        },
+        "port": {
+          "default": 554,
+          "description": "RTSP port",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "brand": {
+          "default": "unknown",
+          "enum": [
+            "tapo",
+            "hikvision",
+            "dahua",
+            "reolink",
+            "unknown"
+          ],
+          "title": "Brand",
+          "type": "string"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "onvif": {
+          "default": false,
+          "description": "Answered an ONVIF WS-Discovery probe",
+          "title": "Onvif",
+          "type": "boolean"
+        },
+        "rtsp_paths": {
+          "description": "Suggested RTSP paths, substream first",
+          "items": {
+            "type": "string"
+          },
+          "title": "Rtsp Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ip"
+      ],
+      "title": "DiscoveredCamera",
+      "type": "object"
+    }
+  },
+  "description": "Published by the edge on `replies` (QoS 1, not retained), one per `EdgeRequest`.",
+  "properties": {
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "discover_cameras",
+        "test_camera"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "device": {
+      "title": "Device",
+      "type": "string"
+    },
+    "ok": {
+      "title": "Ok",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "enum": [
+            "camera_auth",
+            "camera_unreachable",
+            "camera_no_stream",
+            "bad_request",
+            "failed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "cameras": {
+      "description": "discover_cameras: what was found",
+      "items": {
+        "$ref": "#/$defs/DiscoveredCamera"
+      },
+      "title": "Cameras",
+      "type": "array"
+    },
+    "jpeg_b64": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "test_camera: the face-blurred still, base64 JPEG",
+      "title": "Jpeg B64"
+    },
+    "width": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "test_camera: the stream's frame width",
+      "title": "Width"
+    },
+    "height": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "test_camera: the stream's frame height",
+      "title": "Height"
+    },
+    "frame_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "test_camera: when it was taken",
+      "title": "Frame At"
+    },
+    "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "kind",
+    "device",
+    "ok",
+    "at"
+  ],
+  "title": "EdgeReply",
+  "type": "object"
+}

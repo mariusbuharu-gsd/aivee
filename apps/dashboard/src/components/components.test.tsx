@@ -3,8 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { AlertItem } from '../alerts/fold';
 import type { Rule, StaffSuggestion } from '../contracts';
-import { fakeApi, renderWithApi } from '../test/fakeApi';
+import { fakeApi, fakeAuth, renderWithApi } from '../test/fakeApi';
 import { ApiError } from '../api/client';
+import { ApiContext } from '../api/context';
+import { AuthContext } from '../auth/context';
+import { CapabilitiesContext } from '../state/capabilitiesContext';
 import { AddCameraForm } from './AddCameraForm';
 import { ruleLimitS } from '../alerts/limit';
 import { AlertFeed } from './AlertFeed';
@@ -177,18 +180,118 @@ describe('RuleComposer', () => {
 });
 
 describe('AddCameraForm', () => {
-  it('creates the camera with the edge defaults prefilled', async () => {
+  it('builds the Tapo substream address from IP, user and password', async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn();
     const { api } = renderWithApi(<AddCameraForm onCreated={onCreated} />);
     expect(screen.getByLabelText('Id cameră')).toHaveValue('cam-01');
     expect(screen.getByLabelText('Dispozitiv')).toHaveValue('edge-01');
+    expect(screen.getByRole('combobox', { name: 'Marca' })).toHaveTextContent('Tapo');
+    await user.type(screen.getByLabelText('Nume'), 'Sala');
+    await user.type(screen.getByLabelText('Adresa IP'), '192.168.1.20');
+    await user.type(screen.getByLabelText('Utilizator'), 'ana');
+    await user.type(screen.getByLabelText('Parolă'), 'p@ss');
+    // Only the masked address is ever on screen.
+    expect(screen.getByText('rtsp://ana:••••@192.168.1.20:554/stream2')).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('p@ss');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    const sent = {
+      id: 'cam-01',
+      name: 'Sala',
+      source: 'rtsp://ana:p%40ss@192.168.1.20:554/stream2',
+      device: 'edge-01',
+    };
+    expect(api.createCamera).toHaveBeenCalledWith(sent);
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining(sent)));
+  });
+
+  it('uses the Hikvision template and prefills its user', async () => {
+    const user = userEvent.setup();
+    const { api } = renderWithApi(<AddCameraForm defaultDevice="edge-sala" />);
+    await user.click(screen.getByRole('combobox', { name: 'Marca' }));
+    await user.click(screen.getByRole('option', { name: 'Hikvision' }));
+    expect(screen.getByLabelText('Utilizator')).toHaveValue('admin');
+    await user.type(screen.getByLabelText('Nume'), 'Bar');
+    await user.type(screen.getByLabelText('Adresa IP'), '10.0.0.8');
+    await user.type(screen.getByLabelText('Parolă'), 'x');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    expect(api.createCamera).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'rtsp://admin:x@10.0.0.8:554/Streaming/Channels/102',
+        device: 'edge-sala',
+      }),
+    );
+  });
+
+  it('checks the IP and the account before calling the API', async () => {
+    const user = userEvent.setup();
+    const { api } = renderWithApi(<AddCameraForm />);
+    await user.type(screen.getByLabelText('Adresa IP'), 'rtsp://192.168.1.20');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    expect(api.createCamera).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Adresa IP')).toHaveAccessibleDescription(/doar adresa IP/);
+    expect(screen.getByLabelText('Utilizator')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Parolă')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('tests the camera when the server can, and shows the blurred still', async () => {
+    const user = userEvent.setup();
+    const api = fakeApi();
+    render(
+      <ApiContext.Provider value={api}>
+        <AuthContext.Provider value={fakeAuth()}>
+          <CapabilitiesContext.Provider value={{ videos: true, enrol: true, camera_test: true }}>
+            <AddCameraForm />
+          </CapabilitiesContext.Provider>
+        </AuthContext.Provider>
+      </ApiContext.Provider>,
+    );
+    const test = screen.getByRole('button', { name: 'Testează camera' });
+    expect(test).toBeDisabled();
+    await user.type(screen.getByLabelText('Adresa IP'), '192.168.1.20');
+    await user.type(screen.getByLabelText('Utilizator'), 'ana');
+    await user.type(screen.getByLabelText('Parolă'), 'pw');
+    await user.click(test);
+    expect(api.testCamera).toHaveBeenCalledWith({
+      source: 'rtsp://ana:pw@192.168.1.20:554/stream2',
+      device: 'edge-01',
+    });
+    expect(await screen.findByRole('img', { name: /Imagine de test/ })).toBeInTheDocument();
+    // Another address: the old result goes.
+    await user.type(screen.getByLabelText('Adresa IP'), '1');
+    expect(screen.queryByRole('img', { name: /Imagine de test/ })).toBeNull();
+  });
+
+  it('hides "Testează camera" while the server cannot test', () => {
+    renderWithApi(<AddCameraForm />);
+    expect(screen.queryByRole('button', { name: 'Testează camera' })).toBeNull();
+  });
+
+  it('keeps a raw address for installers under "Altă sursă"', async () => {
+    const user = userEvent.setup();
+    const { api } = renderWithApi(<AddCameraForm />);
+    await user.click(screen.getByRole('button', { name: 'Altă sursă' }));
     await user.type(screen.getByLabelText('Nume'), 'Sala');
     await user.type(screen.getByLabelText(/Adresa sursei/), 'rtsp://cam/1');
     await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
-    const sent = { id: 'cam-01', name: 'Sala', source: 'rtsp://cam/1', device: 'edge-01' };
-    expect(api.createCamera).toHaveBeenCalledWith(sent);
-    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(expect.objectContaining(sent)));
+    expect(api.createCamera).toHaveBeenCalledWith({
+      id: 'cam-01',
+      name: 'Sala',
+      source: 'rtsp://cam/1',
+      device: 'edge-01',
+    });
+  });
+
+  it('turns a phone into a cloud camera without asking for an address', async () => {
+    const user = userEvent.setup();
+    const { api } = renderWithApi(<AddCameraForm defaultId="cam-03" />);
+    await user.click(screen.getByRole('button', { name: 'Telefon' }));
+    expect(screen.queryByLabelText('Adresa IP')).toBeNull();
+    await user.type(screen.getByLabelText('Nume'), 'Telefon bar');
+    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    expect(api.createCamera).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'cam-03', source: 'mqtt-frames://cam-03' }),
+    );
   });
 
   it('says next to the field what is wrong, before calling the API', async () => {

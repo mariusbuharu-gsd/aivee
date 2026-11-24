@@ -218,6 +218,57 @@ async def test_camera_online_follows_device_status(api: httpx.AsyncClient, sessi
     assert (device["device"], device["state"], device["site"]) == ("edge-01", "online", "test")
 
 
+async def test_cameras_carry_their_stream_health(api: httpx.AsyncClient, sessions: Any) -> None:
+    for cam in ("cam1", "cam2", "cam3"):
+        r = await api.post("/api/cameras", json={"id": cam, "name": cam, "source": "rtsp://x"})
+        assert r.status_code == 201, r.text
+    at = "2026-11-23T12:00:00Z"
+    status = DeviceStatus.model_validate(
+        {
+            "device": "edge-01",
+            "state": "online",
+            "cameras": ["cam1", "cam2", "cam3"],
+            "camera_health": [
+                {"camera_id": "cam1", "state": "ok", "last_frame_at": at, "fps": 15},
+                {"camera_id": "cam2", "state": "down", "last_frame_at": None, "fps": 0},
+            ],
+        }
+    )
+    async with sessions() as s:
+        await DeviceRepository(s).apply_status("test", status)
+        await s.commit()
+
+    def view(cameras: list[dict[str, Any]]) -> dict[str, tuple[Any, ...]]:
+        return {
+            c["id"]: (
+                c["online"],
+                c["stream_state"],
+                c["last_frame_at"] and c["last_frame_at"][:19],
+            )
+            for c in cameras
+        }
+
+    assert view((await api.get("/api/cameras")).json()) == {
+        "cam1": (True, "ok", "2026-11-23T12:00:00"),
+        "cam2": (False, "down", None),  # its device is online, but this camera sees nothing
+        "cam3": (True, None, None),  # no health for it: unknown
+    }
+    assert (await api.get("/api/cameras/cam2")).json()["stream_state"] == "down"
+    [device] = (await api.get("/api/devices")).json()
+    assert [h["camera_id"] for h in device["camera_health"]] == ["cam1", "cam2"]
+
+    async with sessions() as s:
+        await DeviceRepository(s).apply_status(
+            "test", DeviceStatus(device="edge-01", state="offline")
+        )
+        await s.commit()
+    assert view((await api.get("/api/cameras")).json()) == {
+        "cam1": (False, "down", "2026-11-23T12:00:00"),  # the last frame it saw stays known
+        "cam2": (False, "down", None),
+        "cam3": (False, "down", None),
+    }
+
+
 async def test_rule_crud_publishes_the_complete_rule_set(
     api: httpx.AsyncClient, publisher: RecordingPublisher
 ) -> None:
@@ -469,7 +520,7 @@ async def test_pending_suggestions_link_the_blurred_crop_when_the_edge_sent_one(
 async def test_confirm_with_snapshot_learns_the_crop(
     api: httpx.AsyncClient, sessions: Any, settings: ApiSettings, publisher: RecordingPublisher
 ) -> None:
-    sid = await _suggestion(sessions)
+    sid = await _suggestion(sessions, snapshot=True)
     (settings.snapshot_dir / f"{sid}.jpg").write_bytes(bytes([8]))
     r = await api.post(f"/api/staff/suggestions/{sid}/confirm")
     assert r.json()["examples_added"] == 1

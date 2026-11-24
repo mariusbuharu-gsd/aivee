@@ -1,7 +1,9 @@
 """Telegram Bot API notifier: sendPhoto with the blurred snapshot, else sendMessage.
 
-The chat is the alert's location's `telegram_chat_id` (via `chat_for(event_id)`), else
-TELEGRAM_CHAT_ID. Follow-ups (`send_text`) go to the same chat through the alert id tag.
+The chat is the alert's location's `telegram_chat_id` (via `chat_for(event_id)`). Only in
+single-tenant mode (TELEGRAM_SINGLE_TENANT) does a location without one fall back to
+TELEGRAM_CHAT_ID; otherwise nothing is sent (`telegram_skipped reason=no_chat`). Follow-ups
+(`send_text`) go to the same chat through the alert id tag.
 
 The alert itself is HTML (`alert_message.render`) with, when PUBLIC_DASHBOARD_URL is a
 public https URL, a "Vezi în aplicație" button. "Preiau ✋" is no longer offered: the
@@ -41,7 +43,7 @@ class TelegramNotifier:
     def __init__(
         self,
         token: str,
-        chat_id: str | None,
+        fallback_chat: str | None,
         client: httpx.AsyncClient | None = None,
         prefix: str = "",
         *,
@@ -52,7 +54,7 @@ class TelegramNotifier:
     ) -> None:
         self._sent = sent
         self._base = f"{API}/bot{token}"
-        self._chat_id = chat_id
+        self.fallback_chat = fallback_chat
         self._prefix = prefix
         self._client = client or httpx.AsyncClient(timeout=15)
         self._chat_for = chat_for
@@ -61,9 +63,11 @@ class TelegramNotifier:
 
     async def _chat(self, event_id: str | None) -> str | None:
         own = await self._chat_for(event_id) if self._chat_for and event_id else None
-        chat = own or self._chat_id
+        chat = own or self.fallback_chat
         if not chat:
-            log.warning("no Telegram chat for alert %s (set it on the location)", event_id)
+            log.warning(
+                "telegram_skipped reason=no_chat alert=%s (link a chat to the location)", event_id
+            )
         return chat
 
     async def _context(self, event: AlertEvent) -> AlertContext:

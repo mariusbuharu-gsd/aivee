@@ -146,6 +146,7 @@ async def test_offline_closes_open_and_acknowledged_alerts_once(
     assert all(r.after == {"reason": "device_offline"} for r in system)
 
     # t3 closed by itself earlier (its own "client left" follow-up); one device note.
+    await asyncio.gather(a.drain(), b.drain())
     texts = [t for n in notifiers for t in n.texts if t[3] == "device"]
     assert len(texts) == 1
     text, tag, title, kind = texts[0]
@@ -166,6 +167,7 @@ async def test_offline_without_open_alerts_says_nothing(sessions: Any, tmp_path:
     await a.handle(TOPICS.status, _status("online"))
     await a.handle(TOPICS.status, _status("offline"))
     assert await _closed_audit(sessions) == []
+    await a.drain()
     assert all(n.texts == [] for n in notifiers)
 
 
@@ -175,6 +177,7 @@ async def test_one_alert_is_singular(sessions: Any, tmp_path: Path) -> None:
     await a.handle(TOPICS.status, _status("online"))
     await _publish(a, _event("opened", "t1"))
     await a.handle(TOPICS.status, _status("offline"))
+    await a.drain()
     assert [t for t, _, _, _ in notifiers[0].texts] == ["edge-01 s-a deconectat — o alertă închisă"]
 
 
@@ -207,6 +210,7 @@ async def test_back_online_closes_stale_alerts_but_retained_online_does_not(
     )
     [row] = await _closed_audit(sessions)
     assert row.summary_ro == "Alerta de la Masa 1 s-a închis: dispozitivul a repornit"
+    await asyncio.gather(a.drain(), b.drain())
     texts = [t for n in notifiers for t, _, _, _ in n.texts]
     assert texts == ["edge-01 a repornit — o alertă închisă"]
 
@@ -224,3 +228,31 @@ async def test_late_edge_close_after_system_close_keeps_the_system_close(
     view = (await _views(sessions))[opened.event_id]
     assert (view.closed_by, view.closed_reason) == ("system", "device_offline")
     assert len(await _closed_audit(sessions)) == 1
+
+
+async def test_a_status_with_camera_health_is_stored_without_a_new_audit_entry(
+    sessions: Any, tmp_path: Path
+) -> None:
+    """The edge republishes `online` with camera_health on every camera state change."""
+    await _seed(sessions)
+    (a, _), notifiers = _replicas(sessions, tmp_path)
+    await a.handle(TOPICS.status, _status("online"))
+    health = DeviceStatus.model_validate(
+        {
+            "device": DEVICE,
+            "state": "online",
+            "cameras": ["cam1"],
+            "camera_health": [
+                {"camera_id": "cam1", "state": "down", "last_frame_at": None, "fps": 0}
+            ],
+        }
+    )
+    await a.handle(TOPICS.status, health.model_dump_json().encode())
+    async with sessions() as s:
+        device = await s.get(Device, DEVICE)
+        audits = await s.scalars(select(AuditRow).where(AuditRow.kind == "device.online"))
+        assert device is not None
+        assert [h["state"] for h in device.camera_health] == ["down"]
+        assert len(audits.all()) == 1  # the first online only
+    await a.drain()
+    assert all(n.texts == [] for n in notifiers)

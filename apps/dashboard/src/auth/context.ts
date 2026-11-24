@@ -25,6 +25,14 @@ export function useAuth(): AuthState {
   return auth;
 }
 
+/**
+ * Who may watch the live video: those who set the cameras up (owners, managers). Staff (waiters)
+ * get alert cards with the blurred snapshots only; the live picture is not blurred.
+ */
+export function canWatchLive(can: AuthState['can']): boolean {
+  return can('devices.manage');
+}
+
 /** Shorthand for the current location's id; pages only render inside RequireLocation. */
 export function useLocationId(): string {
   return useAuth().location?.id ?? '';

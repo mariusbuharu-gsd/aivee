@@ -79,3 +79,34 @@ describe('foldAlerts', () => {
     expect(item?.before_snapshot_url).toBeUndefined();
   });
 });
+
+describe('foldAlerts with folded updates', () => {
+  it('closes an alert from the folded update that carries its opening id', () => {
+    // `/ws/events` also sends the alert itself (id = the opened event) when it closes; the raw
+    // `closed` row may have been missed while the socket was down.
+    const [item] = foldAlerts([
+      ev('a', 'opened', '2026-11-06T10:00:00Z'),
+      { ...ev('a', 'closed', '2026-11-06T10:03:00Z'), zone_name: 'Masa 1' } as AlertView,
+    ]);
+    expect(item?.closed_at).toBe('2026-11-06T10:03:00Z');
+  });
+
+  it('opens a new alert in the same zone after a folded close', () => {
+    const items = foldAlerts([
+      ev('a', 'opened', '2026-11-06T10:00:00Z'),
+      ev('a', 'closed', '2026-11-06T10:03:00Z'),
+      ev('b', 'opened', '2026-11-06T10:05:00Z'),
+    ]);
+    expect(items.map((i) => [i.key, i.closed_at])).toEqual([
+      ['b', null],
+      ['a', '2026-11-06T10:03:00Z'],
+    ]);
+  });
+
+  it('keeps the zone name an update brings', () => {
+    const [item] = foldAlerts([
+      { ...ev('a', 'opened', '2026-11-06T10:00:00Z'), zone_name: 'Masa 4' } as AlertView,
+    ]);
+    expect(item?.zone_name).toBe('Masa 4');
+  });
+});

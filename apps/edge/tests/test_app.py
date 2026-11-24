@@ -84,16 +84,23 @@ def test_build_vision_passes_rotation_to_the_capture_adapter(
 
     class Yolo:
         @staticmethod
-        def YoloDetector(model: str) -> object:
+        def YoloDetector(model: str, *, fps: float) -> object:
+            seen["detector_fps"] = fps
             return object()
 
     modules = {"capture": Capture, "yolo": Yolo}
     monkeypatch.setattr(app, "_adapter", lambda name: modules[name])
     settings = EdgeSettings(
-        source="http://phone/video", rotate=90, pose_model="", blur=False, _env_file=None
+        source="http://phone/video",
+        rotate=90,
+        target_fps=6.0,
+        pose_model="",
+        blur=False,
+        _env_file=None,
     )  # type: ignore[call-arg]
     app.build_vision(settings)
-    assert seen == {"rotate": 90}
+    # The tracker sizes its lost-track buffer in seconds, so it must know the real frame rate.
+    assert seen == {"rotate": 90, "detector_fps": 6.0}
 
 
 def test_build_vision_subscribes_to_cloud_frames_as_this_device(
@@ -109,7 +116,7 @@ def test_build_vision_subscribes_to_cloud_frames_as_this_device(
 
     class Yolo:
         @staticmethod
-        def YoloDetector(model: str) -> object:
+        def YoloDetector(model: str, *, fps: float) -> object:
             return object()
 
     modules = {"capture": object(), "mqtt_frames": Frames, "yolo": Yolo}
@@ -145,7 +152,7 @@ def test_run_exits_with_code_2_when_vision_is_unavailable(monkeypatch: pytest.Mo
         raise app.VisionUnavailable("no models")
 
     monkeypatch.setattr(app, "build_vision", boom)
-    assert app.run(EdgeSettings(_env_file=None)) == 2  # type: ignore[call-arg]
+    assert app.run(EdgeSettings(source="0", _env_file=None)) == 2  # type: ignore[call-arg]
 
 
 def test_crop_embedder_crops_the_normalised_box() -> None:
@@ -205,3 +212,434 @@ def test_crop_failure_gives_none() -> None:
 
     snaps = app.BlurredJpeg(Broken(), lambda img: b"x")
     assert snaps.crop(np.zeros((10, 10, 3)), (0, 0, 1, 1)) is None
+
+
+class _EndedSource:
+    def read(self) -> None:
+        return None
+
+
+class _QuietClient:
+    """Stands in for MqttEdgeClient: no broker, no rules, no commands."""
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def rules(self) -> list[Any]:
+        return []
+
+    def camera(self) -> Any:
+        raise LookupError
+
+    def profiles(self) -> None:
+        return None
+
+    def take_commands(self) -> list[Any]:
+        return []
+
+
+def test_run_logs_the_source_without_its_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    vision = app.Vision(_EndedSource(), object(), None, None, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", lambda _s: _QuietClient())
+    settings = EdgeSettings(source="rtsp://admin:s3cr3t@10.0.0.5:554/stream2", _env_file=None)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert "s3cr3t" not in caplog.text
+    assert "source=rtsp://admin:***@10.0.0.5:554/stream2" in caplog.text
+
+
+class _Frames:
+    """A camera that gives `n` frames, then ends."""
+
+    def __init__(self, n: int) -> None:
+        self.left = n
+        self.closed = False
+
+    def read(self) -> tuple[float, Any] | None:
+        if self.left == 0:
+            return None
+        self.left -= 1
+        return float(10 - self.left), np.zeros((4, 4, 3), np.uint8)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _NoPeople:
+    def detect(self, _image: Any, ts: float) -> Any:
+        from aivee_edge.domain.observation import Frame
+
+        return Frame(ts)
+
+
+def test_cameras_run_in_one_process_on_one_mqtt_client(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from aivee_contracts.events import DeviceStatus
+    from aivee_edge.adapters.mqtt import MqttEdgeClient
+
+    for name in ("SOURCE", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        "CAMERAS",
+        "cam-01=rtsp://admin:s3cr3t@10.0.0.21/stream2;cam-02=rtsp://admin:s3cr3t@10.0.0.22/stream2",
+    )
+    built: list[tuple[str, str]] = []
+    sources: list[_Frames] = []
+
+    def fake_vision(s: EdgeSettings) -> app.Vision:
+        built.append((s.camera_id, s.source))
+        sources.append(_Frames(3))
+        return app.Vision(sources[-1], _NoPeople(), None, None, None)
+
+    clients: list[MqttEdgeClient] = []
+    real_client = app.build_client
+
+    def fake_client(s: EdgeSettings) -> MqttEdgeClient:
+        client = real_client(s)
+        client.start = lambda timeout=10.0: None  # type: ignore[method-assign]
+        client.stop = lambda: None  # type: ignore[method-assign]
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(app, "build_vision", fake_vision)
+    monkeypatch.setattr(app, "build_client", fake_client)
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert built == [
+        ("cam-01", "rtsp://admin:s3cr3t@10.0.0.21/stream2"),
+        ("cam-02", "rtsp://admin:s3cr3t@10.0.0.22/stream2"),
+    ]
+    assert all(src.left == 0 and src.closed for src in sources)  # every camera ran to its end
+    [client] = clients
+    status = DeviceStatus.model_validate_json(client._status("online"))
+    assert status.cameras == ["cam-01", "cam-02"]
+    assert "s3cr3t" not in caplog.text
+    assert "camera=cam-02 source=rtsp://admin:***@10.0.0.22/stream2" in caplog.text
+
+
+def test_a_source_next_to_cameras_says_cameras_are_ignored(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    vision = app.Vision(_EndedSource(), object(), None, None, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", lambda _s: _QuietClient())
+    monkeypatch.setenv("CAMERAS", "cam-01=rtsp://a/1;cam-02=rtsp://a/2")
+    settings = EdgeSettings(source="rtsp://mediamtx:8554/cam-01", _env_file=None)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert "CAMERAS ignored" in caplog.text
+
+
+class _LiveCamera(_Frames):
+    """A live camera (it has `health()`) that keeps giving frames until `enough()` says so."""
+
+    def __init__(self, enough: Any) -> None:
+        super().__init__(10_000)
+        self.enough = enough
+
+    def read(self) -> tuple[float, Any] | None:
+        import time
+
+        time.sleep(0.002)
+        return None if self.enough() else super().read()
+
+    def health(self) -> Any:
+        from aivee_edge.domain.camera_health import SourceHealth
+
+        return SourceHealth(True, 0.05, 15.0, 4, 4)
+
+
+def _offline_client(clients: list[Any]) -> Any:
+    real_client = app.build_client
+
+    def fake_client(s: EdgeSettings) -> Any:
+        client = real_client(s)
+        client.start = lambda timeout=10.0: None
+        client.stop = lambda: None
+        clients.append(client)
+        return client
+
+    return fake_client
+
+
+def _published_health(clients: list[Any]) -> list[Any]:
+    from aivee_contracts.events import DeviceStatus
+
+    return DeviceStatus.model_validate_json(clients[0]._status("online")).camera_health
+
+
+def test_a_single_live_camera_puts_its_health_on_the_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    for name in ("CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    clients: list[Any] = []
+    deadline = time.monotonic() + 5
+    source = _LiveCamera(
+        lambda: bool(clients and _published_health(clients)) or time.monotonic() > deadline
+    )
+    vision = app.Vision(source, _NoPeople(), None, None, None)
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+    settings = EdgeSettings(
+        source="rtsp://cam/1", camera_id="cam-01", _env_file=None, pose_model="", blur=False
+    )  # type: ignore[call-arg]
+    assert app.run(settings) == 0
+    assert [(h.camera_id, h.state) for h in _published_health(clients)] == [("cam-01", "ok")]
+
+
+def test_cameras_put_their_health_on_the_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    for name in ("SOURCE", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CAMERAS", "cam-01=rtsp://a/1;cam-02=rtsp://a/2")
+    clients: list[Any] = []
+    deadline = time.monotonic() + 5
+
+    def enough() -> bool:
+        return bool(clients and len(_published_health(clients)) == 2) or time.monotonic() > deadline
+
+    monkeypatch.setattr(
+        app,
+        "build_vision",
+        lambda _s: app.Vision(_LiveCamera(enough), _NoPeople(), None, None, None),
+    )
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    assert app.run(settings) == 0
+    assert [h.camera_id for h in _published_health(clients)] == ["cam-01", "cam-02"]
+
+
+# -- edge box: no SOURCE, no CAMERAS: the cameras the dashboard configures ---------------------
+
+
+def _box_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("SOURCE", "CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE", "EDGE_JOBS"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(app, "install_stop_signals", lambda _stop: None)  # not the main thread
+    monkeypatch.setattr(app, "check_vision", lambda _s: None)
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+
+
+def _until(cond: Any, timeout: float = 5.0) -> None:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while not cond():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.005)
+
+
+def test_the_box_runs_the_cameras_of_its_config_and_follows_changes(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import threading
+
+    from aivee_contracts.events import DeviceStatus
+    from aivee_contracts.geometry import CameraConfig, DeviceConfig
+
+    _box_env(monkeypatch)
+    stop = threading.Event()
+    opened: dict[str, _LiveCamera] = {}
+
+    def fake_vision(s: EdgeSettings) -> app.Vision:
+        opened[s.source] = _LiveCamera(stop.is_set)
+        return app.Vision(opened[s.source], _NoPeople(), None, None, None)
+
+    clients: list[Any] = []
+    monkeypatch.setattr(app, "build_vision", fake_vision)
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    done: list[int] = []
+    with caplog.at_level("INFO"):
+        thread = threading.Thread(target=lambda: done.append(app.run(settings, stop)))
+        thread.start()
+        _until(lambda: bool(clients))
+        client = clients[0]
+
+        def configure(*cams: tuple[str, str]) -> None:
+            config = DeviceConfig(
+                device=client._device,
+                cameras=[CameraConfig(id=i, name=i, source=src) for i, src in cams],
+            )
+
+            class Msg:
+                topic = client.topics.config
+                payload = config.model_dump_json().encode()
+
+            client._on_message(client._client, None, Msg())
+
+        def cameras() -> list[str]:
+            return DeviceStatus.model_validate_json(client._status("online")).cameras
+
+        assert cameras() == []  # waiting for the dashboard
+        configure(("cam-01", "rtsp://admin:s3cr3t@10.0.0.21/stream2"), ("cam-02", "rtsp://b/2"))
+        _until(lambda: cameras() == ["cam-01", "cam-02"])
+        first = opened["rtsp://b/2"]
+
+        configure(("cam-02", "rtsp://b/2"), ("cam-03", "rtsp://c/2"))
+        _until(lambda: cameras() == ["cam-02", "cam-03"])
+        assert opened["rtsp://admin:s3cr3t@10.0.0.21/stream2"].closed  # cam-01 stopped
+        assert not first.closed and opened["rtsp://b/2"] is first  # cam-02 left alone
+
+        stop.set()
+        thread.join(5)
+    assert done == [0]
+    assert all(src.closed for src in opened.values())
+    assert "s3cr3t" not in caplog.text
+
+
+def test_the_box_fails_fast_without_its_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    _box_env(monkeypatch)
+
+    def missing(_s: EdgeSettings) -> None:
+        raise app.VisionUnavailable("model files missing")
+
+    monkeypatch.setattr(app, "check_vision", missing)
+    assert app.run(EdgeSettings(_env_file=None)) == 2  # type: ignore[call-arg]
+
+
+def test_check_vision_names_the_missing_model_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    monkeypatch.setattr(app, "_adapter", lambda name: object())
+    detector = tmp_path / "det"
+    detector.mkdir()
+    settings = EdgeSettings(
+        _env_file=None,  # type: ignore[call-arg]
+        detector_model=str(detector),
+        pose_model="",
+        yunet_model=str(tmp_path / "yunet.onnx"),
+    )
+    with pytest.raises(app.VisionUnavailable, match=r"yunet\.onnx"):
+        app.check_vision(settings)
+    app.check_vision(settings.model_copy(update={"blur": False}))
+
+
+def test_jobs_are_attached_only_where_the_settings_serve_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from aivee_edge.adapters.mqtt import MqttEdgeClient
+
+    for name in ("SOURCE", "CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE", "EDGE_JOBS"):
+        monkeypatch.delenv(name, raising=False)
+    box = EdgeSettings(_env_file=None)  # type: ignore[call-arg]
+    client = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    jobs = app.attach_jobs(client, box)
+    assert jobs is not None and client.on_request == jobs.submit
+    jobs.close()
+
+    cloud = EdgeSettings(source="mqtt-frames://cam-01", _env_file=None)  # type: ignore[call-arg]
+    client = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
+    assert app.attach_jobs(client, cloud) is None and client.on_request is None
+
+
+# -- live view: the box relays its cameras into MediaMTX ---------------------------------------
+
+
+def test_live_view_only_for_the_box_and_cameras_with_a_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("SOURCE", "CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE", "LIVE_RTSP_URL"):
+        monkeypatch.delenv(name, raising=False)
+    url = "rtsp://localhost:8554"
+
+    def s(**kw: Any) -> EdgeSettings:
+        return EdgeSettings(_env_file=None, **kw)  # type: ignore[call-arg]
+
+    assert not s().live_view  # no URL: off
+    assert s(live_rtsp_url=url).live_view  # edge box
+    assert s(live_rtsp_url=url, cameras="cam-01=rtsp://a/1").live_view
+    assert not s(live_rtsp_url=url, source="rtsp://a/1").live_view  # cloud vision worker
+    assert app.build_live(s()) is None
+
+
+class _FakeLive:
+    def __init__(self) -> None:
+        self.synced: list[dict[str, str]] = []
+        self.stopped = False
+
+    def sync(self, wanted: dict[str, str]) -> None:
+        self.synced.append(dict(wanted))
+
+    def stop_all(self) -> None:
+        self.stopped = True
+
+
+def test_the_box_relays_the_cameras_it_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from aivee_contracts.geometry import CameraConfig, DeviceConfig
+
+    _box_env(monkeypatch)
+    stop = threading.Event()
+    live = _FakeLive()
+    monkeypatch.setattr(app, "build_live", lambda _s: live)
+    monkeypatch.setattr(
+        app,
+        "build_vision",
+        lambda _s: app.Vision(_LiveCamera(stop.is_set), _NoPeople(), None, None, None),
+    )
+    clients: list[Any] = []
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    done: list[int] = []
+    thread = threading.Thread(target=lambda: done.append(app.run(settings, stop)))
+    thread.start()
+    _until(lambda: bool(clients))
+    client = clients[0]
+    config = DeviceConfig(
+        device=client._device,
+        cameras=[
+            CameraConfig(id="cam-01", name="a", source="rtsp://a/2"),
+            CameraConfig(id="cam-file", name="b", source="clip.mp4"),  # not live: not relayed
+        ],
+    )
+
+    class Msg:
+        topic = client.topics.config
+        payload = config.model_dump_json().encode()
+
+    client._on_message(client._client, None, Msg())
+    _until(lambda: bool(live.synced) and live.synced[-1] == {"cam-01": "rtsp://a/2"})
+    stop.set()
+    thread.join(5)
+    assert done == [0]
+    assert live.stopped
+
+
+def test_cameras_mode_relays_its_fixed_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    for name in ("SOURCE", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CAMERAS", "cam-01=rtsp://a/1;cam-02=rtsp://a/2")
+    monkeypatch.setattr(app, "install_stop_signals", lambda _stop: None)
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+    stop = threading.Event()
+    live = _FakeLive()
+    monkeypatch.setattr(app, "build_live", lambda _s: live)
+    monkeypatch.setattr(
+        app,
+        "build_vision",
+        lambda _s: app.Vision(_LiveCamera(stop.is_set), _NoPeople(), None, None, None),
+    )
+    monkeypatch.setattr(app, "build_client", _offline_client([]))
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    done: list[int] = []
+    thread = threading.Thread(target=lambda: done.append(app.run(settings, stop)))
+    thread.start()
+    _until(lambda: bool(live.synced))
+    stop.set()
+    thread.join(5)
+    assert live.synced[0] == {"cam-01": "rtsp://a/1", "cam-02": "rtsp://a/2"}
+    assert done == [0] and live.stopped

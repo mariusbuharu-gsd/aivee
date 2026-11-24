@@ -149,7 +149,7 @@ class LocationService:
             self._p.actor,
             org_id=self._p.org_id,
             location_id=location_id,
-            target=Target("location", location_id, before["name"] or location_id),
+            target=Target("location", location_id, str(before["name"] or location_id)),
             before=before,
         )
         await self._s.commit()

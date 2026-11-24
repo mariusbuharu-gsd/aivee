@@ -32,9 +32,7 @@ async def get_metrics(
 ) -> DashboardMetrics:
     loc = access.location_id
     devices = [
-        d
-        for d in await DeviceRepository(s).list_all()
-        if d.site_id == loc and not is_upload_device(d.id)
+        d for d in await DeviceRepository(s).list_all(site_id=loc) if not is_upload_device(d.id)
     ]
     midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     live = not_upload(EventRow.device_id, EventRow.camera_id)

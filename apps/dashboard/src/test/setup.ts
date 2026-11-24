@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
 
 afterEach(() => cleanup());
+
+// Pages are lazy chunks (App.tsx): under a full parallel run the first import of one can take
+// longer than the default 1 s that findBy/waitFor wait.
+configure({ asyncUtilTimeout: 4_000 });
 
 // jsdom has no modal dialogs yet: enough of HTMLDialogElement for <Dialog>.
 if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {

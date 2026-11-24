@@ -9,7 +9,7 @@ import { StaffPhotoUpload } from '../components/StaffPhotoUpload';
 import { SuggestionCard } from '../components/SuggestionCard';
 import { TelegramConnect } from '../components/TelegramConnect';
 import { useAuth } from '../auth/context';
-import { useLiveData, zoneName } from '../state/context';
+import { useLiveData } from '../state/context';
 import { EmptyState, Segmented } from '../ui/controls';
 import { BusyLabel } from '../ui/Eyes';
 import './AlertsPage.css';
@@ -61,8 +61,17 @@ function groupByDay(items: AlertItem[]): { label: string; items: AlertItem[] }[]
 }
 
 export function AlertsPage() {
-  const { alerts, cameras, rules, suggestions, dropSuggestion, cases, hasOlder, loadOlder } =
-    useLiveData();
+  const {
+    alerts,
+    cameras,
+    rules,
+    suggestions,
+    dropSuggestion,
+    cases,
+    hasOlder,
+    loadOlder,
+    zoneName,
+  } = useLiveData();
   const { can, me, location } = useAuth();
   const [filter, setFilter] = useState<Filter>('all');
   const push = useMemo(() => browserPushService(), []);
@@ -81,7 +90,7 @@ export function AlertsPage() {
 
   const open = alerts.filter((a) => a.closed_at === null);
   const closed = alerts.filter((a) => a.closed_at !== null);
-  const zone = (id: string) => zoneName(cameras, id);
+  const zone = zoneName;
   const ruleById = useMemo(() => new Map(rules.map((r) => [r.id, r])), [rules]);
 
   // Closed rows come a page at a time; when the loaded events run out, the API gives the next.

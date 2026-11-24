@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:wsadis="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" xmlns:dn="http://www.onvif.org/ver10/network/wsdl" xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+  <env:Header>
+    <wsadis:MessageID>urn:uuid:a1b2c3d4-0000-1111-2222-c056e3112233</wsadis:MessageID>
+    <wsadis:RelatesTo>uuid:6f1f2b0e-9a49-4a4e-8b8a-0d6f9c2f3a11</wsadis:RelatesTo>
+    <wsadis:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</wsadis:Action>
+  </env:Header>
+  <env:Body>
+    <d:ProbeMatches>
+      <d:ProbeMatch>
+        <wsadis:EndpointReference>
+          <wsadis:Address>urn:uuid:a1b2c3d4-0000-1111-2222-c056e3112233</wsadis:Address>
+        </wsadis:EndpointReference>
+        <d:Types>dn:NetworkVideoTransmitter tds:Device</d:Types>
+        <d:Scopes>onvif://www.onvif.org/type/video_encoder onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/MAC/c0:56:e3:11:22:33 onvif://www.onvif.org/hardware/DS-2CD2143G2-I onvif://www.onvif.org/name/HIKVISION%20DS-2CD2143G2-I onvif://www.onvif.org/location/city/hangzhou</d:Scopes>
+        <d:XAddrs>http://[fe80::c256:e3ff:fe11:2233]/onvif/device_service http://192.168.1.64/onvif/device_service</d:XAddrs>
+        <d:MetadataVersion>10</d:MetadataVersion>
+      </d:ProbeMatch>
+    </d:ProbeMatches>
+  </env:Body>
+</env:Envelope>

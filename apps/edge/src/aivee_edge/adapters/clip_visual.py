@@ -167,6 +167,8 @@ class BackgroundVisualScorer:
         self._lock = threading.Lock()
         self._done: list[VisualSample] = []
         self._busy = False
+        self._idle = threading.Event()
+        self._idle.set()
         self._thread: threading.Thread | None = None
         self.last_ms: float | None = None
         """Wall time of the latest frame's scoring, for logs and benchmarks."""
@@ -185,6 +187,7 @@ class BackgroundVisualScorer:
             if self._busy:
                 return False
             self._busy = True
+            self._idle.clear()
         self._ensure_thread()
         # The pipeline never mutates a frame after reading it, so no copy is needed.
         self._tasks.put(("score", (ts, image, list(jobs))))
@@ -194,6 +197,11 @@ class BackgroundVisualScorer:
         with self._lock:
             done, self._done = self._done, []
         return done
+
+    def wait_idle(self, timeout: float | None = None) -> bool:
+        """Block until the frame in flight is scored (its samples ready to `collect`) or
+        `timeout` passes; True when idle. For tests and orderly shutdown."""
+        return self._idle.wait(timeout)
 
     def close(self) -> None:
         if self._thread is not None:
@@ -240,3 +248,4 @@ class BackgroundVisualScorer:
                 if kind == "score":
                     with self._lock:
                         self._busy = False
+                        self._idle.set()

@@ -68,7 +68,7 @@ class Invite(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
-    location_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    location_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(16))
     email: Mapped[str] = mapped_column(String(320))
     invited_by: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

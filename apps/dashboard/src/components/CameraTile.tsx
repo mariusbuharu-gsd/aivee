@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import type { CameraView, Detection } from '../api/client';
 import { useApi } from '../api/context';
-import { useAuth } from '../auth/context';
+import { canWatchLive, useAuth } from '../auth/context';
 import { detectionLabel, detectionTitle } from '../live/detections';
 import { plural } from '../ui/plural';
 import { LivePlayer } from '../live/LivePlayer';
 import { isCloudFrames } from '../live/source';
 import { toSvgPoints } from '../zones/geometry';
+import { HEALTH_LABEL, type CameraHealth } from '../devices/health';
 import { Icon } from './Icon';
 import './live.css';
 
@@ -19,30 +20,41 @@ import './live.css';
 export function CameraTile({
   camera,
   hot = {},
+  health = { state: camera.online ? 'online' : 'offline', cause: camera.online ? null : 'device' },
 }: {
   camera: CameraView;
   hot?: Record<string, string>;
+  /** From `cameraHealth`; without it the tile follows `camera.online`. */
+  health?: CameraHealth;
 }) {
   const api = useApi();
   const { can } = useAuth();
   const [detections, setDetections] = useState<Detection[]>([]);
 
+  const video = canWatchLive(can);
+  const down = health.state === 'offline';
   useEffect(() => {
-    if (!camera.online) return;
+    if (down || !video) return;
     return api.subscribeDetections(camera.id, setDetections);
-  }, [api, camera.id, camera.online]);
+  }, [api, camera.id, down, video]);
 
-  const shown = camera.online ? detections : [];
+  const shown = down ? [] : detections;
+  // Belt and braces: Live never renders a tile for staff, and the live picture is not blurred.
+  if (!video) return null;
 
-  if (!camera.online) {
+  if (down) {
     return (
       <article className="tile tile-down" aria-label={`Camera ${camera.name}`}>
         <span className="badge badge-off">OFFLINE</span>
         <div className="tile-down-text">
           <strong>{camera.name}</strong>
           <span className="tile-down-what">
-            <span>Dispozitiv offline</span>
-            <span className="mono">{camera.device}</span>
+            <span>{HEALTH_LABEL.offline}</span>
+            <span className="muted">
+              {health.cause === 'camera'
+                ? 'Camera nu mai trimite imagine.'
+                : 'Dispozitivul AiVee din local nu răspunde.'}
+            </span>
           </span>
           <span className="muted small">Alertele de la această cameră nu vin până revine.</span>
         </div>
@@ -104,7 +116,13 @@ export function CameraTile({
             <span className="det-label mono">{detectionLabel(d)}</span>
           </div>
         ))}
-        <span className="badge badge-live">LIVE</span>
+        {health.state === 'online' ? (
+          <span className="badge badge-live">LIVE</span>
+        ) : (
+          <span className="badge badge-warn" role="status">
+            {HEALTH_LABEL[health.state]}
+          </span>
+        )}
       </div>
       <footer className="tile-foot">
         <div className="tile-title">

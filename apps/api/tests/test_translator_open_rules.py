@@ -29,7 +29,7 @@ def recorded(case: str) -> RuleDraft:
     return RuleDraft.model_validate_json(json.dumps(RECORDED[case]))
 
 
-@pytest.mark.parametrize(("case", "label"), [("present-bear", "bear"), ("present-knife", "knife")])
+@pytest.mark.parametrize(("case", "label"), [("present-bear", "bear")])
 def test_recorded_object_present_drafts_become_whole_frame_rules(case: str, label: str) -> None:
     rule = draft_to_rule(recorded(case), "cam1", "x", ZONES)
     (c,) = rule.all_of
@@ -102,6 +102,43 @@ def test_object_present_outside_coco_is_a_clarification() -> None:
     with pytest.raises(TranslationError) as e:
         draft_to_rule(_draft(ANYWHERE_TAG, lion), "cam1", "x", ZONES)
     assert e.value.code == "clarify"
+
+
+def test_recorded_knife_draft_is_now_a_clarification() -> None:
+    # The model once mapped "dacă cineva are un cuțit" to object_present knife: in a
+    # restaurant that fires on every table knife.
+    with pytest.raises(TranslationError) as e:
+        draft_to_rule(recorded("present-knife"), "cam1", "x", ZONES)
+    assert e.value.code == "clarify" and "cuțit" in e.value.message_ro
+
+
+@pytest.mark.parametrize("label", ["knife", "fork", "spoon"])
+@pytest.mark.parametrize("tag", [ANYWHERE_TAG, "table"])
+def test_object_present_cutlery_is_a_clarification(label: str, tag: str) -> None:
+    cond = Condition(kind="object_present", objects=["dog", label])
+    with pytest.raises(TranslationError) as e:
+        draft_to_rule(_draft(tag, cond), "cam1", "x", ZONES)
+    assert e.value.code == "clarify"
+
+
+@pytest.mark.parametrize("prompt", ["a knife", "a person holding a Knife", "knives on a table"])
+def test_visual_knife_is_a_clarification(prompt: str) -> None:
+    cond = Condition(kind="visual", positive=[prompt], negative=["a photo of a room"])
+    with pytest.raises(TranslationError) as e:
+        draft_to_rule(_draft(ANYWHERE_TAG, cond), "cam1", "x", ZONES)
+    assert e.value.code == "clarify"
+
+
+def test_table_not_cleared_still_lists_cutlery() -> None:
+    cond = Condition(
+        kind="objects_unattended", objects=["cup", "fork", "knife", "spoon"], min_duration_s=300
+    )
+    assert draft_to_rule(_draft("table", cond), "cam1", "x", ZONES).all_of[0].objects[2] == "knife"
+
+
+def test_prompt_asks_instead_of_mapping_a_knife() -> None:
+    assert "cuțit → knife" not in INSTRUCTIONS
+    assert "cineva are un cuțit" in INSTRUCTIONS.split("## When not to produce a rule")[1]
 
 
 def test_prompt_describes_both_new_situations_in_its_fixed_part() -> None:

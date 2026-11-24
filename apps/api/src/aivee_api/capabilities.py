@@ -16,6 +16,10 @@ class Capabilities(BaseModel):
     """`POST /api/videos` can analyse a clip here."""
     enrol: bool
     """Staff profiles can be built here (photo upload, live capture)."""
+    camera_test: bool
+    """`POST /api/cameras/test`: an edge device opens a camera once and sends a still."""
+    camera_discovery: bool
+    """`POST /api/devices/{id}/discover`: an edge device looks for cameras on its network."""
 
 
 def videos_available(svc: Services) -> bool:
@@ -29,7 +33,13 @@ def videos_available(svc: Services) -> bool:
 
 
 def capabilities(svc: Services) -> Capabilities:
-    return Capabilities(videos=videos_available(svc), enrol=svc.enroller is not None)
+    edge_jobs = svc.edge_requests is not None  # the API talks to the edge over MQTT
+    return Capabilities(
+        videos=videos_available(svc),
+        enrol=svc.enroller is not None,
+        camera_test=edge_jobs,
+        camera_discovery=edge_jobs,
+    )
 
 
 @router.get("/capabilities")

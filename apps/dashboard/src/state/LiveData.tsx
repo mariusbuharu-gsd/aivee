@@ -10,9 +10,19 @@ import { useApi } from '../api/context';
 import { useAuth } from '../auth/context';
 import type { Rule, Zone } from '../contracts';
 import { foldAlerts } from '../alerts/fold';
-import { LiveDataContext, toLoadError, type LiveData, type LoadError } from './context';
+import {
+  LiveDataContext,
+  belongsHere,
+  toLoadError,
+  zoneName,
+  type LiveData,
+  type LoadError,
+} from './context';
 
 const METRICS_POLL_MS = 5_000;
+/** A reconnect and a wake-up often come together: one reload for both. */
+const RESYNC_DEBOUNCE_MS = 300;
+const noop = () => undefined;
 /** Events per `GET /api/events` page (the API's default); a full page means older ones exist. */
 const EVENTS_PAGE = 50;
 const CASES_PAGE = 100;
@@ -37,6 +47,13 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
   // Suggestions are staff.review only; staff get 403, which used to fail the whole first load.
   const canReview = can('staff.review');
   const [cases, setCases] = useState<Record<string, AlertCase>>({});
+  // The socket carries every location the user may see; raw rows are told apart by camera.
+  // Until this location's cameras are known, those rows wait here (`null` = cameras loaded).
+  const cameraIds = useRef<Set<string>>(new Set());
+  const unsorted = useRef<AlertView[] | null>([]);
+  useEffect(() => {
+    cameraIds.current = new Set(cameras.map((c) => c.id));
+  }, [cameras]);
 
   // Alert lifecycle: load once, then re-read whenever an alert event arrives (opened/arrived/closed).
   useEffect(() => {
@@ -50,7 +67,8 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
         () => undefined,
       );
     void load();
-    const off = api.subscribeAlerts(() => {
+    const off = api.subscribeAlerts((e) => {
+      if (e.location_id != null && e.location_id !== locationId) return;
       clearTimeout(pending);
       pending = setTimeout(load, 300);
     });
@@ -60,6 +78,41 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       off();
     };
   }, [api, locationId, canView]);
+
+  // After the socket comes back, or the phone wakes the tab, updates may have been missed (a
+  // closed alert would stay open on a waiter's screen): read alerts, cameras and suggestions again.
+  useEffect(() => {
+    let alive = true;
+    let pending: ReturnType<typeof setTimeout> | undefined;
+    const resync = () => {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
+        void api.listCameras().then((c) => alive && setCameras(c), noop);
+        void api
+          .listAlerts({ limit: EVENTS_PAGE })
+          .then((a) => alive && setEvents((prev) => mergeEvents(a, prev)), noop);
+        if (locationId && canView) {
+          void api
+            .listAlertCases({ location_id: locationId, limit: CASES_PAGE })
+            .then((rows) => alive && setCases((prev) => ({ ...prev, ...byEventId(rows) })), noop);
+        }
+        if (canReview) {
+          void api.listSuggestions().then((s) => alive && setSuggestions(s), noop);
+        }
+      }, RESYNC_DEBOUNCE_MS);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') resync();
+    };
+    const off = api.subscribeReconnect(resync);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      alive = false;
+      clearTimeout(pending);
+      off();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [api, locationId, canView, canReview]);
 
   const ack = useCallback(
     async (eventId: string) => {
@@ -83,8 +136,12 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
         if (!alive) return;
         setError(null);
         setCameras(c);
+        const ids = new Set(c.map((x) => x.id));
+        cameraIds.current = ids;
+        const waiting = (unsorted.current ?? []).filter((e) => belongsHere(e, locationId, ids));
+        unsorted.current = null;
         setRules(r);
-        setEvents((prev) => mergeEvents(a, prev));
+        setEvents((prev) => mergeEvents(a, [...prev, ...waiting]));
         setHasOlder(a.length >= EVENTS_PAGE);
         setSuggestions((prev) => mergeSuggestions(s, prev));
         setMetrics(m);
@@ -92,7 +149,13 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       .catch(fail)
       .finally(() => alive && setLoading(false));
 
-    const offAlerts = api.subscribeAlerts((e) => setEvents((prev) => [...prev, e]));
+    const offAlerts = api.subscribeAlerts((e) => {
+      if (e.location_id == null && unsorted.current) {
+        unsorted.current.push(e);
+        return;
+      }
+      if (belongsHere(e, locationId, cameraIds.current)) setEvents((prev) => [...prev, e]);
+    });
     const offSuggestions = api.subscribeSuggestions((s) =>
       setSuggestions((prev) => mergeSuggestions(prev, [s])),
     );
@@ -109,7 +172,7 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       offSuggestions();
       clearInterval(poll);
     };
-  }, [api, canRules, canReview, attempt]);
+  }, [api, canRules, canReview, attempt, locationId]);
 
   const retry = useCallback(() => {
     setLoading(true);
@@ -169,7 +232,27 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
     }
   }, [api, events, locationId, canView]);
 
-  const alerts = useMemo(() => foldAlerts(events), [events]);
+  // The lifecycle is the API's word: an alert it closed is closed here too, even when the
+  // `closed` event itself was never received.
+  const alerts = useMemo(
+    () =>
+      foldAlerts(events).map((a) => {
+        const closedAt = cases[a.key]?.closed_at;
+        return a.closed_at === null && closedAt ? { ...a, closed_at: closedAt } : a;
+      }),
+    [events, cases],
+  );
+
+  const knownZones = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const c of Object.values(cases)) if (c.zone_name) out[c.zone_id] = c.zone_name;
+    for (const a of alerts) if (a.zone_name) out[a.zone_id] = a.zone_name;
+    return out;
+  }, [cases, alerts]);
+  const nameOfZone = useCallback(
+    (zoneId: string) => zoneName(cameras, zoneId, knownZones),
+    [cameras, knownZones],
+  );
 
   const value = useMemo<LiveData>(
     () => ({
@@ -192,8 +275,10 @@ export function LiveDataProvider({ children }: { children: ReactNode }) {
       ack,
       hasOlder,
       loadOlder,
+      zoneName: nameOfZone,
     }),
     [
+      nameOfZone,
       cases,
       ack,
       hasOlder,

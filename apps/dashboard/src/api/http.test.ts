@@ -307,6 +307,36 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     vi.useRealTimers();
   });
 
+  it('shares one socket between alerts, suggestions and detections', () => {
+    const sockets: { onmessage: ((e: MessageEvent<string>) => void) | null }[] = [];
+    class FakeSocket {
+      onclose: unknown = null;
+      onopen: unknown = null;
+      onmessage: ((e: MessageEvent<string>) => void) | null = null;
+      constructor() {
+        sockets.push(this);
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    const api = new HttpApi('http://api:8000');
+    const alerts = vi.fn();
+    const boxes = vi.fn();
+    const offs = [
+      api.subscribeAlerts(alerts),
+      api.subscribeSuggestions(() => undefined),
+      api.subscribeDetections('cam-01', boxes),
+    ];
+    expect(sockets).toHaveLength(1);
+    const alert = { event_id: 'e1', camera_id: 'cam-01', snapshot_url: null };
+    sockets[0]?.onmessage?.({
+      data: JSON.stringify({ type: 'alert', data: alert }),
+    } as MessageEvent<string>);
+    expect(alerts).toHaveBeenCalledTimes(1);
+    expect(boxes).not.toHaveBeenCalled();
+    offs.forEach((off) => off());
+  });
+
   it('acknowledges an alert with "Preiau"', async () => {
     const api = new HttpApi('http://api:8000');
     const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));
@@ -387,5 +417,91 @@ describe('HttpApi camera frames', () => {
     );
     const [d] = await api.listDevices();
     expect(d?.last_seen).toBe('2026-11-06T19:00:00Z');
+  });
+
+  describe('camera setup', () => {
+    const jpeg = (headers: Record<string, string> = {}) =>
+      new Response(new Blob(['x'], { type: 'image/jpeg' }), {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg', ...headers },
+      });
+
+    function scopedApi() {
+      const a = new HttpApi('http://api:8000');
+      a.setLocation('demo');
+      return a;
+    }
+
+    it('tests a new source on a chosen device, with the unset fields null', async () => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+      const fetch = mockFetch(
+        jpeg({ 'X-Frame-At': '2026-11-23T10:00:00Z', 'X-Frame-Size': '640x360' }),
+      );
+      const frame = await scopedApi().testCamera({ source: 'rtsp://a:b@10.0.0.2/s', device: 'e1' });
+      expect(fetch.mock.calls[0]?.[0]).toBe('http://api:8000/api/cameras/test?location_id=demo');
+      expect(fetch.mock.calls[0]?.[1]).toMatchObject({ method: 'POST', credentials: 'include' });
+      expect(body(fetch)).toEqual({
+        source: 'rtsp://a:b@10.0.0.2/s',
+        camera_id: null,
+        device: 'e1',
+      });
+      expect(frame).toMatchObject({ at: '2026-11-23T10:00:00Z', size: '640x360' });
+    });
+
+    it('tests a saved camera by id only, never its source', async () => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+      const fetch = mockFetch(jpeg());
+      await scopedApi().testCamera({ camera_id: 'cam-bar' });
+      expect(body(fetch)).toEqual({ source: null, camera_id: 'cam-bar', device: null });
+    });
+
+    it('surfaces the camera code and message_ro, with fallbacks for a bare 504', async () => {
+      mockFetch(
+        json({ detail: { code: 'camera_auth', message_ro: 'Parola nu e bună.' } }, 422),
+        new Response('Gateway Timeout', { status: 504 }),
+      );
+      const a = scopedApi();
+      await expect(a.testCamera({ camera_id: 'c' })).rejects.toMatchObject({
+        code: 'camera_auth',
+        message: 'Parola nu e bună.',
+        status: 422,
+      });
+      await expect(a.testCamera({ camera_id: 'c' })).rejects.toMatchObject({
+        code: 'device_timeout',
+        message: 'Cutia AiVee nu a răspuns la timp.',
+      });
+    });
+
+    it('asks the device to scan and returns the cameras it found', async () => {
+      const cam = {
+        ip: '192.168.1.21',
+        port: 554,
+        brand: 'tapo',
+        model: 'C200',
+        name: null,
+        onvif: true,
+        rtsp_paths: ['/stream2', '/stream1'],
+        already_added: false,
+      };
+      const fetch = mockFetch(json({ cameras: [cam] }));
+      expect(await scopedApi().discoverCameras('edge 1')).toEqual([cam]);
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        'http://api:8000/api/devices/edge%201/discover?location_id=demo',
+      );
+      expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
+    });
+
+    it('reports an offline device on discovery', async () => {
+      mockFetch(
+        json({ detail: { code: 'device_offline', message_ro: 'Cutia e oprită.' } }, 409),
+        json({ detail: 'nope' }, 409),
+      );
+      const a = scopedApi();
+      await expect(a.discoverCameras('e1')).rejects.toMatchObject({
+        code: 'device_offline',
+        message: 'Cutia e oprită.',
+      });
+      await expect(a.discoverCameras('e1')).rejects.toMatchObject({ code: 'device_offline' });
+    });
   });
 });

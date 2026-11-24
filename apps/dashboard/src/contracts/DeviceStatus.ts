@@ -4,13 +4,44 @@ export type Device = string;
 export type State = 'online' | 'offline';
 export type Version = string;
 export type Cameras = string[];
+export type CameraId = string;
+export type State1 = 'ok' | 'reconnecting' | 'down';
+/**
+ * When the newest frame was decoded; None before the first one
+ */
+export type LastFrameAt = string | null;
+/**
+ * Frames per second the camera delivers
+ */
+export type Fps = number;
+/**
+ * Per live camera; empty from older edges
+ */
+export type CameraHealth = CameraStreamHealth[];
 
 /**
  * Retained on `status`; the broker publishes `offline` as the device's last will.
+ *
+ * An online edge republishes it when a camera's stream state changes, and about once a
+ * minute otherwise, with `camera_health`. Cameras without a live stream (clips, cloud
+ * frames) are not listed there; neither is any camera in an `offline` status.
  */
 export interface DeviceStatus {
   device: Device;
   state: State;
   version?: Version;
   cameras?: Cameras;
+  camera_health?: CameraHealth;
+}
+/**
+ * How one live camera stream of a device is doing, as the edge sees it.
+ *
+ * ok: frames are arriving (or the first open is under way) · reconnecting: the stream
+ * dropped and the edge is retrying · down: no frame for over a minute.
+ */
+export interface CameraStreamHealth {
+  camera_id: CameraId;
+  state: State1;
+  last_frame_at?: LastFrameAt;
+  fps?: Fps;
 }

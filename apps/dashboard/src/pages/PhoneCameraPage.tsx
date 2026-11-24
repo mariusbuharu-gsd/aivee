@@ -178,9 +178,9 @@ export function PhoneCameraPage() {
       </p>
 
       {!loading && cloud.length === 0 && !camera && (
-        <EmptyState icon="devices" title="Nicio cameră cloud la această locație">
-          Adaugă la <Link to="/dispozitive">Camere</Link> o cameră cu sursa{' '}
-          <span className="mono">mqtt-frames://&lt;id&gt;</span>, apoi revino aici.
+        <EmptyState icon="devices" title="Niciun telefon adăugat ca cameră aici">
+          La <Link to="/dispozitive">Camere</Link> apasă „Adaugă cameră” și alege „Telefon”, apoi
+          revino aici.
         </EmptyState>
       )}
 
@@ -192,18 +192,16 @@ export function PhoneCameraPage() {
           options={(camera && !cloud.includes(camera) ? [camera, ...cloud] : cloud).map((c) => ({
             value: c.id,
             label: c.name,
-            hint: c.id,
           }))}
           onChange={(v) => setParams({ camera: v }, { replace: true })}
         />
       )}
       {wanted && !loading && !camera && (
-        <Banner tone="warn" title={`Camera ${wanted} nu există la această locație`} />
+        <Banner tone="warn" title="Camera din link nu există la această locație" />
       )}
       {camera && !isCloudCamera(camera) && (
         <Banner tone="warn" title="Camera aceasta nu primește imagini de la telefon">
-          Sursa ei e <span className="mono">{camera.source.split('://')[0]}://…</span>. Alege o
-          cameră cu sursa <span className="mono">mqtt-frames://{camera.id}</span>.
+          E o cameră din local, nu un telefon. Alege o cameră adăugată ca „Telefon”.
         </Banner>
       )}
 

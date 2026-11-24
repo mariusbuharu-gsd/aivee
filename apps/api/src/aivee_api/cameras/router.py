@@ -2,6 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from sqlalchemy import update
 
 from aivee_api.alerts.audit import AuditWriter, get_audit_writer
 from aivee_api.audit.record import record
@@ -9,12 +11,14 @@ from aivee_api.audit.repository import Target
 from aivee_api.auth.deps import Access, CurrentUser, require
 from aivee_api.auth.permissions import ALERTS_VIEW, DEVICES_MANAGE
 from aivee_api.auth.principal import Principal
-from aivee_api.auth.scope import authorize_at, authorize_camera, camera_ids_at, device_location
+from aivee_api.auth.scope import authorize_at, authorize_camera, device_location
 from aivee_api.cameras.frame import latest_frame
 from aivee_api.cameras.schemas import CameraIn, CameraOut, CameraPatch
 from aivee_api.cameras.service import CameraService
+from aivee_api.db.models import Camera
 from aivee_api.deps import ServicesDep, SessionDep
 from aivee_api.errors import Invalid, NotFound
+from aivee_api.frames.keys import key_hash, new_key
 from aivee_api.videos.kind import is_upload_camera, is_upload_device
 
 router = APIRouter(prefix="/api/cameras", tags=["cameras"])
@@ -36,10 +40,9 @@ async def _check_device(s: SessionDep, loc: str, device: str | None) -> None:
 async def list_cameras(
     s: SessionDep, svc: ServicesDep, access: Annotated[Access, Depends(require(ALERTS_VIEW))]
 ) -> list[CameraOut]:
-    ids = await camera_ids_at(s, access.location_id)
-    cameras = await CameraService(s, svc.sync).list_all()
+    cameras = await CameraService(s, svc.sync).list_all(access.location_id)
     # Uploaded clips' virtual cameras live on the Analiză video page, not among cameras.
-    return [c for c in cameras if c.id in ids and not is_upload_device(c.device)]
+    return [c for c in cameras if not is_upload_device(c.device)]
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -90,6 +93,31 @@ async def get_camera_frame(
     )
 
 
+class PushKeyOut(BaseModel):
+    camera_id: str
+    key: str
+    """Shown once: the connector's CLOUD_PUSH_KEY. Only its sha256 is stored."""
+
+
+@router.post("/{camera_id}/push-key", status_code=status.HTTP_201_CREATED)
+async def create_push_key(camera_id: str, s: SessionDep, p: CurrentUser) -> PushKeyOut:
+    """A new frame-ingest key for this camera (devices.manage); the previous one stops working,
+    and so does the shared STREAM_PUBLISH_USER/PASSWORD for this camera (S6)."""
+    loc = await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
+    key = new_key()
+    await s.execute(
+        update(Camera).where(Camera.id == camera_id).values(push_key_hash=key_hash(key))
+    )
+    await record(
+        s,
+        p,
+        "camera.push_key_created",
+        location_id=loc,
+        target=Target("camera", camera_id, camera_id),
+    )
+    return PushKeyOut(camera_id=camera_id, key=key)
+
+
 @router.put("/{camera_id}")
 @router.patch("/{camera_id}")
 async def update_camera(
@@ -136,6 +164,10 @@ async def _record(
         kind,
         location_id=loc,
         target=Target("camera", camera.id, camera.name or camera.id),
-        before=before.model_dump(mode="json") if before else None,
-        after=after.model_dump(mode="json") if after else None,
+        before=before.model_dump(mode="json", exclude=LIVE_FIELDS) if before else None,
+        after=after.model_dump(mode="json", exclude=LIVE_FIELDS) if after else None,
     )
+
+
+LIVE_FIELDS = {"stream_state", "last_frame_at"}
+"""What the edge reports, not what the user changed: kept out of the audit entries."""

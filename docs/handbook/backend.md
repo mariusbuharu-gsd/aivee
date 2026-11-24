@@ -10,26 +10,28 @@
 | `make seed` | demo org "AiVee Demo", location `demo` ("Terasa demo"), users `owner@` / `manager@` / `staff@aivee.demo`; password `DEMO_PASSWORD` (generated into `.env` when empty, never printed). Idempotent |
 | `make api` | API on the host with reload (reads `.env`) |
 | `make edge SOURCE=http://<phone>:8080/video` | real edge (needs `models/`, run from the repo root); `SOURCE` may also be a file |
+| `make edge-box` | the edge box: runs the cameras added in the dashboard for this device and follows changes; answers camera discovery and camera test ([ip-cameras.md](ip-cameras.md)) |
+| `make edge-cameras` / `make camera-check` | same command as `edge-box`; with `CAMERAS` in `.env` (dev override) exactly those cameras / check each camera's stream first ([ip-cameras.md](ip-cameras.md)) |
 | `make record SOURCE=… SECONDS=60 ROTATE=90 NAME=sala-1` | record a backup clip into `recordings/sala-1.mp4` (already rotated upright) |
 | `make edge SOURCE=recordings/<name>.mp4` | replay a recorded clip through the real edge |
 | `make fake-edge SCENARIO=unattended SPEED=10` | scripted people through the real edge pipeline (`unattended`, `hand`, `queue`, `uncleared`); zones and rules come from the retained config |
-| `make test` / `make test-all` / `make lint` | unit / + integration (Docker) / ruff + mypy |
+| `make test` / `make test-all` / `make lint` | unit / + integration (Docker) / ruff + mypy (strict: contracts, edge domain, all of `aivee_api` and `aivee_ingest`) |
 | `make schema` | regenerate JSON Schema from contracts |
 | `make eval` | Romanian request → rule eval (30 cases, real API calls) |
 | `uv run python tools/visual_probe.py IMG_OR_VIDEO "positive" … --negative …` | CLIP score of a visual rule's prompts per image / frame (calibration, see „Reguli libere”) |
-| `make keys` / `make telegram-id` | paste API keys into `.env` / detect the Telegram group |
+| `make keys` / `make telegram-id` | paste API keys into `.env` / detect the Telegram group (`TELEGRAM_CHAT_ID`; ingest uses it only with `TELEGRAM_SINGLE_TENANT=true`) |
 | `make vapid` | generate the Web Push VAPID keys into `.env` (never printed; kept if already set) |
 
 `.env` holds every secret (names in `.env.example`); never print or commit values.
-Models: `uv run python tools/download_models.py` → `models/` (gitignored).
+Models: `uv run python tools/download_models.py` → `models/` (gitignored); INT8 calibrates on coco128 by default, or on venue frames (`--calib-clips`, see `edge-modes.md`).
 
 ## Environment (names only)
 
 | Who reads it | Names |
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
-| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `REALERT_AFTER_S`, `REMIND_S` (default 120, 0 = off), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
-| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
+| Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` + `TELEGRAM_SINGLE_TENANT`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `REALERT_AFTER_S`, `REMIND_S` (default 120, 0 = off), `NOTIFY_WORKERS` (8), `NOTIFY_QUEUE_SIZE` (100), `NOTIFY_ATTEMPTS` (3), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
+| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `CAMERAS` (dev overrides; without both the edge runs the dashboard's cameras: [ip-cameras.md](ip-cameras.md)), `EDGE_JOBS` (answer camera discovery/test; default on without `SOURCE`), `CAMERA_TEST_TIMEOUT_S` (6), `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
 
@@ -38,10 +40,10 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | Service | Code | Role |
 |---|---|---|
 | edge | `apps/edge` | camera → YOLO11n + ByteTrack → pose (table zones; everyone while appearance is scored) → stance + behaviour + CLIP → role → situation engine (opened / arrived / closed) → blurred snapshot → MQTT; live boxes on `detections` |
-| ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (location's `telegram_chat_id`, else `TELEGRAM_CHAT_ID`) + Web Push to the location's members and owners; the "Conectează Telegram" getUpdates poller (`telegram_link.py`, one replica) |
+| ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (the location's `telegram_chat_id`; none: not sent, `telegram_skipped reason=no_chat`; `TELEGRAM_CHAT_ID` only with `TELEGRAM_SINGLE_TENANT=true`) + Web Push to the location's members and owners; the "Conectează Telegram" getUpdates poller (`telegram_link.py`, one replica) |
 | api | `apps/api` | REST + WS; accounts, cookie sessions, roles per location, invites, audit; publishes retained edge state and staff commands; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
-| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0010` (`migrate` service) |
+| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0016` (`migrate` service) |
 | mediamtx | `infra/mediamtx` | RTSP in → WebRTC/WHEP out for the dashboard |
 
 API code map (`apps/api/src/aivee_api/`): `auth/` (passwords, tokens, sessions, rate limit, permission
@@ -61,7 +63,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | POST | `/api/auth/register` | public; creates org + owner, sets the cookie (201) |
 | POST | `/api/auth/login` · `/api/auth/logout` | public / session; sets / clears `aivee_session` |
 | GET | `/api/auth/me` | session → `Me` (org, `is_owner`, locations with role and permissions) |
-| GET | `/api/capabilities` | signed in; `{videos, enrol}`: the clip runner (same checks as `POST /api/videos`) and the staff enroller are wired on this server |
+| GET | `/api/capabilities` | signed in; `{videos, enrol, camera_test, camera_discovery}`: the clip runner (same checks as `POST /api/videos`) and the staff enroller are wired on this server; the camera flags are true when the API talks to the edge over MQTT (`MQTT_ENABLED`) |
 | GET / POST | `/api/locations` | visible locations / create (owner) |
 | PATCH / DELETE | `/api/locations/{id}` | `locations.manage` |
 | POST | `/api/locations/{id}/telegram/link` | `locations.manage` → `{url, private_url, expires_at}`: `https://t.me/<bot>?startgroup=<code>` / `?start=<code>`; single use, 15 min; 503 without a bot username |
@@ -72,7 +74,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/invites/{token}` | public: org, location, role, email |
 | POST | `/api/invites/{token}/accept` | public `{name, password}` → `Me`, sets the cookie; single use |
 | GET | `/api/audit` | `?location_id&actor&kind&from&to&before&limit` → `{items, next_before}`; owner org / manager location / staff own |
-| GET / POST | `/api/cameras` | `alerts.view` / `devices.manage`; POST 409 on an existing id; only at the API's `SITE` |
+| GET / POST | `/api/cameras` | `alerts.view` / `devices.manage`; POST 409 on an existing id; only at the API's `SITE`. Each camera carries `stream_state` (`ok` \| `reconnecting` \| `down` \| null) and `last_frame_at` from its device's last `camera_health` (`devices.camera_health`, migration `0016`): an offline device makes every camera `down`, a camera the edge says nothing about is null; `online` is false when `stream_state` is `down` |
 | GET · PUT / PATCH | `/api/cameras/{id}` | `alerts.view` · `devices.manage` (name, source, device; zones kept) |
 | GET / PUT | `/api/cameras/{id}/zones` | `alerts.view` / `devices.manage` (PUT replaces all) |
 | GET / POST | `/api/rules` | `rules.manage` |
@@ -81,14 +83,15 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/events` | `alerts.view`; raw AlertEvents + `device_id`, `snapshot_url` |
 | GET | `/api/snapshots/{id}` | `alerts.view` (event) or `staff.review` (suggestion); blurred JPEG; `{event_id}-before` is an object change's before image, with the event's rights |
 | GET | `/api/cameras/{id}/frame` | `alerts.view`; the camera's newest face-blurred still (today: its latest alert's whole-frame snapshot), time in `X-Frame-At`, `no-store`; 404 until one exists |
-| POST | `/api/ingest/frames/{camera_id}` | HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time); body one JPEG ≤ 500 KB, or (no Authorization header) the session cookie with `devices.manage` at the camera's location, only for a cloud camera (`source` = `mqtt-frames://<id>`, else 409; 403 without the permission) — the dashboard's `/telefon` page → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
-| GET | `/api/cameras/{id}/live.mjpg` | `alerts.view`; `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
+| POST | `/api/cameras/{id}/push-key` | `devices.manage`; a new frame-ingest key for the camera, shown once (`{camera_id, key}`, 201); only its sha256 is stored (`cameras.push_key_hash`); the previous key and the shared Basic credential stop working for this camera; audit `camera.push_key_created` |
+| POST | `/api/ingest/frames/{camera_id}` | `Authorization: Bearer <the camera's push key>` (S6), or HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time; shared, so only for a camera without a key, at a location claimed by an organisation: else 404, or 401 when the camera has a key); body one JPEG ≤ 500 KB, or (no Authorization header) the session cookie with `devices.manage` at the camera's location, only for a cloud camera (`source` = `mqtt-frames://<id>`, else 409; 403 without the permission) — the dashboard's `/telefon` page → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
+| GET | `/api/cameras/{id}/live.mjpg` | `devices.manage` (the frames are not face-blurred: owners and managers, never staff; S7); `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
 | POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed. Kept for old clients; the dashboard no longer offers it |
 | GET | `/api/metrics/verification` | `alerts.view`; `?location_id` → `{location_id, counts: [{rule_id, status, alerts}]}` |
 | GET | `/api/metrics/service` | `alerts.view`; `?from&to` → wait / reaction / travel `{count, median_s, p90_s}` |
 | GET | `/api/metrics` | `alerts.view`; FPS, CPU, verified ratio, events today, alert latency |
-| GET | `/api/devices` | `alerts.view` |
+| GET | `/api/devices` | `alerts.view`; DeviceStatus (with the stored `camera_health`) + `site`, `last_seen` |
 | GET | `/api/staff/suggestions` | `staff.review` |
 | POST | `/api/staff/suggestions/{id}/confirm` · `/reject` | `staff.review`; sends an EdgeCommand |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | `staff.enrol`; multipart `photo` or `files` (≤ 50 MB each) |
@@ -109,7 +112,7 @@ Root `aivee/<site>/<device>/…`, where `<site>` is the location id.
 
 | Leaf | Direction | QoS / retain | Payload |
 |---|---|---|---|
-| `status` | edge → | 1, retained, LWT `offline` | DeviceStatus |
+| `status` | edge → | 1, retained, LWT `offline` | DeviceStatus; an online edge republishes it with `camera_health` (per live camera: `state`, `last_frame_at`, `fps`) when a camera changes state, else once a minute. Ingest stores the list on `online` and keeps it on `offline` |
 | `events` | edge → | 1 | AlertEvent (`opened` / `arrived` / `closed`) |
 | `metrics` | edge → | 0 | Metrics (every 5 s) |
 | `suggestions` | edge → | 1 | StaffSuggestion |
@@ -118,12 +121,32 @@ Root `aivee/<site>/<device>/…`, where `<site>` is the location id.
 | `rules` | → edge | 1, retained | RuleSet (complete) |
 | `config` | → edge | 1, retained | DeviceConfig: cameras + zones (complete) |
 | `profiles` | → edge | 1, retained | StaffProfiles (complete) |
-| `commands` | → edge | 1, not retained | EdgeCommand `{command_id, kind: confirm_staff | reject_staff, camera_id, track_id, suggestion_id, at}`; the edge drops a redelivered `command_id` |
+| `commands` | → edge | 1, not retained | EdgeCommand `{command_id, kind: confirm_staff | reject_staff, camera_id, track_id, suggestion_id, at}`; the edge drops a redelivered `command_id`. Also EdgeRequest `{request_id, kind: discover_cameras | test_camera, at, source?}` (one-off jobs; `parse_command` tells them apart by `kind`) |
+| `replies` | edge → api | 1, not retained | EdgeReply `{request_id, kind, device, ok, error?, cameras[], jpeg_b64?, width?, height?, frame_at?, at}`, one per EdgeRequest. The API resolves a waiting request only when the topic's device is the one it asked (ACL `pattern write aivee/+/%u/replies`) |
 | `frames/<camera>` (`Topics.frames`) | api → vision worker | 0, not retained | JPEG bytes posted to `/api/ingest/frames/<camera>`; read by `SOURCE=mqtt-frames://<camera>` (ACL `pattern read aivee/+/%u/frames/#`) |
 
 Ingest: `$share/ingest/aivee/+/+/events` (split between replicas) plus `status`, `suggestions`, `snapshots/+`
 and `metrics` on every replica. ACL: each edge user writes only its own device topics (`%u`), so `DEVICE`
 must equal `MQTT_EDGE_USER` (`edge-01`).
+
+Notifications never run on the MQTT loop (`aivee_ingest.dispatch`): the handler stores the event,
+then queues the snapshot wait, verification, Telegram, Web Push and the resolve edit as jobs on
+`NOTIFY_WORKERS` workers. An alert's jobs share one worker, so its alert goes out before its
+"resolved". A full queue drops the job (`notify_dropped reason=queue_full`); each channel retries
+a failed send `NOTIFY_ATTEMPTS` times with backoff (`notify_retry`). Queued jobs live in memory:
+a restart gets 5 s to send them, then loses the rest (an outbox is R1).
+
+Out-of-order lifecycle (R2): an `arrived` or `closed` whose `opened` is not stored yet (another
+replica, a redelivery) is stored unlinked. When the `opened` comes, `AlertRepository.adopt_early`
+links and folds it, so the alert is created in its final state, with its audit entries; nobody
+is notified for an alert that already ended (`notify_skipped reason=already_closed`). Linking
+runs under a per-alert-key advisory lock (device, camera, rule, zone), so two replicas never
+miss each other's row, and an event never attaches to an earlier alert that had already ended.
+
+Snapshots are stored as `SNAPSHOT_DIR/<site>/<device>/<id>.jpg`, keyed by the topic they came on
+(`aivee_api.events.service.snapshot_key`), so a device can never overwrite or lend its image to
+another device's event. The row keeps that path (`snapshot_path`, `before_snapshot_path`) and
+`/api/snapshots/{id}` serves only the row's path; rows stored before this keep the flat `<id>.jpg`.
 
 ## API endpoints
 
@@ -132,6 +155,9 @@ The auth, locations, members, invites, audit and alert endpoints are listed in
 
 | Method | Path | Permission | Body → Response |
 |---|---|---|---|
+| POST | `/api/devices/{device_id}/discover?location_id=` | `devices.manage` at the device's location (a device of another location, or not at `location_id`, is 404) | → 200 `{cameras: [{ip, port, brand: tapo\|hikvision\|dahua\|reolink\|unknown, model, name, onvif, rtsp_paths, already_added}]}`; `already_added` when a camera of the location already uses that IP. 409 `device_offline`, 504 `device_timeout` (15 s), 502 `device_error` (the job broke on the device), 503 without MQTT or broker. The device sends an ONVIF WS-Discovery probe and checks ports 554/2020 on its own /24s (about 5 s) |
+| POST | `/api/cameras/test?location_id=` | `devices.manage` | `{source?, camera_id?, device?}` → 200 `image/jpeg` (face-blurred, ≤ 1280 px wide), `X-Frame-At` (ISO), `X-Frame-Size` (`WxH` of the stream), `no-store`. `camera_id` tests the saved camera with its stored source; a `source` with `***` next to `camera_id` keeps the stored password. `device` defaults to the camera's device, else the location's only online device (the clip runner and cloud vision workers do not count): none → 409 `device_offline`, several → 422 `device_required`. 422 `camera_auth` (Tapo: hint about Cont cameră and Third-Party Compatibility) \| `camera_unreachable` \| `camera_no_stream` \| `invalid` (no source, not RTSP/HTTP, `***` without a saved camera); 504 `device_timeout` (10 s); 502 `device_error` |
+| GET · POST · PUT/PATCH | `/api/cameras…` | — | `source` is always masked in responses and audit entries: `rtsp://user:***@host/…` (secret query values too). A PUT/PATCH whose source keeps `***` keeps the stored password; a create with `***` is 422. Only the device's retained `config` carries the real URL |
 | DELETE | `/api/cameras/{id}` | `devices.manage` at the camera's location (else 404) | → 204. Zones and rules go too; events and alerts stay. Open alerts close as `closed_by: "system"`, `closed_reason: "camera_deleted"`. Retained `config` and `rules` are republished. Audit `camera.deleted` (`before` = the camera) + `alert.closed` per open alert |
 | GET | `/api/invites?location_id=` | `users.manage` (default: first location) | → `[{id, email, role, location_id, created_by: {id, name} \| null, created_at, expires_at}]`, newest first, pending only (not accepted, revoked or expired). A manager sees only `staff` invites |
 | DELETE | `/api/invites/{id}` | `users.manage`; a manager may revoke only `staff` invites (else 403) | → 204, idempotent. 404 outside the caller's locations, 409 if already accepted. Audit `user.invite_revoked` (once) |
@@ -179,8 +205,8 @@ A revoked invite's link (`GET /api/invites/{token}`, `POST …/accept`) answers 
   reminders carry only `Vezi în aplicație`; no text names who took an alert. The callback handler
   below stays so the buttons on messages sent before the change still answer.
 - Old messages' `Preiau ✋` (`callback_data` `ack:<alert id>`): the getUpdates poller
-  (`allowed_updates` = message, my_chat_member, callback_query) hands a button press to `AlertCallbacks`: only from the chat the alert went to (the location's chat,
-  else `TELEGRAM_CHAT_ID`); `AlertRepository.acknowledge` with the sender's first name
+  (`allowed_updates` = message, my_chat_member, callback_query) hands a button press to `AlertCallbacks`: only from the chat the alert went to (the location's chat;
+  `TELEGRAM_CHAT_ID` only in single-tenant mode); `AlertRepository.acknowledge` with the sender's first name
   (`acknowledged_by_id` empty: no AiVee account) and audit `alert.acknowledged` (actor
   `telegram:<user id>`, `after.via = telegram`). Toasts: "Preluată ✓" (the message gets
   "✋ Preluată de Ana · 16:58" and loses the button), "Deja preluată de X", "Alerta s-a închis"
@@ -216,6 +242,12 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
   stable 15 fps, while venue Wi-Fi stalled the MJPEG stream up to 1.8 s. `Cv2Source` emits a frame only after
   1/`TARGET_FPS` s, so set `TARGET_FPS` above the source rate (≥ 2×, e.g. 30 for 15): the default 10 against a
   15 fps stream drops every other frame and runs at ~7 fps.
+- Tracker (`adapters/yolo.py`): YOLO runs at conf 0.10 and feeds ByteTrack through a config generated per
+  detector (`tracker_config`): `track_high_thresh` = `new_track_thresh` = 0.35 (a person needs 0.35 to start a
+  track, as before), `track_low_thresh` 0.10 (low-score boxes only extend existing tracks through occlusion),
+  `track_buffer` = ceil(fps × 4 s), so a lost track survives 4 s at any frame rate (log `tracker bytetrack
+  fps=… track_buffer=…`). Objects below 0.35 are dropped, as before. `fps` is the `YoloDetector(fps=…)` argument
+  (TARGET_FPS); if the CPU cannot reach it, tracks survive proportionally longer.
 - Engine `grace_s=5` (`GRACE_S`): a guest missing for up to 5 s still counts as present, so an alert closes ~5 s after
   the guest leaves (1.5 s closed alerts on detector flicker at low fps); tracks forgotten after 5 s; role hysteresis 0.7 / 0.4 (staff at ≥ 0.7, back to guest at ≤ 0.4); owner confirm / reject overrides.
 - Staff score (`domain/role.py`): `(w_a·appearance + w_s·standing + w_b·behaviour) / Σ w of the signals available`,
@@ -230,6 +262,12 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
   leg: ≥ 150° standing (also mid-stride), ≤ 120° seated. Without a decisive leg, the box's pixel height / width:
   ≥ 2.2 standing, ≤ 1.6 seated, else unknown. The trajectory buffer keeps 3 s of known stances per track;
   `standing_ratio` = standing share × min(1, known span / 2 s), so a guest who just stood up does not count at once.
+- Raised hand (`domain/pose.py`), people in table zones only: per frame, a visible wrist above the highest head
+  point (nose, eyes or ears) by 0.03, so guests seen from the side or from behind count; with no head point, above
+  the shoulder line by 0.75 shoulder widths (pixel space); one shoulder and no head, or no shoulder, is "not
+  raised". `RaisedHandFilter` then holds it per track: the hand counts after 1.0 s up (`raised_hand_s`) and gaps
+  up to 0.6 s (`raised_hand_drop_s`) neither reset the hold nor end it, so a wave or one bad frame opens nothing.
+  A raised-hand alert therefore opens ~1 s after the hand goes up.
 - `arrived`: a staff track's foot point in the alert's zone ≥ `ARRIVE_S` (default 5 s), once per alert.
 - Appearance is off by default (`APPEARANCE` / `--appearance`), ~0.6 s per crop, at most once per 2 s per person.
 - `ROTATE=90` for a sideways phone (D13). Live alert time is wall clock.
@@ -244,7 +282,7 @@ cameras and rules. The run's log is `VIDEO_DIR/<id>.log`. Analysis needs the edg
 ## Alert verification (ingest, `VERIFY_ALERTS`, default off)
 `apps/ingest/.../verify.py`: `AlertVerifier` port, `ClaudeAlertVerifier` (`messages.parse`, `VERIFY_MODEL`, effort low,
 `VerificationAnswer`). The question is built from the rule's `prompt_ro`; `object_gone` sends before + after, other kinds
-the opened snapshot. Runs as a task (the handler never waits), once per alert (atomic `pending` claim), `VERIFY_TIMEOUT_S`
+the opened snapshot. Runs as a notification job (the handler never waits), once per alert (atomic `pending` claim), `VERIFY_TIMEOUT_S`
 (20 s). Confirmed → notify with the model's summary; rejected → no notification; unavailable (off, no key, error,
 timeout, no image) → normal alert. Results on the opened row (`verification_*`, `verified_at`, migration `0008`);
 `AlertView.verification`, `before_snapshot_url`. Design: `docs/plans/2026-11-06-object-change-design.md`.
@@ -258,9 +296,12 @@ each run also writes `drafts.json` (raw model output per case), the source of `t
 ## Reguli libere (open rules: `object_present`, `visual`)
 
 The owner can ask for anything a camera image shows: „anunță-mă dacă vine un urs”, „dacă e foc”,
-„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă cineva are un cuțit”, „dacă ușa
-rămâne deschisă”. Refusals do not change: faces, identifying people, age, gender, ethnicity and any
-judgement of a person's appearance stay refused; theft is only `object_gone` (an object gone from a table).
+„dacă iese fum”, „dacă e apă pe jos”, „dacă intră un câine”, „dacă ușa rămâne deschisă”. Refusals do
+not change: faces, identifying people, age, gender, ethnicity and any judgement of a person's appearance
+stay refused; theft is only `object_gone` (an object gone from a table). Cutlery is not a rule: „dacă
+cineva are un cuțit” gets a clarifying question, because every table has a knife and neither YOLO nor
+CLIP can tell a table knife from a weapon (`service.py: looks_for_cutlery`, eval case `refuse-knife`).
+`knife` is also not in the detector's `DEFAULT_CLASSES`.
 
 **How it works.**
 1. *Translation* (`rules/prompt.py`, situations 6 and 7). A COCO class → `object_present` (`objects`,
@@ -337,6 +378,9 @@ call per opened alert (as every other kind); `cooldown_s` 120 bounds the alerts 
 - Cameras can be added only at the location of the API's edge link (`SITE` / `DEVICE`); other locations
   get "Locația nu are un dispozitiv conectat la acest server."
 - Alerts stay open when a device goes offline (no close or arrival comes) — being fixed in `fix/alert-edge-cases`.
+- Camera discovery checks only the box's own /24 networks and needs host networking; the MAC
+  vendor list behind the brand guess is short (a wrong guess only changes the suggested path).
+  The API waits for a reply in memory, like the other single-replica API state.
 - Web Push needs HTTPS on phones (secure context); plain `http://<laptop-ip>` gets Telegram only.
 - `test_fake_edge_alert_is_acknowledged_arrives_and_closes` (integration) failed in 2 of 3 full
   `-m integration` runs on 2026-11-06 and passes alone: timing-sensitive.

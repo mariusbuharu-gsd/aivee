@@ -31,11 +31,33 @@ async def recent_events(session: AsyncSession, limit: int) -> list[EventOut]:
     return [event_out(r) for r in rows]
 
 
-def snapshot_file(snapshot_dir: Path, event_id: str) -> Path:
-    """The JPEG ingest stored for `event_id` (same naming as aivee_ingest.handler)."""
-    if not _SAFE_ID.match(event_id):
+def snapshot_key(site: str, device: str, snapshot_id: str) -> str | None:
+    """Where ingest stores the JPEG sent on `aivee/<site>/<device>/snapshots/<id>`, relative
+    to SNAPSHOT_DIR: `<site>/<device>/<id>.jpg`. Keyed by the topic (the broker ACL pins the
+    device), so one device can never overwrite another's image. None for an unsafe segment."""
+    if not all(_SAFE_ID.match(part) for part in (site, device, snapshot_id)):
+        return None
+    return f"{site}/{device}/{snapshot_id}.jpg"
+
+
+def _safe_stored(stored: str) -> bool:
+    """`<id>.jpg` (rows stored before snapshots were keyed by device) or `snapshot_key`."""
+    *dirs, name = stored.split("/")
+    stem, dot, ext = name.rpartition(".")
+    return (
+        len(dirs) in (0, 2)
+        and all(_SAFE_ID.match(d) for d in dirs)
+        and dot == "."
+        and ext == "jpg"
+        and bool(_SAFE_ID.match(stem))
+    )
+
+
+def snapshot_file(snapshot_dir: Path, stored: str | None) -> Path:
+    """The JPEG at a row's stored snapshot path (`snapshot_path`, `before_snapshot_path`)."""
+    if not stored or not _safe_stored(stored):
         raise NotFound("Imaginea nu există.")
-    path = snapshot_dir / f"{event_id}.jpg"
+    path = snapshot_dir / stored
     if not path.is_file():
         raise NotFound("Imaginea nu există.")
     return path

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from aivee_contracts.commands import EdgeCommand
+from aivee_contracts.commands import EdgeCommand, EdgeReply, EdgeRequest
 from aivee_contracts.detections import Detections
 from aivee_contracts.events import (
     AlertEvent,
@@ -30,6 +30,8 @@ MODELS: list[type[BaseModel]] = [
     StaffSuggestion,
     StaffProfiles,
     EdgeCommand,
+    EdgeRequest,
+    EdgeReply,
     Detections,
     Verification,
 ]

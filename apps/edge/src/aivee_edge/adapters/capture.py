@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import logging
+import os
+import threading
 import time
+from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
+
+from aivee_edge.domain.camera_health import SourceHealth
+from aivee_edge.redact import redact_url
 
 log = logging.getLogger(__name__)
 
@@ -45,11 +53,64 @@ def _parse_source(url_or_index: str | int) -> str | int:
     return url_or_index
 
 
-class Cv2Source:
-    """Live source. Drops frames to `target_fps`, reconnects with exponential backoff.
+FFMPEG_OPTIONS_ENV = "OPENCV_FFMPEG_CAPTURE_OPTIONS"
+FPS_WINDOW_S = 5.0
+"""Measured camera fps counts the frames decoded over this many seconds."""
+FIRST_BACKOFF_S = 0.5
+_WAIT_SLICE_S = 0.25
+"""`read()` and the grabber re-check `close()` at least this often."""
 
-    Timestamps come from `time.monotonic()`. `read()` never returns None unless
-    `max_reconnects` is exceeded (live cameras do not "end").
+
+def next_due(due: float, ts: float, period: float) -> float:
+    """When the frame after one emitted at `ts` is due, given the previous due time.
+
+    On schedule, the next frame is due a period after the previous due time (not after
+    `ts`), so a 25 fps camera paced to 10 fps gives 10 frames a second, not 8.3. A frame
+    more than a period late (a slow pipeline, a stream gap) restarts the schedule.
+    """
+    return due + period if ts - due < period else ts + period
+
+
+def ffmpeg_capture_options(timeout_s: float) -> None:
+    """RTSP over TCP and a socket I/O timeout for every FFmpeg capture in this process.
+
+    OpenCV reads `OPENCV_FFMPEG_CAPTURE_OPTIONS` on each open. A value the operator already
+    set is kept as is, so a camera that needs UDP can still be served.
+    """
+    os.environ.setdefault(
+        FFMPEG_OPTIONS_ENV, f"rtsp_transport;tcp|timeout;{round(timeout_s * 1_000_000)}"
+    )
+
+
+def fourcc(value: float) -> str | None:
+    """`CAP_PROP_FOURCC` as text (`h264`, `hevc`, `MJPG`), None when the backend gives 0."""
+    code = int(value)
+    if code <= 0:
+        return None
+    text = code.to_bytes(4, "little").decode("ascii", "replace").strip("\x00 ")
+    return text or None
+
+
+@dataclass(frozen=True)
+class _Grabbed:
+    seq: int
+    ts: float
+    image: Image
+
+
+class Cv2Source:
+    """Live source (RTSP, HTTP MJPEG, webcam) read by a grabber thread that keeps only
+    the newest decoded frame.
+
+    The camera is read at its own rate on a background thread, so a 25 fps camera never
+    builds a backlog behind a slower pipeline. `read()` returns the newest frame once it is
+    due at `target_fps` (see `next_due`), never an older one and never the same one twice;
+    it waits while there is no new frame (a stalled or reconnecting camera). Timestamps
+    are `clock()` at decode time. The stream reconnects with exponential backoff; `read()`
+    returns None only after `max_reconnects` failed opens in a row, or after `close()`.
+
+    Network URLs use RTSP over TCP and open/read timeouts of `timeout_s`. `health()` says
+    how the stream is doing (see `SourceHealth`).
     """
 
     def __init__(
@@ -60,70 +121,180 @@ class Cv2Source:
         max_backoff_s: float = 10.0,
         max_reconnects: int | None = None,
         clock: Callable[[], float] = time.monotonic,
-        sleep: Callable[[float], None] = time.sleep,
+        sleep: Callable[[float], None] | None = None,
         rotate: int = 0,
+        timeout_s: float = 5.0,
     ) -> None:
         rotate_check(rotate)
         self._rotate = rotate
         self._source = _parse_source(url_or_index)
+        self._shown = redact_url(self._source)
         self._period = 1.0 / target_fps if target_fps > 0 else 0.0
         self._max_backoff = max_backoff_s
         self._max_reconnects = max_reconnects
         self._clock = clock
-        self._sleep = sleep
-        self._cap: cv2.VideoCapture | None = None
-        self._last_emit = -float("inf")
+        self._closed = threading.Event()
+        # Default: a backoff that close() can cut short.
+        self._sleep = sleep or (lambda s: self._closed.wait(s) and None)
+        self._timeout_s = timeout_s
 
-    def _open(self) -> bool:
+        self._cond = threading.Condition()
+        self._thread: threading.Thread | None = None
+        self._latest: _Grabbed | None = None
+        self._emitted = 0  # seq of the frame read() returned last
+        self._due = -float("inf")
+        self._ended = False
+        self._connected = False
+        self._frames = 0
+        self._reconnects = 0
+        self._stamps: deque[float] = deque()
+        self._size: tuple[int, int] | None = None
+        self._codec: str | None = None
+
+    # -- grabber thread ------------------------------------------------------------
+
+    def start(self) -> None:
+        """Start grabbing (`read()` does it on first use)."""
+        with self._cond:
+            if self._thread is not None:
+                return
+            self._thread = threading.Thread(
+                target=self._grab, name=f"grab {self._shown}", daemon=True
+            )
+        self._thread.start()
+
+    def _open(self) -> Any:
+        """An opened `cv2.VideoCapture`, or None."""
         if isinstance(self._source, str) and "://" in self._source:
+            ffmpeg_capture_options(self._timeout_s)
+            timeout_ms = round(self._timeout_s * 1000)
             # FFmpeg's frame threading holds about one frame per decoder thread: at 5 fps on
             # 12 cores that is ~2.4 s behind the camera. One thread keeps the reader live.
-            cap = cv2.VideoCapture(self._source, cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, 1])
+            params = [
+                cv2.CAP_PROP_N_THREADS,
+                1,
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+                timeout_ms,
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC,
+                timeout_ms,
+            ]
+            cap = cv2.VideoCapture(self._source, cv2.CAP_FFMPEG, params)
         else:
             cap = cv2.VideoCapture(self._source)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if not cap.isOpened():
             cap.release()
-            return False
-        self._cap = cap
-        return True
+            return None
+        return cap
 
-    def _reconnect(self) -> bool:
-        if self._cap is not None:
-            self._cap.release()
-            self._cap = None
-        backoff = 0.5
+    def _connect(self) -> Any:
+        """Open the stream, backing off between failed attempts; None to give up."""
+        backoff = FIRST_BACKOFF_S
         attempts = 0
-        while not self._open():
+        while not self._closed.is_set():
+            cap = self._open()
+            if cap is not None:
+                return cap
             attempts += 1
+            with self._cond:
+                self._reconnects += 1
             if self._max_reconnects is not None and attempts > self._max_reconnects:
-                return False
-            log.warning("camera %s unavailable, retrying in %.1fs", self._source, backoff)
+                return None
+            log.warning("camera %s unavailable, retrying in %.1fs", self._shown, backoff)
             self._sleep(backoff)
             backoff = min(backoff * 2, self._max_backoff)
-        return True
+        return None
+
+    def _grab(self) -> None:
+        cap: Any = None
+        try:
+            while not self._closed.is_set():
+                if cap is None:
+                    cap = self._connect()
+                    if cap is None:
+                        break
+                    codec = fourcc(cap.get(cv2.CAP_PROP_FOURCC))
+                    with self._cond:
+                        self._codec = codec
+                ok, image = cap.read()
+                if self._closed.is_set():
+                    break
+                if not ok or image is None:
+                    log.warning("camera %s read failed, reconnecting", self._shown)
+                    cap.release()
+                    cap = None
+                    with self._cond:
+                        self._connected = False
+                        self._reconnects += 1
+                    continue
+                self._keep(image)
+        finally:
+            if cap is not None:
+                cap.release()
+            with self._cond:
+                self._ended = True
+                self._connected = False
+                self._cond.notify_all()
+
+    def _keep(self, image: Image) -> None:
+        ts = self._clock()
+        with self._cond:
+            self._frames += 1
+            self._latest = _Grabbed(self._frames, ts, image)
+            self._connected = True
+            self._size = (int(image.shape[1]), int(image.shape[0]))
+            self._stamps.append(ts)
+            while self._stamps and self._stamps[0] < ts - FPS_WINDOW_S:
+                self._stamps.popleft()
+            self._cond.notify_all()
+
+    # -- FrameSource -----------------------------------------------------------------
 
     def read(self) -> tuple[float, Image] | None:
-        while True:
-            if self._cap is None and not self._reconnect():
-                return None
-            assert self._cap is not None
-            ok, image = self._cap.read()
-            if not ok or image is None:
-                log.warning("camera %s read failed, reconnecting", self._source)
-                self._cap.release()
-                self._cap = None
-                continue
-            now = self._clock()
-            if now - self._last_emit >= self._period:
-                self._last_emit = now
-                return now, rotate(image, self._rotate)
-            # else: drop the frame; grabbing keeps the buffer fresh
+        self.start()
+        with self._cond:
+            while True:
+                frame = self._latest
+                if frame is not None and frame.seq > self._emitted and frame.ts >= self._due:
+                    break
+                if self._ended or self._closed.is_set():
+                    return None
+                self._cond.wait(_WAIT_SLICE_S)
+            self._emitted = frame.seq
+            self._due = next_due(self._due, frame.ts, self._period)
+        return frame.ts, rotate(frame.image, self._rotate)
+
+    def ended(self) -> bool:
+        """The grabber stopped: closed, or it gave up after `max_reconnects`."""
+        with self._cond:
+            return self._ended
+
+    def health(self) -> SourceHealth:
+        now = self._clock()
+        with self._cond:
+            latest = self._latest
+            stamps = [t for t in self._stamps if t >= now - FPS_WINDOW_S]
+            span = stamps[-1] - stamps[0] if len(stamps) > 1 else 0.0
+            return SourceHealth(
+                connected=self._connected,
+                last_frame_age_s=max(0.0, now - latest.ts) if latest is not None else None,
+                fps=round((len(stamps) - 1) / span, 2) if span > 0 else 0.0,
+                width=self._size[0] if self._size else None,
+                height=self._size[1] if self._size else None,
+                frames=self._frames,
+                reconnects=self._reconnects,
+                codec=self._codec,
+            )
 
     def close(self) -> None:
-        if self._cap is not None:
-            self._cap.release()
-            self._cap = None
+        """Stop grabbing; a waiting `read()` returns None. The thread is a daemon: a read
+        stuck in FFmpeg ends at the read timeout."""
+        self._closed.set()
+        with self._cond:
+            self._cond.notify_all()
+            thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
 
 
 class FileSource:

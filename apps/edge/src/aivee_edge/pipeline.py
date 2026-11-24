@@ -1,7 +1,7 @@
 """The edge application loop: one `step` per frame, every stage behind a port.
 
-source.read → detector.detect → (pose → raised hand at tables; stance from pose or box
-shape) → trajectory + stance ratio →
+source.read → detector.detect → (pose → raised hand at tables, held for `raised_hand_s`;
+stance from pose or box shape) → trajectory + stance ratio →
 behaviour features → (appearance vs staff profiles) → roles → situation engine →
 publish alerts (with snapshot on open; an object change also sends the last frame that
 still showed the object as its "before" image), staff suggestions (with a person crop), live
@@ -49,7 +49,13 @@ from aivee_edge.domain.ports import (
     PersonDetector,
     VisualScorer,
 )
-from aivee_edge.domain.pose import Keypoint, is_raised_hand
+from aivee_edge.domain.pose import (
+    RAISED_HAND_DROP_S,
+    RAISED_HAND_HOLD_S,
+    Keypoint,
+    RaisedHandFilter,
+    is_raised_hand,
+)
 from aivee_edge.domain.role import RoleClassifier, StaffWeights
 from aivee_edge.domain.stance import is_standing
 from aivee_edge.domain.visual import DEFAULT_VISUAL_HZ, with_whole_frame
@@ -162,12 +168,15 @@ class EdgePipeline:
         cpu: Callable[[], float] = cpu_percent,
         visual: VisualScorer | None = None,
         visual_hz: float = DEFAULT_VISUAL_HZ,
+        raised_hand_s: float = RAISED_HAND_HOLD_S,
+        raised_hand_drop_s: float = RAISED_HAND_DROP_S,
     ) -> None:
         self._source = source
         self._detector = detector
         self._publisher = publisher
         self._config = config
         self._pose = pose
+        self._hands = RaisedHandFilter(raised_hand_s, raised_hand_drop_s)
         self._embedder = embedder
         self._profiles = profiles
         self._snapshots = snapshots or NoSnapshot()
@@ -401,12 +410,17 @@ class EdgePipeline:
         if self._pose is not None and targets:
             keypoints = self._pose.estimate(image, targets)
             posed = True
+        aspect = frame.aspect or 1.0
         tracks = tuple(
             replace(
                 t,
-                raised_hand=t.track_id in at_table
-                and t.track_id in keypoints
-                and is_raised_hand(keypoints[t.track_id]),
+                raised_hand=self._hands.update(
+                    t.track_id,
+                    t.track_id in at_table
+                    and t.track_id in keypoints
+                    and is_raised_hand(keypoints[t.track_id], aspect=aspect),
+                    frame.ts,
+                ),
                 standing=is_standing(keypoints.get(t.track_id), t.bbox, frame.aspect),
             )
             for t in frame.tracks
@@ -474,6 +488,7 @@ class EdgePipeline:
             self.classifier.forget(tid)
             self._appearance.pop(tid, None)
             self._embedded_at.pop(tid, None)
+            self._hands.forget(tid)
             log.info("track_gone track=%d", tid)
 
     def appearance_of(self, track_id: int) -> float | None:

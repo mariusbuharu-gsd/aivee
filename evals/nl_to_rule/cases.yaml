@@ -151,12 +151,6 @@ cases:
       zone_tag: [anywhere, entrance]
       conditions:
         - { kind: object_present, objects_include: [dog] }
-  - id: present-knife
-    text: "dacă cineva are un cuțit"
-    expect:
-      zone_tag: anywhere
-      conditions:
-        - { kind: object_present, objects_include: [knife] }
 
   # --- 7. a visual situation (visual) --------------------------------------------------
   - id: visual-fire
@@ -203,6 +197,10 @@ cases:
     expect: { refuse: true }
   - id: refuse-vague
     text: "Anunță-mă dacă se întâmplă ceva ciudat"
+    expect: { refuse: true }
+  # Every table has a knife: object_present knife would fire all day (audit V1).
+  - id: refuse-knife
+    text: "dacă cineva are un cuțit"
     expect: { refuse: true }
   - id: refuse-money
     text: "Spune-mi câți bani a încasat ospătarul azi"

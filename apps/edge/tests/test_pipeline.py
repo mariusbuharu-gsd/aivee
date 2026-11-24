@@ -217,7 +217,7 @@ def test_raised_hand_counts_only_inside_table_zones() -> None:
     at_door = TrackObs(track_id=2, bbox=at(ENTRANCE))
     frames = [Frame(ts=0.0, tracks=(at_door,)), Frame(ts=1.0, tracks=(at_table, at_door))]
     rec, pose = Recorder(), RaisingPose()
-    p = pipeline(frames, Config([CALLS], ZONES), rec, pose=pose)
+    p = pipeline(frames, Config([CALLS], ZONES), rec, pose=pose, raised_hand_s=0.0)
 
     first = p.step()
     assert first is not None and first.verified is False  # nobody at a table: pose skipped
@@ -228,6 +228,43 @@ def test_raised_hand_counts_only_inside_table_zones() -> None:
     hands = {t.track_id: t.raised_hand for t in second.frame.tracks}
     assert hands == {1: True, 2: False}
     assert rec.states() == [("opened", "calls", "t2")]
+
+
+class RaisingFor(RaisingPose):
+    """Raised for the first `frames` calls, then arms down (no keypoints)."""
+
+    def __init__(self, frames: int) -> None:
+        super().__init__()
+        self.frames = frames
+
+    def estimate(self, image: Image, tracks: Sequence[TrackObs]) -> Mapping[int, list[Keypoint]]:
+        raised = super().estimate(image, tracks)
+        return raised if len(self.calls) <= self.frames else {}
+
+
+def test_raised_hand_opens_only_after_it_stayed_up_for_the_hold() -> None:
+    frames = [Frame(ts=i / 10, tracks=(TrackObs(1, at(T2)),)) for i in range(20)]
+    rec = Recorder()
+    p = pipeline(frames, Config([CALLS], ZONES), rec, pose=RaisingPose())
+    hands = [r.frame.tracks[0].raised_hand for r in iter(p.step, None)]
+    assert hands == [False] * 10 + [True] * 10
+    [(opened, _)] = rec.alerts
+    assert (opened.state, opened.at.timestamp()) == ("opened", pytest.approx(1.0))
+
+
+def test_a_wave_shorter_than_the_hold_never_alerts() -> None:
+    frames = [Frame(ts=i / 10, tracks=(TrackObs(1, at(T2)),)) for i in range(30)]
+    rec = Recorder()
+    pipeline(frames, Config([CALLS], ZONES), rec, pose=RaisingFor(frames=6)).run()
+    assert rec.alerts == []
+
+
+def test_the_hold_is_configurable() -> None:
+    frames = [Frame(ts=i / 10, tracks=(TrackObs(1, at(T2)),)) for i in range(20)]
+    rec = Recorder()
+    p = pipeline(frames, Config([CALLS], ZONES), rec, pose=RaisingPose(), raised_hand_s=0.5)
+    p.run()
+    assert [e.at.timestamp() for e, _ in rec.alerts] == [pytest.approx(0.5)]
 
 
 def standing_keypoints() -> list[Keypoint]:
@@ -328,7 +365,7 @@ def test_hot_reload_of_rules_and_zones() -> None:
     frames = [Frame(ts=float(t), tracks=(hand,)) for t in range(4)]
     config = Config([], [T1])
     rec = Recorder()
-    p = pipeline(frames, config, rec, pose=RaisingPose())
+    p = pipeline(frames, config, rec, pose=RaisingPose(), raised_hand_s=0.0)
 
     p.step()  # no rules, no Masa 2
     config.rules_ = [CALLS]
@@ -459,7 +496,14 @@ def test_snapshot_only_for_opened_alerts() -> None:
             return super().estimate(image, tracks) if not self.calls else {}
 
     rec = Recorder()
-    p = pipeline(frames, Config([CALLS], ZONES), rec, pose=OnceRaising(), snapshots=FakeSnapshots())
+    p = pipeline(
+        frames,
+        Config([CALLS], ZONES),
+        rec,
+        pose=OnceRaising(),
+        snapshots=FakeSnapshots(),
+        raised_hand_s=0.0,
+    )
     p.run()
     assert [(e.state, snap) for e, snap in rec.alerts] == [("opened", b"jpeg"), ("closed", None)]
 
@@ -543,7 +587,9 @@ def test_detections_carry_roles_hands_and_objects_with_clamped_boxes() -> None:
     frames = [Frame(ts=0.0, tracks=(hand, edge_of_frame), objects=(cup,))]
     commands = FakeCommands()
     rec = Recorder()
-    p = pipeline(frames, Config([], ZONES), rec, pose=RaisingPose(), commands=commands)
+    p = pipeline(
+        frames, Config([], ZONES), rec, pose=RaisingPose(), commands=commands, raised_hand_s=0.0
+    )
     p.run()
 
     [d] = rec.detections

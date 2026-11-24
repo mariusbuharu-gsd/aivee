@@ -1,9 +1,16 @@
 """Cloud mode over HTTPS (port 443 only): frames in from the connector, MJPEG out to the dashboard.
 
-    POST /api/ingest/frames/{camera_id}   HTTP Basic (STREAM_PUBLISH_USER/PASSWORD), one JPEG;
-                                          or the dashboard session ("Folosește telefonul ca
-                                          cameră") with devices.manage, cloud cameras only
-    GET  /api/cameras/{camera_id}/live.mjpg   session cookie, alerts.view on the camera's location
+    POST /api/ingest/frames/{camera_id}   one JPEG, authenticated by one of:
+                                          - Bearer <the camera's own push key> (S6,
+                                            `aivee_api.frames.keys`);
+                                          - HTTP Basic STREAM_PUBLISH_USER/PASSWORD, shared:
+                                            only for a camera without a key, at a location
+                                            claimed by an organisation;
+                                          - the dashboard session ("Folosește telefonul ca
+                                            cameră") with devices.manage, cloud cameras only
+    GET  /api/cameras/{camera_id}/live.mjpg   session cookie, devices.manage on the camera's
+                                          location: the frames are not face-blurred, so
+                                          owners and managers only, never staff (S7)
 
 See `aivee_api.frames.store` (in memory, single replica, never on disk).
 """
@@ -12,6 +19,7 @@ import base64
 import binascii
 import hmac
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Annotated
 
 from aivee_contracts.topics import Topics
@@ -20,21 +28,34 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 from aivee_api.auth.deps import COOKIE, CurrentUser, current_principal
-from aivee_api.auth.permissions import ALERTS_VIEW, DEVICES_MANAGE
+from aivee_api.auth.permissions import DEVICES_MANAGE
 from aivee_api.auth.scope import authorize_camera
 from aivee_api.cameras.schemas import ID_PATTERN
-from aivee_api.db.models import Camera, Device
+from aivee_api.db.models import Camera, Device, Site
 from aivee_api.deps import ServicesDep
 from aivee_api.errors import Conflict, NotFound, TooLarge, Unauthenticated, UnsupportedType
+from aivee_api.frames.keys import bearer, key_matches
 from aivee_api.frames.store import BOUNDARY, is_jpeg, mjpeg_stream
 from aivee_api.settings import ApiSettings
 
 router = APIRouter(tags=["frames"])
 
 CameraId = Annotated[str, Path(pattern=ID_PATTERN)]
-CameraTopics = Callable[[str], Awaitable[Topics | None]]
+
+
+@dataclass(frozen=True)
+class CameraTarget:
+    """What frame ingest needs to know about a camera: where to relay, who owns it, its key."""
+
+    topics: Topics
+    org_id: str | None
+    push_key_hash: str | None = None
+
+
+CameraLookup = Callable[[str], Awaitable[CameraTarget | None]]
 
 BAD_CREDENTIALS_RO = "Date de publicare greșite."
+OWN_KEY_RO = "Camera aceasta are cheia ei de publicare."
 TOO_LARGE_RO = "Cadrul e prea mare."
 NOT_JPEG_RO = "Cadrul trebuie să fie JPEG."
 NO_LIVE_RO = "Camera nu trimite imagini acum."
@@ -76,19 +97,26 @@ async def read_limited(request: Request, max_bytes: int) -> bytes:
     return bytes(body)
 
 
-def get_camera_topics(svc: ServicesDep) -> CameraTopics:
-    """Topics of the device serving a camera, None when the camera does not exist."""
+def get_camera_target(svc: ServicesDep) -> CameraLookup:
+    """The camera's device topics, its location's organisation and its push key hash; None
+    when the camera does not exist (or has no device)."""
 
-    async def find(camera_id: str) -> Topics | None:
+    async def find(camera_id: str) -> CameraTarget | None:
         async with svc.sessions() as s:
             row = (
                 await s.execute(
-                    select(Device.site_id, Camera.device_id)
+                    select(Device.site_id, Camera.device_id, Site.org_id, Camera.push_key_hash)
                     .join(Device, Device.id == Camera.device_id)
+                    .outerjoin(Site, Site.id == Device.site_id)
                     .where(Camera.id == camera_id)
                 )
             ).first()
-        return None if row is None else Topics(site=row[0], device=row[1])
+        if row is None:
+            return None
+        site, device, org_id, key_hash = row
+        if device is None:  # never: the inner join drops cameras without a device
+            return None
+        return CameraTarget(Topics(site=site, device=device), org_id, key_hash)
 
     return find
 
@@ -112,25 +140,39 @@ async def ingest_frame(
     request: Request,
     response: Response,
     svc: ServicesDep,
-    camera_topics: Annotated[CameraTopics, Depends(get_camera_topics)],
+    lookup: Annotated[CameraLookup, Depends(get_camera_target)],
 ) -> None:
     """One JPEG from the connector or the phone page: kept as the camera's newest frame and
     relayed over MQTT (`Topics.frames`) to its vision worker. Auth, then size and type, then
-    the camera. An Authorization header always means Basic; without one, the session cookie."""
+    the camera. `Bearer` is the camera's own key; any other Authorization header is the
+    shared Basic credential; without one, the session cookie."""
     header = request.headers.get("authorization")
-    if header is not None or COOKIE not in request.cookies:
+    key = bearer(header)
+    missing = f"Camera {camera_id} nu există."
+    if key is not None:
+        target = await lookup(camera_id)
+        # An unknown camera answers like a wrong key: a key never tells which cameras exist.
+        if target is None or not key_matches(key, target.push_key_hash):
+            raise Unauthenticated(BAD_CREDENTIALS_RO)
+    elif header is not None or COOKIE not in request.cookies:
         if not credentials_ok(header, svc.settings):
             raise Unauthenticated(BAD_CREDENTIALS_RO)
+        target = await lookup(camera_id)
+        if target is not None and target.push_key_hash:
+            raise Unauthenticated(OWN_KEY_RO)
+        if target is not None and target.org_id is None:
+            # A location ingest created for an unknown device belongs to nobody yet.
+            target = None
     else:
         await authorize_session_push(request, response, svc, camera_id)
+        target = await lookup(camera_id)
     jpeg = await read_limited(request, svc.settings.frame_max_bytes)
     if not is_jpeg(jpeg):
         raise UnsupportedType(NOT_JPEG_RO)
-    topics = await camera_topics(camera_id)
-    if topics is None:
-        raise NotFound(f"Camera {camera_id} nu există.")
+    if target is None:
+        raise NotFound(missing)
     svc.frames.put(camera_id, jpeg)
-    await svc.frames.relay(topics.frames(camera_id), jpeg)
+    await svc.frames.relay(target.topics.frames(camera_id), jpeg)
 
 
 @router.get("/api/cameras/{camera_id}/live.mjpg", response_class=StreamingResponse)
@@ -138,9 +180,9 @@ async def live_mjpeg(
     camera_id: CameraId, request: Request, svc: ServicesDep, p: CurrentUser
 ) -> StreamingResponse:
     """MJPEG of the frames the connector posts, for a dashboard `<img>`; 404 while none came in
-    the last seconds. Ends when the client goes away."""
+    the last seconds. Ends when the client goes away. Unblurred: devices.manage (S7)."""
     async with svc.sessions() as s:  # not a request-long session: the stream may run for hours
-        await authorize_camera(s, p, ALERTS_VIEW, camera_id)
+        await authorize_camera(s, p, DEVICES_MANAGE, camera_id)
     if svc.frames.latest(camera_id) is None:
         raise NotFound(NO_LIVE_RO)
     return StreamingResponse(

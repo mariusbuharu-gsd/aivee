@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 from aivee_api.edge.publisher import PublisherUnavailable, RecordingPublisher
-from aivee_api.frames.router import credentials_ok, get_camera_topics
+from aivee_api.frames.router import CameraTarget, credentials_ok, get_camera_target
 from aivee_api.frames.store import BOUNDARY, LiveFrames, mjpeg_part, mjpeg_stream
 from aivee_api.main import create_app
 from aivee_api.settings import ApiSettings
@@ -49,10 +49,11 @@ def client(
     svc.frames = frames
     app = create_app(svc)
 
-    async def find(camera_id: str) -> Topics | None:
-        return Topics(site="test", device="vision-01") if camera_id == "cam1" else None
+    async def find(camera_id: str) -> CameraTarget | None:
+        topics = Topics(site="test", device="vision-01")
+        return CameraTarget(topics, org_id="org") if camera_id == "cam1" else None
 
-    app.dependency_overrides[get_camera_topics] = lambda: find
+    app.dependency_overrides[get_camera_target] = lambda: find
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 

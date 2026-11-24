@@ -56,6 +56,9 @@
   align-self: flex-start;
   margin-top: auto;
 }
+.device-card-actions {
+  margin-top: auto;
+}
 
 .device-tech {
   display: flex;

@@ -146,7 +146,11 @@ describe('App with the mock API', () => {
     renderApp();
     expect(await screen.findByRole('article', { name: 'Camera Sala principală' })).toBeVisible();
     const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
-    expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
+    expect(within(terrace).getByText('Cameră offline')).toBeInTheDocument();
+    expect(
+      within(terrace).getByText('Dispozitivul AiVee din local nu răspunde.'),
+    ).toBeInTheDocument();
+    expect(within(terrace).queryByText('edge-terasa')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Alerte recente' })).toBeInTheDocument();
     // The last five closed alerts as rows, the newest an object_gone checked by the AI.
     const rows = await screen.findByRole('list', { name: 'Alerte închise' });
@@ -239,10 +243,19 @@ describe('App with the mock API', () => {
     renderApp('/dispozitive');
     await screen.findByRole('heading', { name: 'Sala principală' });
     await user.click(screen.getByRole('button', { name: 'Adaugă cameră' }));
-    expect(screen.getByLabelText('Id cameră')).toHaveValue('cam-01');
-    await user.type(screen.getByLabelText('Nume'), 'Bar');
-    await user.type(screen.getByLabelText(/Adresa sursei/), 'rtsp://bar/1');
-    await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
+    // The location's one online box is picked by itself; the owner only looks for cameras.
+    await user.click(await screen.findByRole('button', { name: 'Caută camere' }));
+    const found = await screen.findByRole('list', { name: 'Camere găsite' });
+    expect(within(found).getByRole('button', { name: /Tapo C200/ })).toBeDisabled();
+    await user.click(within(found).getByRole('button', { name: /Tapo C210/ }));
+    await user.type(screen.getByLabelText('Utilizator'), 'bar');
+    await user.type(screen.getByLabelText('Parolă'), 'pw');
+    const dialog = screen.getByRole('dialog', { name: 'Adaugă o cameră' });
+    await user.click(within(dialog).getByRole('button', { name: 'Testează' }));
+    expect(await screen.findByText('Camera răspunde. Așa o vede AiVee.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continuă' }));
+    await user.click(screen.getByRole('button', { name: 'Bar' }));
+    await user.click(screen.getByRole('button', { name: 'Salvează camera' }));
     expect(await screen.findByRole('heading', { name: /Zone · Bar/ })).toBeInTheDocument();
     expect(screen.getByText('Camera „Bar” a fost adăugată')).toBeInTheDocument();
     expect(await screen.findByLabelText('Încarcă o imagine din cameră')).toBeInTheDocument();

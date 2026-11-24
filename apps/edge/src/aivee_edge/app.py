@@ -1,13 +1,19 @@
 """Wire real adapters into the EdgePipeline and run it until the source ends or a signal.
 
+Three ways to pick the cameras (`EdgeSettings.camera_mode`): SOURCE runs one camera (`run`),
+CAMERAS runs a fixed list (`run_cameras`), and with neither the edge box runs the cameras the
+dashboard configured for this device and follows their changes (`run_box`).
+
 Vision adapters (OpenCV, ultralytics, open_clip) are imported lazily so this module, the
 fake edge and the tests work without the heavy dependencies installed.
 """
 
 import importlib
 import logging
+import shutil
 import signal
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -18,12 +24,18 @@ from typing import Any
 from aivee_contracts.geometry import CameraConfig
 
 from aivee_edge.adapters.clip_visual import BackgroundVisualScorer, InlineVisualScorer
-from aivee_edge.adapters.mqtt import MqttEdgeClient
+from aivee_edge.adapters.mqtt import CameraClient, MqttEdgeClient
 from aivee_edge.domain.observation import BBox
 from aivee_edge.domain.ports import FrameSource, Image, PersonDetector, VisualScorer
 from aivee_edge.domain.role import StaffWeights
+from aivee_edge.fleet import CameraFleet
+from aivee_edge.health import CameraHealthMonitor, LogHealth, MqttHealth, tick_until
+from aivee_edge.jobs import EdgeJobs
+from aivee_edge.live import LiveRelays
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
-from aivee_edge.settings import EdgeSettings
+from aivee_edge.redact import redact_url
+from aivee_edge.settings import CameraSpec, EdgeSettings
+from aivee_edge.supervisor import CameraRun, Supervisor
 
 log = logging.getLogger("aivee_edge")
 
@@ -53,6 +65,9 @@ def clip_clock(epoch: datetime) -> Callable[[float], datetime]:
 
 EXIT_NO_STATE = 4
 """Offline clip run: the retained config or rules did not arrive in time."""
+
+HEALTH_TICK_S = 1.0
+"""How often the live cameras' health is checked (camera_down logs, `camera_health` status)."""
 
 OFFLINE_DETECTIONS_INTERVAL_S = 1e9
 """An offline clip run publishes no live boxes: nobody watches it, and at many times real
@@ -132,6 +147,23 @@ class Vision:
     visual: VisualScorer | None = None
 
 
+def check_vision(settings: EdgeSettings) -> None:
+    """Fail at start, not at the first camera, when the vision stack cannot load: the edge
+    box starts with no camera and would otherwise only fail once one is added."""
+    for name in ("capture", "yolo", *(("pose",) if settings.pose_model else ())):
+        _adapter(name)
+    if settings.blur:
+        _adapter("blur")
+    models = [settings.detector_model, settings.pose_model]
+    if settings.blur:
+        models.append(settings.yunet_model)
+    missing = [m for m in models if m and not Path(m).exists()]
+    if missing:
+        raise VisionUnavailable(
+            f"model files missing: {', '.join(missing)}. Run tools/download_models.py"
+        )
+
+
 def build_vision(settings: EdgeSettings) -> Vision:
     try:
         capture = _adapter("capture")
@@ -152,7 +184,7 @@ def build_vision(settings: EdgeSettings) -> Vision:
             )
         else:
             source = capture.Cv2Source(settings.source, settings.target_fps, rotate=settings.rotate)
-        detector = _adapter("yolo").YoloDetector(settings.detector_model)
+        detector = _adapter("yolo").YoloDetector(settings.detector_model, fps=settings.target_fps)
         pose = _adapter("pose").PoseEstimator(settings.pose_model) if settings.pose_model else None
         embedder = (
             CropEmbedder(_adapter("clip_embedder").ClipEmbedder()) if settings.appearance else None
@@ -182,7 +214,18 @@ def build_vision(settings: EdgeSettings) -> Vision:
 
 
 def build_client(settings: EdgeSettings) -> MqttEdgeClient:
-    fallback = CameraConfig(id=settings.camera_id, name=settings.camera_id, source=settings.source)
+    """The device's one MQTT client. With CAMERAS or on an edge box, each camera registers on
+    it (`for_camera`); otherwise it serves the single CAMERA_ID/SOURCE camera."""
+    single: dict[str, Any] = (
+        {"multi_camera": True}
+        if settings.camera_mode != "single"
+        else {
+            "camera": CameraConfig(
+                id=settings.camera_id, name=settings.camera_id, source=settings.source
+            ),
+            "camera_id": settings.camera_id,
+        }
+    )
     return MqttEdgeClient(
         settings.mqtt_host,
         settings.mqtt_port,
@@ -190,12 +233,40 @@ def build_client(settings: EdgeSettings) -> MqttEdgeClient:
         settings.mqtt_edge_password,
         settings.site,
         settings.device,
-        camera=fallback,
-        camera_id=settings.camera_id,
         transport=settings.mqtt_transport,
         tls=settings.mqtt_tls,
         ws_path=settings.mqtt_ws_path,
+        metrics_interval_s=settings.metrics_interval_s,
+        **single,
     )
+
+
+def attach_jobs(client: MqttEdgeClient, settings: EdgeSettings) -> EdgeJobs | None:
+    """Answer the dashboard's camera discovery and camera test on this device, when the
+    settings say it should (`EdgeSettings.serves_jobs`)."""
+    if not settings.serves_jobs:
+        return None
+    from aivee_edge.adapters.camera_still import CameraTester
+    from aivee_edge.adapters.discovery import CameraDiscovery
+
+    def blurrer() -> Any:
+        blur = _adapter("blur")
+        return blur.FaceBlurrer(blur.YuNetFaces(settings.yunet_model))
+
+    def encode(image: Any) -> bytes:
+        return bytes(_adapter("blur").encode_jpeg(image))
+
+    tester = CameraTester(blurrer, encode, timeout_s=settings.camera_test_timeout_s)
+    jobs = EdgeJobs(
+        settings.device, client.publish_reply, discover=CameraDiscovery().discover, test=tester.test
+    )
+    client.on_request = jobs.submit
+    return jobs
+
+
+def _close_jobs(jobs: EdgeJobs | None) -> None:
+    if jobs is not None:
+        jobs.close()
 
 
 def pipeline_tuning(settings: EdgeSettings) -> dict[str, Any]:
@@ -221,40 +292,21 @@ def install_stop_signals(stop: threading.Event) -> None:
     signal.signal(signal.SIGTERM, handler)
 
 
-def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
-    """Run the live edge; returns the process exit code."""
-    try:
-        vision = build_vision(settings)
-    except VisionUnavailable as e:
-        log.error("%s", e)
-        return 2
-    client = build_client(settings)
-    stop = stop or threading.Event()
-    install_stop_signals(stop)
-    try:
-        client.start()
-    except TimeoutError as e:
-        log.error("mqtt_unavailable host=%s port=%d: %s", settings.mqtt_host, settings.mqtt_port, e)
-        return 3
+def build_pipeline(
+    settings: EdgeSettings, vision: Vision, client: CameraClient | MqttEdgeClient, camera_id: str
+) -> EdgePipeline:
+    """One camera's pipeline; `client` is its publisher, config and command source."""
     offline = settings.clip_epoch is not None
-    if settings.config_wait_s > 0 and not client.wait_for_state(settings.config_wait_s):
-        log.error(
-            "no_state camera=%s: retained config or rules missing after %.0fs",
-            settings.camera_id,
-            settings.config_wait_s,
-        )
-        client.stop()
-        return EXIT_NO_STATE
     extra: dict[str, Any] = (
         {"detections_interval_s": OFFLINE_DETECTIONS_INTERVAL_S} if offline else {}
     )
-    pipeline = EdgePipeline(
+    return EdgePipeline(
         vision.source,
         vision.detector,
         client,
         client,
         device=settings.device,
-        camera_id=settings.camera_id,
+        camera_id=camera_id,
         pose=vision.pose,
         embedder=vision.embedder,
         profiles=client.profiles,
@@ -268,19 +320,217 @@ def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         **pipeline_tuning(settings),
         **extra,
     )
+
+
+def _start(client: MqttEdgeClient, settings: EdgeSettings) -> bool:
+    try:
+        client.start()
+    except TimeoutError as e:
+        log.error("mqtt_unavailable host=%s port=%d: %s", settings.mqtt_host, settings.mqtt_port, e)
+        return False
+    return True
+
+
+def _close(source: object) -> None:
+    close = getattr(source, "close", None)
+    if callable(close):
+        close()
+
+
+def build_live(settings: EdgeSettings) -> LiveRelays | None:
+    """The live view relays, when LIVE_RTSP_URL turns them on for this run."""
+    if not settings.live_view:
+        return None
+    if not settings.stream_publish_user:
+        log.warning("live view: STREAM_PUBLISH_USER/PASSWORD empty; MediaMTX will refuse it")
+    log.info("live view on: cameras relayed to %s/<camera id>", redact_url(settings.live_rtsp_url))
+    return LiveRelays(
+        settings.live_rtsp_url,
+        settings.stream_publish_user,
+        settings.stream_publish_password,
+        clock=time.monotonic,
+        ffmpeg=shutil.which("ffmpeg"),
+    )
+
+
+def _stop_live(live: LiveRelays | None) -> None:
+    if live is not None:
+        live.stop_all()
+
+
+def _health_monitor(client: MqttEdgeClient, sources: dict[str, object]) -> CameraHealthMonitor:
+    """Every live camera's health to the log and onto the device's retained status."""
+    return CameraHealthMonitor(sources, [LogHealth(), MqttHealth(client)])
+
+
+def run(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
+    """Run the live edge; returns the process exit code."""
+    if settings.camera_mode == "box":
+        return run_box(settings, stop)
+    if settings.multi_camera:
+        return run_cameras(settings, stop)
+    if settings.cameras:
+        log.warning("CAMERAS ignored: SOURCE is set, so this run reads that one camera")
+    try:
+        vision = build_vision(settings)
+    except VisionUnavailable as e:
+        log.error("%s", e)
+        return 2
+    client = build_client(settings)
+    jobs = attach_jobs(client, settings)
+    stop = stop or threading.Event()
+    install_stop_signals(stop)
+    if not _start(client, settings):
+        _close_jobs(jobs)
+        return 3
+    if settings.config_wait_s > 0 and not client.wait_for_state(settings.config_wait_s):
+        log.error(
+            "no_state camera=%s: retained config or rules missing after %.0fs",
+            settings.camera_id,
+            settings.config_wait_s,
+        )
+        _close_jobs(jobs)
+        client.stop()
+        return EXIT_NO_STATE
+    pipeline = build_pipeline(settings, vision, client, settings.camera_id)
+    health = _health_monitor(client, {settings.camera_id: vision.source})
+    done = threading.Event()
+    if health.watching:
+        tick_until(health.tick, stop, done, HEALTH_TICK_S)
     log.info(
         "edge started site=%s device=%s camera=%s source=%s",
         settings.site,
         settings.device,
         settings.camera_id,
-        settings.source,
+        redact_url(settings.source),
     )
     try:
         frames = pipeline.run(stop)
         log.info("edge stopped frames=%d", frames)
     finally:
+        done.set()
+        _close_jobs(jobs)
         client.stop()
-        close = getattr(vision.source, "close", None)
-        if callable(close):
-            close()
+        _close(vision.source)
     return 0
+
+
+def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
+    """CAMERAS: every camera of this device in one process, on one MQTT connection.
+
+    Each camera gets its own source, detector, pose and visual scorer (ByteTrack lives in
+    the detector; CLIP weights are loaded once and shared). See `supervisor`.
+    """
+    specs = settings.camera_specs()
+    if settings.config_wait_s > 0:
+        log.warning("CONFIG_WAIT_S is for offline clip runs and is ignored with CAMERAS")
+    visions: list[tuple[CameraSpec, Vision]] = []
+    try:
+        for spec in specs:
+            one = settings.model_copy(update={"camera_id": spec.id, "source": spec.source})
+            visions.append((spec, build_vision(one)))
+    except VisionUnavailable as e:
+        log.error("%s", e)
+        for _spec, vision in visions:
+            _close(vision.source)
+        return 2
+    client = build_client(settings)
+    jobs = attach_jobs(client, settings)
+    runs: list[CameraRun] = []
+    for spec, vision in visions:
+        view = client.for_camera(CameraConfig(id=spec.id, name=spec.id, source=spec.source))
+        runs.append(
+            CameraRun(spec.id, build_pipeline(settings, vision, view, spec.id), vision.source)
+        )
+    stop = stop or threading.Event()
+    install_stop_signals(stop)
+    if not _start(client, settings):
+        _close_jobs(jobs)
+        for run_ in runs:
+            _close(run_.source)
+        return 3
+    for spec in specs:
+        log.info(
+            "edge started site=%s device=%s camera=%s source=%s",
+            settings.site,
+            settings.device,
+            spec.id,
+            redact_url(spec.source),
+        )
+    health = _health_monitor(client, {r.camera_id: r.source for r in runs})
+    live = build_live(settings)
+    sources = {spec.id: spec.source for spec in specs}
+
+    def tick() -> None:
+        health.tick()
+        if live is not None:
+            live.sync(sources)
+
+    try:
+        code = Supervisor(runs, tick=tick, tick_s=HEALTH_TICK_S).run(stop)
+        log.info("edge stopped cameras=%d", len(runs))
+    finally:
+        _stop_live(live)
+        _close_jobs(jobs)
+        client.stop()
+    return code
+
+
+def _box_camera(settings: EdgeSettings, client: MqttEdgeClient, camera: CameraConfig) -> CameraRun:
+    """One configured camera's worker, registered on the device's MQTT client."""
+    vision = build_vision(
+        settings.model_copy(update={"camera_id": camera.id, "source": camera.source})
+    )
+    try:
+        view = client.for_camera(camera)
+        return CameraRun(
+            camera.id, build_pipeline(settings, vision, view, camera.id), vision.source
+        )
+    except Exception:
+        _close(vision.source)
+        raise
+
+
+def run_box(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
+    """The edge box: no SOURCE and no CAMERAS. Connect, wait for the retained `DeviceConfig`,
+    and run every camera in it that has a live RTSP/HTTP source. Cameras added, removed or
+    changed in the dashboard start and stop within a tick (`fleet.CameraFleet`), without a
+    restart and without touching the other cameras."""
+    try:
+        check_vision(settings)
+    except VisionUnavailable as e:
+        log.error("%s", e)
+        return 2
+    if settings.config_wait_s > 0:
+        log.warning("CONFIG_WAIT_S is for offline clip runs and is ignored on an edge box")
+    client = build_client(settings)
+    jobs = attach_jobs(client, settings)
+    stop = stop or threading.Event()
+    install_stop_signals(stop)
+    if not _start(client, settings):
+        _close_jobs(jobs)
+        return 3
+    log.info(
+        "edge box started site=%s device=%s: running the cameras the dashboard configures",
+        settings.site,
+        settings.device,
+    )
+    health = CameraHealthMonitor({}, [LogHealth(), MqttHealth(client)])
+    live = build_live(settings)
+
+    def tick() -> None:
+        fleet.reconcile()
+        health.tick()
+        if live is not None:
+            live.sync(fleet.running())
+
+    supervisor = Supervisor([], keep_running=True, tick=tick, tick_s=HEALTH_TICK_S)
+    fleet = CameraFleet(supervisor, client, health, lambda cam: _box_camera(settings, client, cam))
+    try:
+        code = supervisor.run(stop)
+        log.info("edge stopped cameras=%d", len(fleet.running()))
+    finally:
+        _stop_live(live)
+        _close_jobs(jobs)
+        client.stop()
+    return code

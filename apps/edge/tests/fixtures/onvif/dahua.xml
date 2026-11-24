@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery">
+  <s:Header>
+    <a:Action>http://schemas.xmlsoap.org/ws/2005/04/discovery/ProbeMatches</a:Action>
+    <a:RelatesTo>uuid:6f1f2b0e-9a49-4a4e-8b8a-0d6f9c2f3a11</a:RelatesTo>
+  </s:Header>
+  <s:Body>
+    <d:ProbeMatches>
+      <d:ProbeMatch>
+        <d:Types>dn:NetworkVideoTransmitter</d:Types>
+        <d:Scopes>onvif://www.onvif.org/location/country/china onvif://www.onvif.org/name/Dahua onvif://www.onvif.org/hardware/IPC-HDW1230S onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/Profile/T</d:Scopes>
+        <d:XAddrs>http://192.168.1.108/onvif/device_service</d:XAddrs>
+      </d:ProbeMatch>
+    </d:ProbeMatches>
+  </s:Body>
+</s:Envelope>

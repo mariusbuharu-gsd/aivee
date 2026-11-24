@@ -172,6 +172,7 @@ async def test_a_device_going_offline_resolves_its_open_alerts(
     await _publish(h, _event("opened", alert="a4", at=NOW - timedelta(seconds=30)))
     offline = DeviceStatus(device=DEVICE, state="offline").model_dump_json().encode()
     await h.handle(TOPICS.status, offline)
+    await h.drain()
     assert n.resolved == [("a4", "⚪ Închisă · dispozitivul s-a deconectat")]
 
 

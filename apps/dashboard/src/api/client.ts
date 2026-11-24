@@ -62,10 +62,21 @@ export interface StaffEnrolResult {
   published: boolean;
 }
 
-/** A camera plus the online state of the device that serves it. */
+/** A camera plus the state of the device that serves it and of its own stream. */
 export interface CameraView extends CameraConfig {
   device: string;
+  /** Its device is online and its stream is not `down`. */
   online: boolean;
+  /**
+   * When the edge decoded this camera's newest frame, as of its last report (up to a minute
+   * old while the camera is fine). Null: unknown, or no frame yet. Absent: an older API.
+   */
+  last_frame_at?: string | null;
+  /**
+   * The edge's capture state for this camera; `down` while its device is offline. Null:
+   * unknown (an older edge, a clip or cloud camera). Absent: an older API.
+   */
+  stream_state?: 'ok' | 'reconnecting' | 'down' | null;
 }
 
 /** `GET /api/devices`: the edge's status plus when the API last heard from it. */
@@ -87,7 +98,37 @@ export interface CameraFrame {
   url: string;
   /** ISO time the frame was taken, null when unknown. */
   at: string | null;
+  /** `X-Frame-Size` of a test still ("640x360"), when the API sends it. */
+  size?: string | null;
   release(): void;
+}
+
+/** Brands the AiVee box recognises on the venue network; `unknown` for anything else. */
+export type DiscoveredBrand = 'tapo' | 'hikvision' | 'dahua' | 'reolink' | 'unknown';
+
+/** One camera the box found (`POST /api/devices/{id}/discover`). */
+export interface DiscoveredCamera {
+  ip: string;
+  port: number;
+  brand: DiscoveredBrand;
+  model: string | null;
+  /** The name the camera gives itself (ONVIF), if any. */
+  name: string | null;
+  onvif: boolean;
+  /** Stream paths to try, best (the substream) first. */
+  rtsp_paths: string[];
+  /** A camera of this location already uses this IP. */
+  already_added: boolean;
+}
+
+/**
+ * `POST /api/cameras/test`: either a `source` not saved yet (with the `device` that should open
+ * it), or a saved camera by `camera_id`, so its password is never sent again.
+ */
+export interface CameraTestInput {
+  source?: string | null;
+  camera_id?: string | null;
+  device?: string | null;
 }
 
 /** What the "Adaugă cameră" form sends. `id` must match the edge's CAMERA_ID. */
@@ -117,6 +158,12 @@ export interface SuggestionView extends StaffSuggestion {
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
   device_id?: string;
+  /**
+   * Set on the folded alert updates `/ws/events` sends (raw event rows have none): the alert's
+   * location, and the zone's name at the time.
+   */
+  location_id?: string | null;
+  zone_name?: string;
   snapshot_url?: string | null;
   /** Who closed it: the edge (someone came) or the system (the camera stopped watching). */
   closed_by?: 'edge' | 'system' | null;
@@ -234,6 +281,13 @@ export interface Capabilities {
   videos: boolean;
   /** Staff profiles (photos, live capture). */
   enrol: boolean;
+  /** "Testează camera" (`testCamera`): absent or false hides every test button. */
+  camera_test?: boolean;
+  /**
+   * "Caută camere" (`discoverCameras`): the add-camera wizard. Absent or false keeps the manual
+   * brand + IP form.
+   */
+  camera_discovery?: boolean;
 }
 
 export interface ApiClient extends AccountApi {
@@ -250,6 +304,18 @@ export interface ApiClient extends AccountApi {
    * Rejects with an ApiError (404 `not_found` until the camera has sent one).
    */
   captureFrame(cameraId: string): Promise<CameraFrame>;
+  /**
+   * "Testează camera": the device opens the source (a new one, or a saved camera's by
+   * `camera_id`) once and sends back one face-blurred still. Only call it when
+   * `Capabilities.camera_test` is true. Rejects with an ApiError whose code is a
+   * `CameraProblemCode` (wrong password, unreachable, no stream, device offline or slow).
+   */
+  testCamera(input: CameraTestInput): Promise<CameraFrame>;
+  /**
+   * "Caută camere": the device scans the venue network (up to ~10 s). Rejects with
+   * `device_offline` (409) or `device_timeout` (504). Only when `Capabilities.camera_discovery`.
+   */
+  discoverCameras(deviceId: string): Promise<DiscoveredCamera[]>;
   /**
    * `GET /api/cameras/{id}/live.mjpg` for an `<img>`: the frames a connector posts over HTTPS
    * (cloud mode). 404 while none came recently. Null when the API has no such stream (mock).
@@ -281,6 +347,11 @@ export interface ApiClient extends AccountApi {
   listSuggestions(): Promise<SuggestionView[]>;
   subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe;
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe;
+  /**
+   * Called after the live feed came back from a drop (not on the first connection). What
+   * changed meanwhile never arrived, so state should be reloaded from the REST calls.
+   */
+  subscribeReconnect(cb: () => void): Unsubscribe;
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;
   uploadStaffPhoto(file: File): Promise<void>;

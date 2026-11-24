@@ -11,10 +11,12 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -67,10 +69,13 @@ class Device(Base):
     __tablename__ = "devices"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    site_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    site_id: Mapped[str] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), index=True)
     state: Mapped[str] = mapped_column(String(16), default="offline")
     version: Mapped[str] = mapped_column(String(32), default="")
     cameras: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    camera_health: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    """`DeviceStatus.camera_health` of the last `online` status (JSON); an offline status
+    keeps it, so the last frame time of each camera stays known."""
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (CheckConstraint("state IN ('online', 'offline')", name="device_state"),)
@@ -80,17 +85,21 @@ class Camera(Base):
     __tablename__ = "cameras"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    device_id: Mapped[str | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    device_id: Mapped[str | None] = mapped_column(
+        ForeignKey("devices.id", ondelete="SET NULL"), index=True
+    )
     name: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[str] = mapped_column(Text)
     zones: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    push_key_hash: Mapped[str | None] = mapped_column(String(64))
+    """sha256 (hex) of the camera's own frame-ingest key (`aivee_api.frames.keys`), if any."""
 
 
 class RuleRow(Base):
     __tablename__ = "rules"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"))
+    camera_id: Mapped[str] = mapped_column(ForeignKey("cameras.id", ondelete="CASCADE"), index=True)
     rule: Mapped[dict[str, Any]] = mapped_column(JSONB)
     prompt_ro: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(default=True)
@@ -104,7 +113,7 @@ class EventRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_id: Mapped[str] = mapped_column(String(64), unique=True)
-    device_id: Mapped[str] = mapped_column(String(64), default="")
+    device_id: Mapped[str] = mapped_column(String(64), default="", index=True)
     rule_id: Mapped[str] = mapped_column(String(64), index=True)
     camera_id: Mapped[str] = mapped_column(String(64), index=True)
     zone_id: Mapped[str] = mapped_column(String(64))
@@ -147,6 +156,22 @@ class EventRow(Base):
 
     __table_args__ = (
         CheckConstraint("state IN ('opened', 'arrived', 'closed')", name="event_state"),
+        # Ingest: an event's opened alert (`AlertRepository.link_folded`) ...
+        Index(
+            "ix_events_opened_lookup",
+            "device_id",
+            "camera_id",
+            "rule_id",
+            "zone_id",
+            "at",
+            postgresql_where=text("state = 'opened'"),
+        ),
+        # ... and a device's open alerts (offline, restart, reminders).
+        Index(
+            "ix_events_open_by_device",
+            "device_id",
+            postgresql_where=text("state = 'opened' AND closed_at IS NULL"),
+        ),
     )
 
 
@@ -177,7 +202,7 @@ class SuggestionRow(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     suggestion_id: Mapped[str] = mapped_column(String(64), unique=True)
-    device_id: Mapped[str] = mapped_column(String(64), default="")
+    device_id: Mapped[str] = mapped_column(String(64), default="", index=True)
     camera_id: Mapped[str] = mapped_column(String(64))
     track_id: Mapped[int] = mapped_column(Integer)
     staff_score: Mapped[float] = mapped_column(Float)

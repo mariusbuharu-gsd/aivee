@@ -2,7 +2,8 @@
 
 State goes out as complete, retained documents (RuleSet, DeviceConfig, StaffProfiles), so a
 device that reconnects gets the current state from the broker; owner decisions go out as
-non-retained `EdgeCommand`s. The link also reads metrics and live detections back.
+non-retained `EdgeCommand`s. The link also reads metrics, live detections and the devices'
+replies to one-off requests (`edge.requests`) back.
 """
 
 import asyncio
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import aiomqtt
+from aivee_contracts.commands import EdgeReply
 from aivee_contracts.detections import Detections
 from aivee_contracts.events import Metrics
 from aivee_contracts.topics import Topics
@@ -35,6 +37,10 @@ class PublisherUnavailable(RuntimeError):
 
 class EdgePublisher(Protocol):
     async def publish(self, topic: str, payload: bytes, *, qos: int, retain: bool) -> None: ...
+
+
+class ReplySink(Protocol):
+    def resolve(self, device: str, reply: EdgeReply) -> bool: ...
 
 
 @dataclass
@@ -77,6 +83,8 @@ class MqttEdgeLink:
         self._metrics = metrics
         self._live = live
         self.on_connect = on_connect
+        self.replies: ReplySink | None = None
+        """Gets every `EdgeReply` (camera discovery, camera test); see `edge.requests`."""
         self._max_backoff_s = max_backoff_s
         self._client: aiomqtt.Client | None = None
         self.connected = asyncio.Event()
@@ -106,6 +114,8 @@ class MqttEdgeLink:
                     await client.subscribe(Topics.any_device("metrics"), qos=0)
                     if self._live is not None:
                         await client.subscribe(Topics.any_device("detections"), qos=0)
+                    if self.replies is not None:
+                        await client.subscribe(Topics.any_device("replies"), qos=1)
                     self._client = client
                     self.connected.set()
                     backoff = 1.0
@@ -129,6 +139,8 @@ class MqttEdgeLink:
         leaf = topic.rsplit("/", 1)[-1]
         if leaf == "detections":
             self._on_detections(topic, payload)
+        elif leaf == "replies":
+            self._on_reply(topic, payload)
         else:
             self._on_metrics(topic, payload)
 
@@ -141,6 +153,19 @@ class MqttEdgeLink:
             log.warning("invalid detections on %s", topic)
             return
         self._live.publish(DetectionsMessage.from_detections(detections))
+
+    def _on_reply(self, topic: str, payload: object) -> None:
+        parts = topic.split("/")
+        if self.replies is None or len(parts) != 4:
+            return
+        try:
+            reply = EdgeReply.model_validate_json(_raw(payload))
+        except ValidationError:
+            log.warning("invalid reply on %s", topic)
+            return
+        # The topic (enforced by the broker ACL) says which device answered.
+        if not self.replies.resolve(parts[2], reply):
+            log.info("reply %s from %s: nobody waits for it", reply.request_id, parts[2])
 
     def _on_metrics(self, topic: str, payload: object) -> None:
         parts = topic.split("/")

@@ -64,8 +64,11 @@ laptop / phone ──► connector --push ──HTTPS POST──► api ──MQ
 - The dashboard live view (Live tile, zone editor's „Folosește imaginea live”) still tries
   WebRTC first. When that fails, or when the camera's source is `mqtt-frames://…`, it shows
   `live.mjpg` in an `<img>`. Detection boxes overlay as before.
-- One credential for now: the shared publish credential is the MediaMTX one. Per-device keys
-  replace it after the freeze (P1.5–P1.6).
+- Credentials: the shared publish credential (the MediaMTX one) works only for cameras at a
+  location that belongs to an organisation and that have no key of their own. A camera's own
+  key comes from `POST /api/cameras/<id>/push-key` (`devices.manage`, shown once); the
+  connector sends it with `CLOUD_PUSH_KEY` as `Authorization: Bearer`. Once a camera has a key,
+  the shared credential is refused for it. RTSP into MediaMTX still uses the shared one.
 
 ### What the server needs
 

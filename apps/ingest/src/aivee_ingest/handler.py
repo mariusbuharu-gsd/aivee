@@ -1,12 +1,11 @@
 """Turn one MQTT message from an edge device into rows, files and notifications."""
 
-import asyncio
 import logging
 import os
-import re
 import uuid
 from collections import deque
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
 from aivee_api.alerts.audit import (
@@ -21,6 +20,7 @@ from aivee_api.alerts.schemas import AlertView
 from aivee_api.audit.repository import Actor, AuditRepository, Target
 from aivee_api.db.models import Device, Site
 from aivee_api.db.repositories import DeviceRepository, EventRepository, SuggestionRepository
+from aivee_api.events.service import snapshot_key
 from aivee_api.videos.kind import is_upload, is_upload_device
 from aivee_contracts.events import AlertEvent, DeviceStatus, StaffSuggestion, before_snapshot_id
 from aivee_contracts.topics import ROOT, Topics
@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from aivee_ingest.dispatch import NotifyDispatcher
 from aivee_ingest.lifecycle import (
     arrived_ro,
     closed_line,
@@ -41,18 +42,11 @@ from aivee_ingest.verify import UNAVAILABLE, AlertVerification, wait_for_file
 
 log = logging.getLogger(__name__)
 
-_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-
-
 LEFT_TITLE = "AiVee · Client plecat"
 SYSTEM_CLOSED_LINE = {
     "device_offline": "⚪ Închisă · dispozitivul s-a deconectat",
     "device_restarted": "⚪ Închisă · dispozitivul a repornit",
 }
-
-
-def snapshot_name(event_id: str) -> str:
-    return f"{event_id}.jpg"
 
 
 class IngestHandler:
@@ -65,15 +59,17 @@ class IngestHandler:
         audit: AuditWriter | None = None,
         verification: AlertVerification | None = None,
         close_grace_s: float = 3.0,
+        dispatcher: NotifyDispatcher | None = None,
     ) -> None:
         self._close_grace_s = close_grace_s
+        # Everything that talks to the staff runs here, never on the MQTT loop (R3).
+        self._dispatch = dispatcher or NotifyDispatcher()
         self._sessions = sessions
         self._audit = audit or LoggingAuditWriter()
         self._snapshots = snapshot_dir
         self._notifier = notifier
         self._snapshot_wait_s = snapshot_wait_s
         self._verification = verification
-        self._verifying: set[asyncio.Task[object]] = set()
         self.handled_events: deque[str] = deque(maxlen=10_000)
         snapshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -93,7 +89,7 @@ class IngestHandler:
             elif topic == t.metrics:
                 await self._on_metrics(t)
             elif topic.startswith(t.snapshot("")):
-                self._on_snapshot(topic.removeprefix(t.snapshot("")), payload)
+                self._on_snapshot(t, topic.removeprefix(t.snapshot("")), payload)
         except ValidationError as e:
             log.warning("invalid payload on %s: %s", topic, e.errors()[:3])
 
@@ -102,26 +98,33 @@ class IngestHandler:
         # An uploaded clip is stored and folded like any alert, but it must never ring the
         # staff's phones, and its alerts stay out of the history.
         upload = is_upload(t.device, event.camera_id)
-        path = snapshot_name(event.event_id) if event.snapshot else None
+        # The images this event's own device sent (S4): `<site>/<device>/<id>.jpg`.
+        path = snapshot_key(t.site, t.device, event.event_id) if event.snapshot else None
         change = event.object_change
         before = (
-            snapshot_name(before_snapshot_id(event.event_id))
+            snapshot_key(t.site, t.device, before_snapshot_id(event.event_id))
             if change is not None and change.before_snapshot
             else None
         )
         view: AlertView | None = None
+        early: list[str] = []
         async with self._sessions() as s:
             inserted = await EventRepository(s).insert_if_new(event, t.device, path, before)
             if inserted:
                 # Same transaction: the row, its alert's folded times and the audit entry.
                 alerts = AlertRepository(s)
                 alert_id, folded = await alerts.link_folded(event, t.device)
+                if event.state == "opened":
+                    # Its `arrived` / `closed` may have come first (R2): fold them now.
+                    early = await alerts.adopt_early(event, t.device)
                 if event.state == "opened" and self._verification is None:
                     await alerts.save_verification(event.event_id, UNAVAILABLE, datetime.now(UTC))
                 view = await alerts.view(alert_id) if alert_id and folded else None
-                entry = device_entry(view, event.state) if view and not upload else None
-                if entry is not None:
-                    await self._audit.append(s, entry)
+                if view is not None and not upload:
+                    for state in [event.state, *early]:
+                        entry = device_entry(view, state)
+                        if entry is not None:
+                            await self._audit.append(s, entry)
             await s.commit()
         if not inserted:
             log.info("duplicate event %s ignored", event.event_id)
@@ -142,35 +145,51 @@ class IngestHandler:
             event.camera_id,
             event.zone_id,
         )
+        if early:
+            # It ended before it reached us: nothing left for the staff to do.
+            log.info(
+                "notify_skipped reason=already_%s alert=%s",
+                "closed" if "closed" in early else "arrived",
+                event.event_id,
+            )
+            return
+        # Queued per alert (the opened event's id), so its jobs keep their order.
         if event.state == "opened" and self._verification is not None:
-            # Verify, then notify, off the MQTT loop: never block the handler on the model.
-            task = asyncio.create_task(self._verify(event))
-            self._verifying.add(task)
-            task.add_done_callback(self._verifying.discard)
+            folder = f"{t.site}/{t.device}"
+            self._dispatch.submit(event.event_id, "verify", lambda: self._verify(event, folder))
         elif event.state == "opened":
-            snapshot = await self._wait_snapshot(path) if path else None
-            try:
-                await self._notifier.notify(event, snapshot)
-            except Exception:
-                log.exception("notifier failed for event %s", event.event_id)
+            self._dispatch.submit(
+                event.event_id, "opened", lambda: self._notify_opened(event, path)
+            )
         elif event.state == "arrived" and view is not None:
-            try:
-                await self._notifier.send_text(arrived_ro(view), view.event_id, kind="arrived")
-            except Exception:
-                log.exception("notifier failed for event %s", event.event_id)
-            await self._resolved(view, resolved_line(view))
+            arrived = view
+            self._dispatch.submit(arrived.event_id, "arrived", lambda: self._arrived(arrived))
         elif event.state == "closed" and view is not None and view.arrived_at is None:
-            # Off the MQTT loop: the `arrived` may still be on its way (another replica).
-            task = asyncio.create_task(self._closed_unserved(view.event_id))
-            self._verifying.add(task)
-            task.add_done_callback(self._verifying.discard)
+            # After a grace: the `arrived` may still be on its way (another replica).
+            alert_id = view.event_id
+            self._dispatch.submit_later(
+                self._close_grace_s, alert_id, "closed", lambda: self._closed_unserved(alert_id)
+            )
+
+    async def _notify_opened(self, event: AlertEvent, path: str | None) -> None:
+        snapshot = await self._wait_snapshot(path) if path else None
+        try:
+            await self._notifier.notify(event, snapshot)
+        except Exception:
+            log.exception("notifier failed for event %s", event.event_id)
+
+    async def _arrived(self, view: AlertView) -> None:
+        try:
+            await self._notifier.send_text(arrived_ro(view), view.event_id, kind="arrived")
+        except Exception:
+            log.exception("notifier failed for the arrival of %s", view.event_id)
+        await self._resolved(view, resolved_line(view))
 
     async def _closed_unserved(self, alert_id: str) -> None:
         """Nobody arrived and the situation ended: for a table, the guest left unserved.
-        Waits `close_grace_s` first, so an `arrived` processed late is not mistaken for it."""
+        Runs `close_grace_s` after the close, so an `arrived` processed late is not mistaken
+        for it."""
         try:
-            if self._close_grace_s > 0:
-                await asyncio.sleep(self._close_grace_s)
             async with self._sessions() as s:
                 view = await AlertRepository(s).view(alert_id)
             if view is None or view.arrived_at is not None:
@@ -195,17 +214,19 @@ class IngestHandler:
         except Exception:
             log.exception("could not mark alert %s as resolved", view.event_id)
 
-    async def _verify(self, event: AlertEvent) -> None:
+    async def _verify(self, event: AlertEvent, folder: str) -> None:
         assert self._verification is not None
         try:
-            await self._verification.run(event)
+            await self._verification.run(event, folder)
         except Exception:
             log.exception("verification task failed for event %s", event.event_id)
 
     async def drain(self) -> None:
-        """Wait for the verifications and close follow-ups in flight (tests, shutdown)."""
-        while self._verifying:
-            await asyncio.gather(*self._verifying, return_exceptions=True)
+        """Wait for the notifications queued or in flight (tests, shutdown)."""
+        await self._dispatch.drain()
+
+    async def aclose(self) -> None:
+        await self._dispatch.aclose()
 
     async def _wait_snapshot(self, name: str) -> Path | None:
         return await wait_for_file(self._snapshots / name, self._snapshot_wait_s)
@@ -247,24 +268,30 @@ class IngestHandler:
                 for view in closed:
                     await self._audit.append(s, system_closed_entry(view, reason))
             await s.commit()
-        log.info("device %s/%s is %s", t.site, t.device, status.state)
+        if before != status.state:  # an online edge republishes its status every minute
+            log.info("device %s/%s is %s", t.site, t.device, status.state)
         if closed and reason is not None:
             log.info("closed %d open alert(s) of %s: %s", len(closed), t.device, reason)
             note = device_closed_note_ro(t.device, reason, len(closed))
-            try:
-                # No "a ajuns": nobody came. The tag picks the location (and its chat).
-                await self._notifier.send_text(
-                    note, closed[0].event_id, title="AiVee · Dispozitiv", kind="device"
-                )
-            except Exception:
-                log.exception("notifier failed for the %s note of %s", reason, t.device)
+            tag = closed[0].event_id
+            self._dispatch.submit(tag, "device", lambda: self._device_note(note, tag, t.device))
             line = SYSTEM_CLOSED_LINE.get(reason, "⚪ Închisă")
             for view in closed:
-                await self._resolved(view, line)
+                self._dispatch.submit(
+                    view.event_id, "resolved", partial(self._resolved, view, line)
+                )
+
+    async def _device_note(self, note: str, tag: str, device: str) -> None:
+        try:
+            # No "a ajuns": nobody came. The tag picks the location (and its chat).
+            await self._notifier.send_text(note, tag, title="AiVee · Dispozitiv", kind="device")
+        except Exception:
+            log.exception("notifier failed for the device note of %s", device)
 
     async def _on_suggestion(self, t: Topics, suggestion: StaffSuggestion) -> None:
         async with self._sessions() as s:
-            await SuggestionRepository(s).insert_if_new(suggestion, t.device)
+            path = snapshot_key(t.site, t.device, suggestion.suggestion_id)
+            await SuggestionRepository(s).insert_if_new(suggestion, t.device, path)
             await s.commit()
 
     async def _on_metrics(self, t: Topics) -> None:
@@ -272,11 +299,13 @@ class IngestHandler:
             await DeviceRepository(s).touch(t.device)
             await s.commit()
 
-    def _on_snapshot(self, event_id: str, payload: bytes) -> None:
-        if not _SAFE_ID.match(event_id):
-            log.warning("ignoring snapshot with unsafe id %r", event_id)
+    def _on_snapshot(self, t: Topics, snapshot_id: str, payload: bytes) -> None:
+        key = snapshot_key(t.site, t.device, snapshot_id)
+        if key is None:
+            log.warning("ignoring snapshot with unsafe topic %r", t.snapshot(snapshot_id))
             return
-        final = self._snapshots / snapshot_name(event_id)
+        final = self._snapshots / key
+        final.parent.mkdir(parents=True, exist_ok=True)
         # Replicas share the dir and may all be pid 1: the temp name must be unique per write.
         tmp = final.with_suffix(f".{uuid.uuid4().hex}.tmp")
         tmp.write_bytes(payload)

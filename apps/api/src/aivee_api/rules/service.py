@@ -25,8 +25,10 @@ class RuleService:
         self._cameras = CameraRepository(session)
         self._sync = sync
 
-    async def list_all(self, camera_id: str | None = None) -> list[Rule]:
-        return await self._rules.list_all(camera_id)
+    async def list_all(
+        self, camera_id: str | None = None, location_id: str | None = None
+    ) -> list[Rule]:
+        return await self._rules.list_all(camera_id, location_id)
 
     async def get(self, rule_id: str) -> Rule:
         rule = await self._rules.get(rule_id)
@@ -97,6 +99,26 @@ def clean_visual(c: Condition) -> Condition:
     return c.model_copy(update={"positive": positive, "negative": negative})
 
 
+# Cutlery lies on every restaurant table, and neither the detector nor CLIP can tell a
+# table knife from one held as a weapon: a rule that looks for it would fire all day.
+CUTLERY: frozenset[str] = frozenset({"knife", "fork", "spoon"})
+_KNIFE = re.compile(r"\b(knife|knives|blades?|cutlery|dagger)\b", re.IGNORECASE)
+CUTLERY_RO = (
+    "Tacâmurile (cuțit, furculiță, lingură) sunt pe fiecare masă, așa că o alertă pentru un "
+    "cuțit ar suna tot timpul: AiVee nu poate deosebi un cuțit de masă de unul folosit ca "
+    "armă. Spuneți-mi ce situație vă îngrijorează (de exemplu o bătaie sau o încăierare)."
+)
+
+
+def looks_for_cutlery(c: Condition) -> bool:
+    """An `object_present` of a cutlery class, or a `visual` check for a knife."""
+    if c.kind == "object_present":
+        return bool(CUTLERY & set(c.objects))
+    if c.kind == "visual":
+        return any(_KNIFE.search(p) for p in c.positive)
+    return False
+
+
 def draft_to_rule(draft: RuleDraft, camera_id: str, text: str, zones: list[Zone]) -> Rule:
     """Check the model's draft against the camera and turn it into a full Rule."""
     if not draft.understood:
@@ -111,6 +133,8 @@ def draft_to_rule(draft: RuleDraft, camera_id: str, text: str, zones: list[Zone]
             "clarify",
             f"Camera nu are nicio zonă de tip „{draft.zone_tag}”. Desenați-o mai întâi.",
         )
+    if any(looks_for_cutlery(c) for c in draft.all_of):
+        raise TranslationError("clarify", CUTLERY_RO)
     unknown = sorted(
         {o for c in draft.all_of if c.kind == "object_present" for o in c.objects}
         - set(COCO_CLASSES)
