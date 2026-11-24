@@ -543,3 +543,103 @@ def test_jobs_are_attached_only_where_the_settings_serve_them(
     cloud = EdgeSettings(source="mqtt-frames://cam-01", _env_file=None)  # type: ignore[call-arg]
     client = MqttEdgeClient("localhost", 1883, "edge-01", "pw", "s1", "edge-01")
     assert app.attach_jobs(client, cloud) is None and client.on_request is None
+
+
+# -- live view: the box relays its cameras into MediaMTX ---------------------------------------
+
+
+def test_live_view_only_for_the_box_and_cameras_with_a_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("SOURCE", "CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE", "LIVE_RTSP_URL"):
+        monkeypatch.delenv(name, raising=False)
+    url = "rtsp://localhost:8554"
+
+    def s(**kw: Any) -> EdgeSettings:
+        return EdgeSettings(_env_file=None, **kw)  # type: ignore[call-arg]
+
+    assert not s().live_view  # no URL: off
+    assert s(live_rtsp_url=url).live_view  # edge box
+    assert s(live_rtsp_url=url, cameras="cam-01=rtsp://a/1").live_view
+    assert not s(live_rtsp_url=url, source="rtsp://a/1").live_view  # cloud vision worker
+    assert app.build_live(s()) is None
+
+
+class _FakeLive:
+    def __init__(self) -> None:
+        self.synced: list[dict[str, str]] = []
+        self.stopped = False
+
+    def sync(self, wanted: dict[str, str]) -> None:
+        self.synced.append(dict(wanted))
+
+    def stop_all(self) -> None:
+        self.stopped = True
+
+
+def test_the_box_relays_the_cameras_it_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    from aivee_contracts.geometry import CameraConfig, DeviceConfig
+
+    _box_env(monkeypatch)
+    stop = threading.Event()
+    live = _FakeLive()
+    monkeypatch.setattr(app, "build_live", lambda _s: live)
+    monkeypatch.setattr(
+        app,
+        "build_vision",
+        lambda _s: app.Vision(_LiveCamera(stop.is_set), _NoPeople(), None, None, None),
+    )
+    clients: list[Any] = []
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    done: list[int] = []
+    thread = threading.Thread(target=lambda: done.append(app.run(settings, stop)))
+    thread.start()
+    _until(lambda: bool(clients))
+    client = clients[0]
+    config = DeviceConfig(
+        device=client._device,
+        cameras=[
+            CameraConfig(id="cam-01", name="a", source="rtsp://a/2"),
+            CameraConfig(id="cam-file", name="b", source="clip.mp4"),  # not live: not relayed
+        ],
+    )
+
+    class Msg:
+        topic = client.topics.config
+        payload = config.model_dump_json().encode()
+
+    client._on_message(client._client, None, Msg())
+    _until(lambda: bool(live.synced) and live.synced[-1] == {"cam-01": "rtsp://a/2"})
+    stop.set()
+    thread.join(5)
+    assert done == [0]
+    assert live.stopped
+
+
+def test_cameras_mode_relays_its_fixed_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+
+    for name in ("SOURCE", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CAMERAS", "cam-01=rtsp://a/1;cam-02=rtsp://a/2")
+    monkeypatch.setattr(app, "install_stop_signals", lambda _stop: None)
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+    stop = threading.Event()
+    live = _FakeLive()
+    monkeypatch.setattr(app, "build_live", lambda _s: live)
+    monkeypatch.setattr(
+        app,
+        "build_vision",
+        lambda _s: app.Vision(_LiveCamera(stop.is_set), _NoPeople(), None, None, None),
+    )
+    monkeypatch.setattr(app, "build_client", _offline_client([]))
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    done: list[int] = []
+    thread = threading.Thread(target=lambda: done.append(app.run(settings, stop)))
+    thread.start()
+    _until(lambda: bool(live.synced))
+    stop.set()
+    thread.join(5)
+    assert live.synced[0] == {"cam-01": "rtsp://a/1", "cam-02": "rtsp://a/2"}
+    assert done == [0] and live.stopped
