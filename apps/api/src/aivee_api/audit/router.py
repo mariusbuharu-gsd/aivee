@@ -24,6 +24,7 @@ from aivee_api.audit.repository import AuditRepository, Visibility
 from aivee_api.auth.deps import CurrentUser
 from aivee_api.auth.permissions import AUDIT_VIEW
 from aivee_api.auth.principal import NO_LOCATION, Principal
+from aivee_api.cameras.masking import mask_source
 from aivee_api.deps import SessionDep
 from aivee_api.errors import Invalid, NotFound
 
@@ -73,9 +74,20 @@ def entry_out(row: AuditRow) -> AuditEntry:
         kind=row.kind,
         target=target,
         summary_ro=row.summary_ro,
-        before=row.before,
-        after=row.after,
+        before=_masked(row.target_type, row.before),
+        after=_masked(row.target_type, row.after),
     )
+
+
+def _masked(target_type: str | None, state: Any | None) -> Any | None:
+    """A camera's state with its source masked. Entries are append-only, and the ones written
+    before sources were masked still hold the password."""
+    if target_type != "camera" or not isinstance(state, dict):
+        return state
+    source = state.get("source")
+    if not isinstance(source, str):
+        return state
+    return {**state, "source": mask_source(source)}
 
 
 def visibility(p: Principal) -> Visibility:

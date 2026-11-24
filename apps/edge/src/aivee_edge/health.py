@@ -139,6 +139,7 @@ class CameraHealthMonitor:
             for cid, src in sources.items()
             if callable(getattr(src, "health", None))
         }
+        self._lock = threading.Lock()
         self._sinks = list(sinks)
         self._watch = watch or CameraWatch()
         self._clock = clock
@@ -147,13 +148,30 @@ class CameraHealthMonitor:
     @property
     def watching(self) -> bool:
         """At least one source reports its health (else `tick` does nothing)."""
-        return bool(self._sources)
+        with self._lock:
+            return bool(self._sources)
+
+    def add(self, camera_id: str, source: object) -> None:
+        """Watch one more camera (an edge box following its config); ignored without
+        `health()`."""
+        if callable(getattr(source, "health", None)):
+            with self._lock:
+                self._sources[camera_id] = source  # type: ignore[assignment]
+
+    def remove(self, camera_id: str) -> None:
+        """Stop watching a camera; if it comes back it starts afresh."""
+        with self._lock:
+            self._sources.pop(camera_id, None)
+            self._watch.forget(camera_id)
 
     def tick(self) -> None:
-        if not self._sources:
+        with self._lock:
+            sources = dict(self._sources)
+        if not sources:
             return
-        healths = {cid: src.health() for cid, src in self._sources.items()}
-        every, changed = self._watch.observe(self._clock(), self._wall(), healths)
+        healths = {cid: src.health() for cid, src in sources.items()}
+        with self._lock:
+            every, changed = self._watch.observe(self._clock(), self._wall(), healths)
         for sink in self._sinks:
             try:
                 sink.report(every, changed)

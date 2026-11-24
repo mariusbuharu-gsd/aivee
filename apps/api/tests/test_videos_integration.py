@@ -340,7 +340,12 @@ async def test_capabilities_say_whether_clips_can_be_analysed(
     anon = client_factory()
     assert (await anon.get("/api/capabilities")).status_code == 401
     c = await _as(client_factory, login, "manager@t.ro")
-    assert (await c.get("/api/capabilities")).json() == {"videos": True, "enrol": False}
+    assert (await c.get("/api/capabilities")).json() == {
+        "videos": True,
+        "enrol": False,
+        "camera_test": False,  # these test services have no MQTT link to the edge
+        "camera_discovery": False,
+    }
     settings.mqtt_upload_password = ""
     assert (await c.get("/api/capabilities")).json()["videos"] is False
     for x in (anon, c):

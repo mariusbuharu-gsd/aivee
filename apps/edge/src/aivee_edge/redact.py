@@ -26,3 +26,11 @@ def redact_url(url: str | int) -> str:
         shown = f"{user}:{MASK}" if sep else MASK
         text = f"{m.group('scheme')}{shown}@{text[m.end() :]}"
     return _SECRET_PARAM.sub(lambda p: p.group("key") + MASK, text)
+
+
+_URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"()<>]+")
+
+
+def redact_text(text: str) -> str:
+    """`text` (an error message, say) with every URL in it passed through `redact_url`."""
+    return _URL_IN_TEXT.sub(lambda m: redact_url(m.group(0)), text)

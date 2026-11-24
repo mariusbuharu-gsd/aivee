@@ -176,3 +176,20 @@ def test_tick_until_ticks_until_stop_or_done() -> None:
     quiet: list[int] = []
     tick_until(lambda: quiet.append(1), stop, threading.Event(), tick_s=0.001).join(timeout=2)
     assert quiet == []
+
+
+def test_cameras_can_be_added_to_and_removed_from_the_monitor() -> None:
+    sink, clock = Sink(), [0.0]
+    monitor = _monitor({}, sink, clock=clock)
+    assert not monitor.watching
+    monitor.tick()
+    assert sink.calls == []
+    monitor.add("cam-01", Live())
+    monitor.add("clip", Clip())  # no health(): not watched
+    monitor.add("cam-02", Live())
+    monitor.tick()
+    assert [h.camera_id for h in sink.calls[-1][0]] == ["cam-01", "cam-02"]
+    monitor.remove("cam-01")
+    monitor.remove("nope")
+    monitor.tick()
+    assert [h.camera_id for h in sink.calls[-1][0]] == ["cam-02"]

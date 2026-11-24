@@ -51,7 +51,11 @@ class EdgeSettings(BaseSettings):
     MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, CAMERAS, TARGET_FPS, ROTATE, ARRIVE_S,
     GRACE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH,
     STAFF_W_APPEARANCE, STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE,
-    CONFIG_WAIT_S, VISUAL_HZ."""
+    CONFIG_WAIT_S, VISUAL_HZ, EDGE_JOBS, CAMERA_TEST_TIMEOUT_S.
+
+    Which cameras run (`camera_mode`): SOURCE (env or --source) → that one camera; else
+    CAMERAS → those; else the edge box mode, the cameras the dashboard configured for this
+    device (its retained `DeviceConfig`), started and stopped as they change."""
 
     # hide_input_in_errors: a bad value may be a camera URL or a password.
     model_config = SettingsConfigDict(
@@ -76,9 +80,16 @@ class EdgeSettings(BaseSettings):
     """Camera URL (RTSP/HTTP), a webcam index ("0"), a video file path, or
     `mqtt-frames://<camera_id>` (cloud mode: JPEGs the API relays over MQTT)."""
     cameras: str = ""
-    """Several cameras on this device, one process: `cam-01=rtsp://…;cam-02=rtsp://…` (see
-    `parse_cameras`). Used only when SOURCE is not given (env or --source), so the cloud
-    vision worker, `make edge SOURCE=…` and clip runs keep their single camera."""
+    """Dev override: several cameras on this device, one process: `cam-01=rtsp://…;cam-02=…`
+    (see `parse_cameras`). Used only when SOURCE is not given (env or --source), so the cloud
+    vision worker, `make edge SOURCE=…` and clip runs keep their single camera. Without it
+    (and without SOURCE) the cameras come from the dashboard."""
+    edge_jobs: bool | None = None
+    """Answer the dashboard's camera discovery and camera test requests. Default: on for the
+    edge box and CAMERAS, off with SOURCE (the cloud vision workers must not scan the
+    server's network); never in an offline clip run."""
+    camera_test_timeout_s: float = Field(6.0, gt=0)
+    """How long a camera test waits for the first frame."""
     target_fps: float = 10.0
     loop_file: bool = False
     rotate: int = 0
@@ -152,16 +163,38 @@ class EdgeSettings(BaseSettings):
 
     @model_validator(mode="after")
     def _cameras_are_live(self) -> "EdgeSettings":
-        if self.multi_camera and (self.clip_epoch is not None or self.progress_file):
+        if self.camera_mode != "single" and self.offline:
             raise ValueError(
-                "CAMERAS runs live cameras; an offline clip run takes SOURCE (or --source)"
+                f"{'CAMERAS' if self.multi_camera else 'The edge box'} runs live cameras; "
+                "an offline clip run takes SOURCE (or --source)"
             )
         return self
 
     @property
+    def camera_mode(self) -> Literal["single", "cameras", "box"]:
+        """single: SOURCE (env or --source) · cameras: CAMERAS · box: the dashboard's."""
+        if "source" in self.model_fields_set:
+            return "single"
+        return "cameras" if parse_cameras(self.cameras) else "box"
+
+    @property
     def multi_camera(self) -> bool:
         """CAMERAS is set and SOURCE was not given: run every camera in one process."""
-        return bool(parse_cameras(self.cameras)) and "source" not in self.model_fields_set
+        return self.camera_mode == "cameras"
+
+    @property
+    def offline(self) -> bool:
+        """An offline clip run (the API's video analysis)."""
+        return self.clip_epoch is not None or bool(self.progress_file)
+
+    @property
+    def serves_jobs(self) -> bool:
+        """Answer camera discovery and camera test requests (see `edge_jobs`)."""
+        if self.offline:
+            return False
+        if self.edge_jobs is not None:
+            return self.edge_jobs
+        return self.camera_mode != "single"
 
     def camera_specs(self) -> list[CameraSpec]:
         """The cameras this run reads: CAMERAS, or the single CAMERA_ID/SOURCE."""

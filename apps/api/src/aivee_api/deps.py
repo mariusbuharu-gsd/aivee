@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from aivee_api.auth.ratelimit import LoginRateLimiter
 from aivee_api.edge.live import LiveDetections
+from aivee_api.edge.requests import EdgeAsk
 from aivee_api.edge.sync import EdgeCommands, EdgeSync
 from aivee_api.frames.store import LiveFrames
 from aivee_api.locations.telegram import BotUsername
@@ -45,6 +46,9 @@ class Services:
     video_probe: Callable[[Path], float | None] = probe_duration
     telegram_bot: BotUsername | None = None
     """The bot's @username for "Conectează Telegram" links (None: the feature answers 503)."""
+    edge_requests: EdgeAsk | None = None
+    """One-off jobs on an edge device over MQTT: camera discovery and camera test (None
+    without MQTT: those routes answer 503)."""
 
 
 def get_services(request: Request) -> Services:

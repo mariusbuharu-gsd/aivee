@@ -16,6 +16,9 @@ pattern write aivee/+/%u/metrics
 pattern write aivee/+/%u/suggestions
 pattern write aivee/+/%u/snapshots/#
 pattern write aivee/+/%u/detections
+# Answers to the API's one-off requests (camera discovery and test); the API reads them
+# through its readwrite aivee/# above.
+pattern write aivee/+/%u/replies
 pattern read aivee/+/%u/rules
 pattern read aivee/+/%u/profiles
 pattern read aivee/+/%u/config

@@ -1,8 +1,13 @@
 # IP cameras on one edge device (TP-Link Tapo and other RTSP cameras)
 
-How to run several real RTSP cameras on one edge device (a laptop or an edge box), check them,
-and see when one is down. The example is two TP-Link Tapo cameras on one laptop. Edge modes in
-general: [edge-modes.md](edge-modes.md).
+How a venue's IP cameras get onto its edge device (the AiVee box, or a laptop acting as one),
+how to check them, and what happens when one is down. The example is two TP-Link Tapo cameras.
+Edge modes in general: [edge-modes.md](edge-modes.md).
+
+The main path needs no `.env`, no typed IP and no RTSP URL: the box is on the venue network,
+the owner clicks **Caută camere** in the dashboard, picks a camera, types its user and password,
+clicks **Testează**, sees a blurred still and saves (section 2). `CAMERAS` and `SOURCE` remain as
+dev overrides (section 3).
 
 ## 1. Prepare each Tapo camera
 
@@ -15,8 +20,8 @@ general: [edge-modes.md](edge-modes.md).
    turn it on: **Me** → **Tapo Lab** → **Third-Party Compatibility** → on. Without it the
    camera refuses the RTSP login even with the right account.
 3. **Fixed IP.** In the router, add a DHCP reservation for each camera's MAC address (for
-   example `192.168.1.21` and `192.168.1.22`). The edge reads the cameras by IP; a lease that
-   changes after a reboot looks like a dead camera.
+   example `192.168.1.21` and `192.168.1.22`). The saved camera keeps the IP it was found at;
+   a lease that changes after a reboot looks like a dead camera (find it again and edit it).
 4. **Streams.** Every Tapo camera serves two RTSP streams on port 554 (ONVIF on port 2020):
 
    | URL | What | Use |
@@ -33,29 +38,72 @@ general: [edge-modes.md](edge-modes.md).
 Tapo cameras accept only a few RTSP sessions at a time. The edge, `make camera-check`, VLC and
 the Tapo app's own live view each take one; close what you do not need.
 
-## 2. Configure the cameras: `CAMERAS`
+## 2. Add the cameras from the dashboard (main path)
 
-Credentials go **only in `.env`** (gitignored) or `edge.env` on a device, never in a commit,
-a chat or the dashboard. In the repo's `.env`:
+1. **Run the box.** On site: `docker compose -f compose.yml up -d` with `infra/edge/compose.yml`
+   and an `edge.env` holding only the broker, the device credential and `SITE` (no cameras).
+   On a laptop: `make edge-box`. With neither `SOURCE` nor `CAMERAS` set, the edge connects as
+   `MQTT_EDGE_USER`, logs `edge box started … running the cameras the dashboard configures`
+   and waits for its retained `DeviceConfig`.
+2. **Caută camere.** In **Camere**, the dashboard asks the box (`POST
+   /api/devices/{device}/discover`). The box sends an ONVIF WS-Discovery probe on its LAN
+   interfaces (Docker, bridge and VPN interfaces are skipped) and, for cameras with ONVIF off,
+   checks ports 554 and 2020 on its own /24 networks, in about 5 seconds. Each camera found
+   comes with a brand guess (ONVIF name or model, the MAC vendor prefix, or Tapo's ONVIF port
+   2020) and its usual RTSP paths, substream first: Tapo `/stream2`, Hikvision
+   `/Streaming/Channels/102`, Dahua `/cam/realmonitor?channel=1&subtype=1`, Reolink
+   `/h264Preview_01_sub`. Cameras the location already has are marked.
+3. **User, password, Testează.** The dashboard builds the URL and asks the box to open it once
+   (`POST /api/cameras/test`). The box first asks the camera itself (one RTSP DESCRIBE, Digest or
+   Basic login), then grabs one frame over RTSP/TCP within 6 s, blurs the faces and sends back
+   a JPEG. The answers:
+
+   | Code | Shown | Usual cause |
+   |---|---|---|
+   | `camera_auth` | „Utilizator sau parolă greșită pentru cameră.” (+ a Tapo hint) | Tapo: not the Camera Account, or Third-Party Compatibility off (section 1) |
+   | `camera_unreachable` | „Camera nu răspunde. Verifică IP-ul și că e în aceeași rețea cu cutia AiVee.” | wrong IP, camera off, another network or VLAN |
+   | `camera_no_stream` | „Camera răspunde, dar nu trimite imagine la această adresă…” | wrong path, or the camera's RTSP sessions are all taken (close VLC, the app's live view) |
+   | `device_offline` / `device_timeout` | the box is not connected / did not answer in time | box off or offline; try again |
+
+4. **Save.** The camera is stored with its full URL, password included. The API sends it to
+   the box in the retained `DeviceConfig`, and the box starts that camera within a second,
+   without a restart and without touching the other cameras. Removing a camera or changing its
+   URL stops or restarts only that camera.
+
+The password stays in Postgres and the device's retained config. Every API response, the
+camera list and the audit log show `rtsp://user:***@…`. To change the IP, edit the camera and
+leave the password empty: the `***` that comes back keeps the stored one. Testing a saved camera
+(`camera_id`) uses its stored URL, so the dashboard never resends the password. The edge never
+logs a camera URL with its password.
+
+Discovery needs the box on the venue LAN: `infra/edge/compose.yml` runs the edge with host
+networking, because a bridged container sees only Docker's own network. The cloud vision
+workers (`SOURCE=mqtt-frames://…`) never answer discovery or tests (`EDGE_JOBS`, default on only
+without `SOURCE`), and the API skips them, and the clip runner, when it picks a location's box.
+
+## 3. Dev override: `CAMERAS`
+
+For development without the dashboard, or a box that must ignore it. Credentials then go
+**only in `.env`** (gitignored) or `edge.env`, never in a commit or a chat. In the repo's `.env`:
 
 ```bash
 # one line; <camera id>=<url>, separated by ";"
 CAMERAS=cam-01=rtsp://USER:PASS@192.168.1.21:554/stream2;cam-02=rtsp://USER:PASS@192.168.1.22:554/stream2
 ```
 
+- When set, `CAMERAS` wins over the dashboard: the edge runs exactly these cameras, as before,
+  and takes only their zones from the retained config.
 - The ids are the camera ids the dashboard and the rules use (letters, digits, `-`, `_`).
 - Entries may also be separated by whitespace or newlines.
 - **`SOURCE` wins over `CAMERAS`.** When `SOURCE` is set (env or `--source`), the edge runs that
   one camera and logs `CAMERAS ignored`. This keeps the cloud `vision` worker, `make edge
-  SOURCE=…`, `mqtt-frames://` and offline clip runs working as before. For a CAMERAS run,
-  leave `SOURCE` out of `.env`.
-- `CAMERAS` cannot be combined with `CLIP_EPOCH` or `PROGRESS_FILE` (offline clip runs).
+  SOURCE=…`, `mqtt-frames://` and offline clip runs working as before.
+- `CAMERAS` (and the edge box) cannot be combined with `CLIP_EPOCH` or `PROGRESS_FILE` (offline
+  clip runs).
 - `ROTATE` and `TARGET_FPS` apply to every camera. A Tapo mounted upside down is flipped in
   the Tapo app (**Image Flip**), not with ROTATE.
-- On a device with `infra/edge/compose.yml`, the same line goes into `edge.env`; one `edge`
-  service runs all cameras (`docker compose -f compose.yml up -d --remove-orphans`).
 
-## 3. Check the cameras: `make camera-check`
+## 4. Check the cameras by hand: `make camera-check`
 
 ```bash
 make camera-check                       # every camera in CAMERAS from .env
@@ -78,7 +126,7 @@ cam-01=rtsp://…`, but they then stay in the shell history.
 When a camera fails: ping its IP, check the Camera Account and Third-Party Compatibility,
 check that the URL path is `/stream2`, and close other RTSP viewers.
 
-## 4. Run two cameras locally (laptop = edge box)
+## 5. Run two cameras locally (laptop = edge box)
 
 Once, on a fresh checkout (see the [README quickstart](../../README.md#quickstart)):
 
@@ -90,33 +138,22 @@ uv run python tools/download_models.py   # edge models into models/
 ```
 
 An existing `.env` from the demo setup already has all of this; a worktree links it
-(`ln -s ../aivee/.env .env`, see [the docs index](../README.md)).
-
-Add `CAMERAS=…` to `.env` (section 2) and check it (section 3). Then:
+(`ln -s ../aivee/.env .env`, see [the docs index](../README.md)). Leave `SOURCE` and `CAMERAS`
+out of it. Then:
 
 ```bash
 make up            # Mosquitto, Postgres, migrations, MediaMTX, ingest ×2, API on :8000
 make seed          # demo org, location `demo`, owner@aivee.demo (DEMO_PASSWORD in .env)
+make edge-box      # its own terminal: the device `edge-01`, waiting for cameras
 cd apps/dashboard && npm ci && VITE_API_URL=http://localhost:8000 npm run dev   # another terminal
 ```
 
-In the dashboard (`http://localhost:5173/intra`, log in as `owner@aivee.demo`):
-**Camere** → **Adaugă cameră** once per camera. Under the technical details, **Id cameră** must
-be the id from `CAMERAS` (`cam-01`, `cam-02`) and **Dispozitiv** the edge's device id
-(`DEVICE`, by default `MQTT_EDGE_USER`, i.e. `edge-01`). In **Adresa sursei** put the URL
-**without the password** (`rtsp://192.168.1.21:554/stream2`): the edge reads the real URL from
-`CAMERAS`, and the dashboard's copy is stored in Postgres and sent over MQTT.
-
-Then start the edge, in its own terminal:
-
-```bash
-make edge-cameras  # every camera in CAMERAS, one process, one MQTT connection
-```
-
-The log shows one `edge started … camera=cam-01 source=rtsp://USER:***@…` line per camera,
-`metrics fps=…` per camera every 5 s, and a `camera_health` summary every minute. Draw the
-zones per camera (**Camere → Editează zonele**) and add rules per camera (**Reguli**). Rules and
-zones reach the edge within a second, no restart needed.
+In the dashboard (`http://localhost:5173/intra`, log in as `owner@aivee.demo`): **Camere** →
+**Caută camere**, then user, password, **Testează** and save, once per camera (section 2). The
+edge log shows `camera_started camera=… source=rtsp://USER:***@…` per camera, `metrics fps=…`
+every 5 s, and a `camera_health` summary every minute. Draw the zones per camera (**Camere →
+Editează zonele**) and add rules per camera (**Reguli**). Cameras, rules and zones reach the
+edge within a second, no restart needed.
 
 **Live video in the dashboard** comes from MediaMTX (WebRTC at `:8889/<camera id>`); the
 edge does not publish video. To see a Tapo camera live, relay its substream into the local
@@ -127,11 +164,11 @@ ffmpeg -rtsp_transport tcp -i "rtsp://USER:PASS@192.168.1.21:554/stream2" -c cop
   -rtsp_transport tcp "rtsp://PUBLISH_USER:PUBLISH_PASS@localhost:8554/cam-01"
 ```
 
-The edge can then read `rtsp://localhost:8554/cam-01` instead of the camera, so the camera
-serves a single RTSP session. Without the relay the live page shows the boxes over a
-placeholder, and the zone editor uses the last alert snapshot as its background.
+The camera's URL in the dashboard can then be `rtsp://localhost:8554/cam-01` instead of the
+camera, so the camera serves a single RTSP session. Without the relay the live page shows the
+boxes over a placeholder, and the zone editor uses the last alert snapshot as its background.
 
-## 5. When a camera goes down
+## 6. When a camera goes down
 
 The capture adapter reads each camera on its own thread and keeps only the newest frame, so a
 camera never builds up lag. It reconnects with exponential backoff (0.5 s up to 10 s), and
@@ -146,7 +183,7 @@ reports its health every second:
 
 The same state goes onto the device's retained `status` as `camera_health` (one entry per live
 camera: `state`, `last_frame_at`, `fps`), at once when a camera changes state and otherwise
-once a minute. This works with `CAMERAS` and with a single `SOURCE` camera. Ingest stores the
+once a minute. This works on the edge box, with `CAMERAS` and with a single `SOURCE` camera. Ingest stores the
 list (`devices.camera_health`) and `GET /api/cameras` returns each camera's `stream_state` and
 `last_frame_at`. On the dashboard:
 
@@ -162,7 +199,7 @@ list (`devices.camera_health`) and `GET /api/cameras` returns each camera's `str
 - One camera down never stops the others. A pipeline that crashes is logged
   (`camera_failed`) and restarted after 5 s.
 
-## 6. Cost of each camera
+## 7. Cost of each camera
 
 Each camera has its own capture thread, detector, pose model and visual scorer (the ByteTrack
 tracker lives in the detector, so they cannot be shared). The CLIP weights for appearance and

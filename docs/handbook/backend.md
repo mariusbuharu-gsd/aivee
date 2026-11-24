@@ -10,7 +10,8 @@
 | `make seed` | demo org "AiVee Demo", location `demo` ("Terasa demo"), users `owner@` / `manager@` / `staff@aivee.demo`; password `DEMO_PASSWORD` (generated into `.env` when empty, never printed). Idempotent |
 | `make api` | API on the host with reload (reads `.env`) |
 | `make edge SOURCE=http://<phone>:8080/video` | real edge (needs `models/`, run from the repo root); `SOURCE` may also be a file |
-| `make edge-cameras` / `make camera-check` | every camera in `CAMERAS` in one edge process / check each camera's stream first ([ip-cameras.md](ip-cameras.md)) |
+| `make edge-box` | the edge box: runs the cameras added in the dashboard for this device and follows changes; answers camera discovery and camera test ([ip-cameras.md](ip-cameras.md)) |
+| `make edge-cameras` / `make camera-check` | same command as `edge-box`; with `CAMERAS` in `.env` (dev override) exactly those cameras / check each camera's stream first ([ip-cameras.md](ip-cameras.md)) |
 | `make record SOURCE=… SECONDS=60 ROTATE=90 NAME=sala-1` | record a backup clip into `recordings/sala-1.mp4` (already rotated upright) |
 | `make edge SOURCE=recordings/<name>.mp4` | replay a recorded clip through the real edge |
 | `make fake-edge SCENARIO=unattended SPEED=10` | scripted people through the real edge pipeline (`unattended`, `hand`, `queue`, `uncleared`); zones and rules come from the retained config |
@@ -30,7 +31,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored); INT
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
 | Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` + `TELEGRAM_SINGLE_TENANT`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `REALERT_AFTER_S`, `REMIND_S` (default 120, 0 = off), `NOTIFY_WORKERS` (8), `NOTIFY_QUEUE_SIZE` (100), `NOTIFY_ATTEMPTS` (3), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
-| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `CAMERAS` (several cameras, one process: [ip-cameras.md](ip-cameras.md)), `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
+| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `CAMERAS` (dev overrides; without both the edge runs the dashboard's cameras: [ip-cameras.md](ip-cameras.md)), `EDGE_JOBS` (answer camera discovery/test; default on without `SOURCE`), `CAMERA_TEST_TIMEOUT_S` (6), `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
 
@@ -62,7 +63,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | POST | `/api/auth/register` | public; creates org + owner, sets the cookie (201) |
 | POST | `/api/auth/login` · `/api/auth/logout` | public / session; sets / clears `aivee_session` |
 | GET | `/api/auth/me` | session → `Me` (org, `is_owner`, locations with role and permissions) |
-| GET | `/api/capabilities` | signed in; `{videos, enrol}`: the clip runner (same checks as `POST /api/videos`) and the staff enroller are wired on this server |
+| GET | `/api/capabilities` | signed in; `{videos, enrol, camera_test, camera_discovery}`: the clip runner (same checks as `POST /api/videos`) and the staff enroller are wired on this server; the camera flags are true when the API talks to the edge over MQTT (`MQTT_ENABLED`) |
 | GET / POST | `/api/locations` | visible locations / create (owner) |
 | PATCH / DELETE | `/api/locations/{id}` | `locations.manage` |
 | POST | `/api/locations/{id}/telegram/link` | `locations.manage` → `{url, private_url, expires_at}`: `https://t.me/<bot>?startgroup=<code>` / `?start=<code>`; single use, 15 min; 503 without a bot username |
@@ -120,7 +121,8 @@ Root `aivee/<site>/<device>/…`, where `<site>` is the location id.
 | `rules` | → edge | 1, retained | RuleSet (complete) |
 | `config` | → edge | 1, retained | DeviceConfig: cameras + zones (complete) |
 | `profiles` | → edge | 1, retained | StaffProfiles (complete) |
-| `commands` | → edge | 1, not retained | EdgeCommand `{command_id, kind: confirm_staff | reject_staff, camera_id, track_id, suggestion_id, at}`; the edge drops a redelivered `command_id` |
+| `commands` | → edge | 1, not retained | EdgeCommand `{command_id, kind: confirm_staff | reject_staff, camera_id, track_id, suggestion_id, at}`; the edge drops a redelivered `command_id`. Also EdgeRequest `{request_id, kind: discover_cameras | test_camera, at, source?}` (one-off jobs; `parse_command` tells them apart by `kind`) |
+| `replies` | edge → api | 1, not retained | EdgeReply `{request_id, kind, device, ok, error?, cameras[], jpeg_b64?, width?, height?, frame_at?, at}`, one per EdgeRequest. The API resolves a waiting request only when the topic's device is the one it asked (ACL `pattern write aivee/+/%u/replies`) |
 | `frames/<camera>` (`Topics.frames`) | api → vision worker | 0, not retained | JPEG bytes posted to `/api/ingest/frames/<camera>`; read by `SOURCE=mqtt-frames://<camera>` (ACL `pattern read aivee/+/%u/frames/#`) |
 
 Ingest: `$share/ingest/aivee/+/+/events` (split between replicas) plus `status`, `suggestions`, `snapshots/+`
@@ -153,6 +155,9 @@ The auth, locations, members, invites, audit and alert endpoints are listed in
 
 | Method | Path | Permission | Body → Response |
 |---|---|---|---|
+| POST | `/api/devices/{device_id}/discover?location_id=` | `devices.manage` at the device's location (a device of another location, or not at `location_id`, is 404) | → 200 `{cameras: [{ip, port, brand: tapo\|hikvision\|dahua\|reolink\|unknown, model, name, onvif, rtsp_paths, already_added}]}`; `already_added` when a camera of the location already uses that IP. 409 `device_offline`, 504 `device_timeout` (15 s), 502 `device_error` (the job broke on the device), 503 without MQTT or broker. The device sends an ONVIF WS-Discovery probe and checks ports 554/2020 on its own /24s (about 5 s) |
+| POST | `/api/cameras/test?location_id=` | `devices.manage` | `{source?, camera_id?, device?}` → 200 `image/jpeg` (face-blurred, ≤ 1280 px wide), `X-Frame-At` (ISO), `X-Frame-Size` (`WxH` of the stream), `no-store`. `camera_id` tests the saved camera with its stored source; a `source` with `***` next to `camera_id` keeps the stored password. `device` defaults to the camera's device, else the location's only online device (the clip runner and cloud vision workers do not count): none → 409 `device_offline`, several → 422 `device_required`. 422 `camera_auth` (Tapo: hint about Cont cameră and Third-Party Compatibility) \| `camera_unreachable` \| `camera_no_stream` \| `invalid` (no source, not RTSP/HTTP, `***` without a saved camera); 504 `device_timeout` (10 s); 502 `device_error` |
+| GET · POST · PUT/PATCH | `/api/cameras…` | — | `source` is always masked in responses and audit entries: `rtsp://user:***@host/…` (secret query values too). A PUT/PATCH whose source keeps `***` keeps the stored password; a create with `***` is 422. Only the device's retained `config` carries the real URL |
 | DELETE | `/api/cameras/{id}` | `devices.manage` at the camera's location (else 404) | → 204. Zones and rules go too; events and alerts stay. Open alerts close as `closed_by: "system"`, `closed_reason: "camera_deleted"`. Retained `config` and `rules` are republished. Audit `camera.deleted` (`before` = the camera) + `alert.closed` per open alert |
 | GET | `/api/invites?location_id=` | `users.manage` (default: first location) | → `[{id, email, role, location_id, created_by: {id, name} \| null, created_at, expires_at}]`, newest first, pending only (not accepted, revoked or expired). A manager sees only `staff` invites |
 | DELETE | `/api/invites/{id}` | `users.manage`; a manager may revoke only `staff` invites (else 403) | → 204, idempotent. 404 outside the caller's locations, 409 if already accepted. Audit `user.invite_revoked` (once) |
@@ -373,6 +378,9 @@ call per opened alert (as every other kind); `cooldown_s` 120 bounds the alerts 
 - Cameras can be added only at the location of the API's edge link (`SITE` / `DEVICE`); other locations
   get "Locația nu are un dispozitiv conectat la acest server."
 - Alerts stay open when a device goes offline (no close or arrival comes) — being fixed in `fix/alert-edge-cases`.
+- Camera discovery checks only the box's own /24 networks and needs host networking; the MAC
+  vendor list behind the brand guess is short (a wrong guess only changes the suggested path).
+  The API waits for a reply in memory, like the other single-replica API state.
 - Web Push needs HTTPS on phones (secure context); plain `http://<laptop-ip>` gets Telegram only.
 - `test_fake_edge_alert_is_acknowledged_arrives_and_closes` (integration) failed in 2 of 3 full
   `-m integration` runs on 2026-11-06 and passes alone: timing-sensitive.

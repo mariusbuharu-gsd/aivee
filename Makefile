@@ -37,10 +37,15 @@ edge:
 fake-edge:
 	uv run python tools/fake_edge.py --scenario $(SCENARIO) --speed $(SPEED)
 
-.PHONY: edge-cameras
-# Every camera in CAMERAS (from .env) in one edge process with one MQTT connection, e.g.
+.PHONY: edge-box edge-cameras
+# The edge box: connect as MQTT_EDGE_USER and run the cameras added in the dashboard for this
+# device (Camere → Caută camere), starting and stopping them as they change. Also answers the
+# dashboard's camera discovery and camera test. SOURCE and CAMERAS must not be set in .env:
+# they are dev overrides and win. See docs/handbook/ip-cameras.md.
+edge-box:
+	uv run python -m aivee_edge
+# Same command. With CAMERAS in .env (dev override) it runs exactly those cameras instead:
 #   CAMERAS=cam-01=rtsp://USER:PASS@IP1:554/stream2;cam-02=rtsp://USER:PASS@IP2:554/stream2
-# SOURCE must not be set: it wins over CAMERAS. See docs/handbook/ip-cameras.md.
 edge-cameras:
 	uv run python -m aivee_edge
 
