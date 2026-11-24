@@ -42,7 +42,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 | ingest ×2 | `apps/ingest` | MQTT → Postgres; folds alert times; optional vision check of each opened alert (`verify.py`, `VERIFY_ALERTS`); audit `alert.*`, `device.*`; Telegram (the location's `telegram_chat_id`; none: not sent, `telegram_skipped reason=no_chat`; `TELEGRAM_CHAT_ID` only with `TELEGRAM_SINGLE_TENANT=true`) + Web Push to the location's members and owners; the "Conectează Telegram" getUpdates poller (`telegram_link.py`, one replica) |
 | api | `apps/api` | REST + WS; accounts, cookie sessions, roles per location, invites, audit; publishes retained edge state and staff commands; Claude translator; staff enrolment |
 | mosquitto | `infra/mosquitto` | auth from `.env`, per-device ACL |
-| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0010` (`migrate` service) |
+| postgres | `infra/postgres` | Postgres 17 + pgvector, Alembic migrations `0001`–`0016` (`migrate` service) |
 | mediamtx | `infra/mediamtx` | RTSP in → WebRTC/WHEP out for the dashboard |
 
 API code map (`apps/api/src/aivee_api/`): `auth/` (passwords, tokens, sessions, rate limit, permission
@@ -73,7 +73,7 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/invites/{token}` | public: org, location, role, email |
 | POST | `/api/invites/{token}/accept` | public `{name, password}` → `Me`, sets the cookie; single use |
 | GET | `/api/audit` | `?location_id&actor&kind&from&to&before&limit` → `{items, next_before}`; owner org / manager location / staff own |
-| GET / POST | `/api/cameras` | `alerts.view` / `devices.manage`; POST 409 on an existing id; only at the API's `SITE` |
+| GET / POST | `/api/cameras` | `alerts.view` / `devices.manage`; POST 409 on an existing id; only at the API's `SITE`. Each camera carries `stream_state` (`ok` \| `reconnecting` \| `down` \| null) and `last_frame_at` from its device's last `camera_health` (`devices.camera_health`, migration `0016`): an offline device makes every camera `down`, a camera the edge says nothing about is null; `online` is false when `stream_state` is `down` |
 | GET · PUT / PATCH | `/api/cameras/{id}` | `alerts.view` · `devices.manage` (name, source, device; zones kept) |
 | GET / PUT | `/api/cameras/{id}/zones` | `alerts.view` / `devices.manage` (PUT replaces all) |
 | GET / POST | `/api/rules` | `rules.manage` |
@@ -84,13 +84,13 @@ location's resources. `?location_id=` defaults to the caller's first location.
 | GET | `/api/cameras/{id}/frame` | `alerts.view`; the camera's newest face-blurred still (today: its latest alert's whole-frame snapshot), time in `X-Frame-At`, `no-store`; 404 until one exists |
 | POST | `/api/cameras/{id}/push-key` | `devices.manage`; a new frame-ingest key for the camera, shown once (`{camera_id, key}`, 201); only its sha256 is stored (`cameras.push_key_hash`); the previous key and the shared Basic credential stop working for this camera; audit `camera.push_key_created` |
 | POST | `/api/ingest/frames/{camera_id}` | `Authorization: Bearer <the camera's push key>` (S6), or HTTP Basic `STREAM_PUBLISH_USER/PASSWORD` (constant-time; shared, so only for a camera without a key, at a location claimed by an organisation: else 404, or 401 when the camera has a key); body one JPEG ≤ 500 KB, or (no Authorization header) the session cookie with `devices.manage` at the camera's location, only for a cloud camera (`source` = `mqtt-frames://<id>`, else 409; 403 without the permission) — the dashboard's `/telefon` page → 204. 401 credentials, 413 size, 415 not JPEG (magic bytes), 404 unknown camera. Kept in memory as the camera's newest frame and relayed on `frames/<camera>` of the camera's device. Cloud mode over HTTPS: [cloud-mode.md](cloud-mode.md) |
-| GET | `/api/cameras/{id}/live.mjpg` | `alerts.view`; `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
+| GET | `/api/cameras/{id}/live.mjpg` | `devices.manage` (the frames are not face-blurred: owners and managers, never staff; S7); `multipart/x-mixed-replace` of the posted frames, ≤ 5 fps (`LIVE_FPS`), `no-store`, `X-Accel-Buffering: no`; 404 while no frame came in the last 10 s; ends when the client leaves or after 30 s without frames. In memory, single api replica only |
 | GET | `/api/alerts` | `alerts.view`; `?state=opened|acknowledged|arrived|closed|open&limit` → `[AlertView]` |
 | POST | `/api/alerts/{event_id}/ack` | `alerts.ack`; "Merg eu" → `AlertView`; 409 if taken or closed. Kept for old clients; the dashboard no longer offers it |
 | GET | `/api/metrics/verification` | `alerts.view`; `?location_id` → `{location_id, counts: [{rule_id, status, alerts}]}` |
 | GET | `/api/metrics/service` | `alerts.view`; `?from&to` → wait / reaction / travel `{count, median_s, p90_s}` |
 | GET | `/api/metrics` | `alerts.view`; FPS, CPU, verified ratio, events today, alert latency |
-| GET | `/api/devices` | `alerts.view` |
+| GET | `/api/devices` | `alerts.view`; DeviceStatus (with the stored `camera_health`) + `site`, `last_seen` |
 | GET | `/api/staff/suggestions` | `staff.review` |
 | POST | `/api/staff/suggestions/{id}/confirm` · `/reject` | `staff.review`; sends an EdgeCommand |
 | GET | `/api/staff/profiles` · POST `/api/staff/photos` | `staff.enrol`; multipart `photo` or `files` (≤ 50 MB each) |
@@ -111,7 +111,7 @@ Root `aivee/<site>/<device>/…`, where `<site>` is the location id.
 
 | Leaf | Direction | QoS / retain | Payload |
 |---|---|---|---|
-| `status` | edge → | 1, retained, LWT `offline` | DeviceStatus |
+| `status` | edge → | 1, retained, LWT `offline` | DeviceStatus; an online edge republishes it with `camera_health` (per live camera: `state`, `last_frame_at`, `fps`) when a camera changes state, else once a minute. Ingest stores the list on `online` and keeps it on `offline` |
 | `events` | edge → | 1 | AlertEvent (`opened` / `arrived` / `closed`) |
 | `metrics` | edge → | 0 | Metrics (every 5 s) |
 | `suggestions` | edge → | 1 | StaffSuggestion |

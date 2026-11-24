@@ -268,7 +268,8 @@ class IngestHandler:
                 for view in closed:
                     await self._audit.append(s, system_closed_entry(view, reason))
             await s.commit()
-        log.info("device %s/%s is %s", t.site, t.device, status.state)
+        if before != status.state:  # an online edge republishes its status every minute
+            log.info("device %s/%s is %s", t.site, t.device, status.state)
         if closed and reason is not None:
             log.info("closed %d open alert(s) of %s: %s", len(closed), t.device, reason)
             note = device_closed_note_ro(t.device, reason, len(closed))

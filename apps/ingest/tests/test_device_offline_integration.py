@@ -228,3 +228,31 @@ async def test_late_edge_close_after_system_close_keeps_the_system_close(
     view = (await _views(sessions))[opened.event_id]
     assert (view.closed_by, view.closed_reason) == ("system", "device_offline")
     assert len(await _closed_audit(sessions)) == 1
+
+
+async def test_a_status_with_camera_health_is_stored_without_a_new_audit_entry(
+    sessions: Any, tmp_path: Path
+) -> None:
+    """The edge republishes `online` with camera_health on every camera state change."""
+    await _seed(sessions)
+    (a, _), notifiers = _replicas(sessions, tmp_path)
+    await a.handle(TOPICS.status, _status("online"))
+    health = DeviceStatus.model_validate(
+        {
+            "device": DEVICE,
+            "state": "online",
+            "cameras": ["cam1"],
+            "camera_health": [
+                {"camera_id": "cam1", "state": "down", "last_frame_at": None, "fps": 0}
+            ],
+        }
+    )
+    await a.handle(TOPICS.status, health.model_dump_json().encode())
+    async with sessions() as s:
+        device = await s.get(Device, DEVICE)
+        audits = await s.scalars(select(AuditRow).where(AuditRow.kind == "device.online"))
+        assert device is not None
+        assert [h["state"] for h in device.camera_health] == ["down"]
+        assert len(audits.all()) == 1  # the first online only
+    await a.drain()
+    assert all(n.texts == [] for n in notifiers)

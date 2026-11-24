@@ -1,5 +1,52 @@
 {
-  "description": "Retained on `status`; the broker publishes `offline` as the device's last will.",
+  "$defs": {
+    "CameraStreamHealth": {
+      "description": "How one live camera stream of a device is doing, as the edge sees it.\n\nok: frames are arriving (or the first open is under way) · reconnecting: the stream\ndropped and the edge is retrying · down: no frame for over a minute.",
+      "properties": {
+        "camera_id": {
+          "title": "Camera Id",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "ok",
+            "reconnecting",
+            "down"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "last_frame_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When the newest frame was decoded; None before the first one",
+          "title": "Last Frame At"
+        },
+        "fps": {
+          "default": 0.0,
+          "description": "Frames per second the camera delivers",
+          "minimum": 0,
+          "title": "Fps",
+          "type": "number"
+        }
+      },
+      "required": [
+        "camera_id",
+        "state"
+      ],
+      "title": "CameraStreamHealth",
+      "type": "object"
+    }
+  },
+  "description": "Retained on `status`; the broker publishes `offline` as the device's last will.\n\nAn online edge republishes it when a camera's stream state changes, and about once a\nminute otherwise, with `camera_health`. Cameras without a live stream (clips, cloud\nframes) are not listed there; neither is any camera in an `offline` status.",
   "properties": {
     "device": {
       "title": "Device",
@@ -23,6 +70,14 @@
         "type": "string"
       },
       "title": "Cameras",
+      "type": "array"
+    },
+    "camera_health": {
+      "description": "Per live camera; empty from older edges",
+      "items": {
+        "$ref": "#/$defs/CameraStreamHealth"
+      },
+      "title": "Camera Health",
       "type": "array"
     }
   },

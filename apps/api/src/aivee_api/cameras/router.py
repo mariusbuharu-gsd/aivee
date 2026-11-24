@@ -164,6 +164,10 @@ async def _record(
         kind,
         location_id=loc,
         target=Target("camera", camera.id, camera.name or camera.id),
-        before=before.model_dump(mode="json") if before else None,
-        after=after.model_dump(mode="json") if after else None,
+        before=before.model_dump(mode="json", exclude=LIVE_FIELDS) if before else None,
+        after=after.model_dump(mode="json", exclude=LIVE_FIELDS) if after else None,
     )
+
+
+LIVE_FIELDS = {"stream_state", "last_frame_at"}
+"""What the edge reports, not what the user changed: kept out of the audit entries."""

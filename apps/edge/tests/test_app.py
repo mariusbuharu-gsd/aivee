@@ -327,3 +327,88 @@ def test_a_source_next_to_cameras_says_cameras_are_ignored(
     with caplog.at_level("INFO"):
         assert app.run(settings) == 0
     assert "CAMERAS ignored" in caplog.text
+
+
+class _LiveCamera(_Frames):
+    """A live camera (it has `health()`) that keeps giving frames until `enough()` says so."""
+
+    def __init__(self, enough: Any) -> None:
+        super().__init__(10_000)
+        self.enough = enough
+
+    def read(self) -> tuple[float, Any] | None:
+        import time
+
+        time.sleep(0.002)
+        return None if self.enough() else super().read()
+
+    def health(self) -> Any:
+        from aivee_edge.domain.camera_health import SourceHealth
+
+        return SourceHealth(True, 0.05, 15.0, 4, 4)
+
+
+def _offline_client(clients: list[Any]) -> Any:
+    real_client = app.build_client
+
+    def fake_client(s: EdgeSettings) -> Any:
+        client = real_client(s)
+        client.start = lambda timeout=10.0: None
+        client.stop = lambda: None
+        clients.append(client)
+        return client
+
+    return fake_client
+
+
+def _published_health(clients: list[Any]) -> list[Any]:
+    from aivee_contracts.events import DeviceStatus
+
+    return DeviceStatus.model_validate_json(clients[0]._status("online")).camera_health
+
+
+def test_a_single_live_camera_puts_its_health_on_the_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    for name in ("CAMERAS", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    clients: list[Any] = []
+    deadline = time.monotonic() + 5
+    source = _LiveCamera(
+        lambda: bool(clients and _published_health(clients)) or time.monotonic() > deadline
+    )
+    vision = app.Vision(source, _NoPeople(), None, None, None)
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+    settings = EdgeSettings(
+        source="rtsp://cam/1", camera_id="cam-01", _env_file=None, pose_model="", blur=False
+    )  # type: ignore[call-arg]
+    assert app.run(settings) == 0
+    assert [(h.camera_id, h.state) for h in _published_health(clients)] == [("cam-01", "ok")]
+
+
+def test_cameras_put_their_health_on_the_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    for name in ("SOURCE", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CAMERAS", "cam-01=rtsp://a/1;cam-02=rtsp://a/2")
+    clients: list[Any] = []
+    deadline = time.monotonic() + 5
+
+    def enough() -> bool:
+        return bool(clients and len(_published_health(clients)) == 2) or time.monotonic() > deadline
+
+    monkeypatch.setattr(
+        app,
+        "build_vision",
+        lambda _s: app.Vision(_LiveCamera(enough), _NoPeople(), None, None, None),
+    )
+    monkeypatch.setattr(app, "build_client", _offline_client(clients))
+    monkeypatch.setattr(app, "HEALTH_TICK_S", 0.01)
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    assert app.run(settings) == 0
+    assert [h.camera_id for h in _published_health(clients)] == ["cam-01", "cam-02"]

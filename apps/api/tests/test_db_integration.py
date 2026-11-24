@@ -104,6 +104,27 @@ async def test_device_status_upsert(sessions: async_sessionmaker[AsyncSession]) 
     assert device is not None and device.state == "offline" and device.last_seen is not None
 
 
+async def test_device_status_keeps_the_last_camera_health(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """Online replaces it; offline (the LWT carries none) keeps the last one known."""
+    health = [{"camera_id": "c1", "state": "ok", "last_frame_at": None, "fps": 15.0}]
+    online = DeviceStatus.model_validate(
+        {"device": "edge-01", "state": "online", "camera_health": health}
+    )
+    async with sessions() as s:
+        repo = DeviceRepository(s)
+        await repo.apply_status("s1", online)
+        await repo.apply_status("s1", DeviceStatus(device="edge-01", state="offline"))
+        await s.commit()
+        device = await repo.get("edge-01")
+        assert device is not None and device.camera_health == health
+        await repo.apply_status("s1", DeviceStatus(device="edge-01", state="online"))
+        await s.commit()
+        await s.refresh(device)
+        assert device.camera_health == []
+
+
 async def test_camera_rule_and_suggestion_roundtrip(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:

@@ -409,7 +409,7 @@ class FramePusher:
 def run_push(cfg: Config) -> None:
     """ffmpeg -> JPEG frames -> newest-frame slot -> HTTPS POSTs; restarts ffmpeg with backoff."""
     args = frames_ffmpeg_args(cfg)
-    log.info("pushing %s -> %s%s", cfg.source, cfg.push_url, frame_request(cfg)[0])
+    log.info("pushing %s -> %s%s", redact_url(cfg.source), cfg.push_url, frame_request(cfg)[0])
     slot, stop = Newest(), threading.Event()
     sender = threading.Thread(target=FramePusher(cfg).run, args=(slot, stop), daemon=True)
     sender.start()
@@ -430,11 +430,35 @@ def run_push(cfg: Config) -> None:
 
 
 def redact(args: list[str], secret: str) -> list[str]:
-    """Hide the password inside URL credentials (`user:<password>@host`) for logging."""
-    if not secret:
-        return list(args)
-    marker = f":{quote(secret, safe='')}@"
-    return [a.replace(marker, ":***@", 1) if "://" in a else a for a in args]
+    """ffmpeg args for logging: the cloud password and every URL's credentials hidden."""
+    marker = f":{quote(secret, safe='')}@" if secret else None
+    out = []
+    for a in args:
+        if "://" in a:
+            a = redact_url(a.replace(marker, ":***@", 1) if marker else a)
+        out.append(a)
+    return out
+
+
+MASK = "***"
+_USERINFO = re.compile(r"^(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*://)(?P<userinfo>[^/?#]*)@")
+_SECRET_PARAM = re.compile(
+    r"(?P<key>[?&;](?:pass(?:word)?|pwd|token|key|secret|auth|sig(?:nature)?)=)[^&#;]*",
+    re.IGNORECASE,
+)
+
+
+def redact_url(url: str) -> str:
+    """A camera URL without its secrets, for log lines (audit S11): the password (or a bare
+    user name, which may be a token) and credential-like query values become `***`. Not a URL
+    (a webcam index, a file path): unchanged. Same rules as `aivee_edge.redact.redact_url`;
+    copied because the connector ships as this one file."""
+    m = _USERINFO.match(url)
+    if m is not None:
+        user, sep, _password = m.group("userinfo").partition(":")
+        shown = f"{user}:{MASK}" if sep else MASK
+        url = f"{m.group('scheme')}{shown}@{url[m.end() :]}"
+    return _SECRET_PARAM.sub(lambda p: p.group("key") + MASK, url)
 
 
 @dataclass
@@ -455,7 +479,7 @@ class Backoff:
 
 def run(cfg: Config) -> None:
     args = ffmpeg_args(cfg)
-    log.info("pushing %s -> %s", cfg.source, " ".join(redact(args, cfg.password))[-80:])
+    log.info("pushing %s -> %s", redact_url(cfg.source), " ".join(redact(args, cfg.password))[-80:])
     backoff = Backoff()
     while True:
         started = time.monotonic()
