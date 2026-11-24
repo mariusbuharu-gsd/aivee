@@ -65,7 +65,15 @@ export interface StaffEnrolResult {
 /** A camera plus the online state of the device that serves it. */
 export interface CameraView extends CameraConfig {
   device: string;
+  /** The device's state: with several cameras on one device, all of them share it. */
   online: boolean;
+  /**
+   * Not sent by the API yet (proposed, see docs/handbook/frontend.md "Known gaps"): when the
+   * edge decoded this camera's newest frame. Absent = unknown, null = never.
+   */
+  last_frame_at?: string | null;
+  /** Not sent yet either: the edge's capture state for this camera. */
+  stream_state?: 'ok' | 'reconnecting' | 'down' | null;
 }
 
 /** `GET /api/devices`: the edge's status plus when the API last heard from it. */
@@ -117,6 +125,12 @@ export interface SuggestionView extends StaffSuggestion {
 /** An alert event as the API serves it: `snapshot_url` is absolute (or null). */
 export interface AlertView extends AlertEvent {
   device_id?: string;
+  /**
+   * Set on the folded alert updates `/ws/events` sends (raw event rows have none): the alert's
+   * location, and the zone's name at the time.
+   */
+  location_id?: string | null;
+  zone_name?: string;
   snapshot_url?: string | null;
   /** Who closed it: the edge (someone came) or the system (the camera stopped watching). */
   closed_by?: 'edge' | 'system' | null;
@@ -234,6 +248,11 @@ export interface Capabilities {
   videos: boolean;
   /** Staff profiles (photos, live capture). */
   enrol: boolean;
+  /**
+   * "Testează camera" in Adaugă cameră (`testCameraSource`). No API sends it yet, so absent
+   * means the button stays hidden; see docs/handbook/frontend.md "Known gaps" for the endpoint.
+   */
+  camera_test?: boolean;
 }
 
 export interface ApiClient extends AccountApi {
@@ -250,6 +269,12 @@ export interface ApiClient extends AccountApi {
    * Rejects with an ApiError (404 `not_found` until the camera has sent one).
    */
   captureFrame(cameraId: string): Promise<CameraFrame>;
+  /**
+   * "Testează camera" before it is saved: the location's device opens `source` once and sends
+   * back one face-blurred still. Only call it when `Capabilities.camera_test` is true. Rejects
+   * with the API's Romanian reason (wrong password, unreachable, no stream at that path).
+   */
+  testCameraSource(source: string, device?: string): Promise<CameraFrame>;
   /**
    * `GET /api/cameras/{id}/live.mjpg` for an `<img>`: the frames a connector posts over HTTPS
    * (cloud mode). 404 while none came recently. Null when the API has no such stream (mock).
@@ -281,6 +306,11 @@ export interface ApiClient extends AccountApi {
   listSuggestions(): Promise<SuggestionView[]>;
   subscribeSuggestions(cb: (s: SuggestionView) => void): Unsubscribe;
   subscribeDetections(cameraId: string, cb: (d: Detection[]) => void): Unsubscribe;
+  /**
+   * Called after the live feed came back from a drop (not on the first connection). What
+   * changed meanwhile never arrived, so state should be reloaded from the REST calls.
+   */
+  subscribeReconnect(cb: () => void): Unsubscribe;
   confirmSuggestion(id: string): Promise<void>;
   rejectSuggestion(id: string): Promise<void>;
   uploadStaffPhoto(file: File): Promise<void>;

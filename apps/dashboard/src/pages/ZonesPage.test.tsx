@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { ApiContext } from '../api/context';
 import { MockApi } from '../api/mock';
@@ -23,9 +23,11 @@ function renderApp(path = '/camere/cam-sala/zone') {
       </AuthProvider>
     </ApiContext.Provider>,
   );
+  return api;
 }
 
 beforeEach(() => localStorage.clear());
+afterEach(() => vi.restoreAllMocks());
 
 describe('ZonesPage', () => {
   it('draws from the toolbar on the image, one tool per zone kind', async () => {
@@ -62,8 +64,9 @@ describe('ZonesPage', () => {
   it('offers a capture from one line on the image and lists zones by colour and name', async () => {
     const user = userEvent.setup();
     renderApp();
-    const line = await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 });
-    expect(line).toHaveTextContent('Imagine de probă · Încarcă o captură');
+    const line = await screen.findByText(/Ultima captură a camerei/, undefined, { timeout: 5000 });
+    expect(line).toHaveTextContent(/^Ultima captură a camerei, de acum \d+ s · Încarcă o captură$/);
+    expect(screen.getByAltText(/Ultima captură de la Sala principală/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Fundal' })).toBeNull();
 
     const list = screen.getByRole('heading', { name: '3 zone' }).nextElementSibling as HTMLElement;
@@ -81,7 +84,7 @@ describe('ZonesPage', () => {
   it('switches from a capture back to the live frame when the camera is online', async () => {
     const user = userEvent.setup();
     renderApp();
-    await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 });
+    await screen.findByText(/Ultima captură a camerei/, undefined, { timeout: 5000 });
     expect(screen.queryByRole('button', { name: 'Folosește imaginea live' })).toBeNull();
 
     const file = new File(['x'], 'sala.png', { type: 'image/png' });
@@ -94,21 +97,60 @@ describe('ZonesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Folosește imaginea live' }));
     expect(screen.queryByAltText(/Imagine încărcată/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Folosește imaginea live' })).toBeNull();
-    expect(await screen.findByText(/Imagine de probă/)).toHaveTextContent(
-      'Imagine de probă · Încarcă o captură',
+    expect(await screen.findByText(/Ultima captură a camerei/)).toHaveTextContent(
+      /Ultima captură a camerei.* · Încarcă o captură/,
     );
   });
 
   it('offers no live frame for an offline camera', async () => {
     const user = userEvent.setup();
     renderApp('/camere/cam-terasa/zone');
-    await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 });
+    await screen.findByText(/Ultima captură a camerei/, undefined, { timeout: 5000 });
     const file = new File(['x'], 'terasa.png', { type: 'image/png' });
     await user.upload(screen.getByLabelText('Încarcă o imagine din cameră'), file);
     expect(await screen.findByText(/Captură încărcată/)).toHaveTextContent(
       'Captură încărcată · Schimbă',
     );
     expect(screen.queryByRole('button', { name: 'Folosește imaginea live' })).toBeNull();
+  });
+
+  it('switches camera from the editor, each with its own zones and still', async () => {
+    const user = userEvent.setup();
+    const api = renderApp();
+    const capture = vi.spyOn(api, 'captureFrame');
+    const save = vi.spyOn(api, 'saveZones');
+    const pick = await screen.findByRole('group', { name: 'Camera' }, { timeout: 5000 });
+    expect(within(pick).getByRole('button', { name: 'Sala principală' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(within(pick).getByRole('button', { name: 'Terasă · offline' }));
+    expect(await screen.findByRole('heading', { name: /Zone · Terasă/ })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '1 zonă' })).toBeInTheDocument();
+    expect(await screen.findByAltText(/Ultima captură de la Terasă/)).toBeInTheDocument();
+    expect(capture).toHaveBeenCalledWith('cam-terasa');
+
+    // Unsaved changes ask first, then save to this camera only.
+    await user.click(screen.getByRole('button', { name: /Masa 3/ }));
+    await user.click(screen.getByRole('button', { name: /Șterge/ }));
+    await user.click(
+      within(screen.getByRole('group', { name: 'Camera' })).getByRole('button', {
+        name: 'Sala principală',
+      }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: /nesalvate pe Terasă/ });
+    await user.click(within(dialog).getByRole('button', { name: 'Salvează și pleacă' }));
+    expect(save).toHaveBeenCalledWith('cam-terasa', []);
+    expect(await screen.findByRole('heading', { name: /Zone · Sala principală/ })).toBeVisible();
+    expect(await screen.findByRole('heading', { name: '3 zone' })).toBeInTheDocument();
+  });
+
+  it('falls back to the schematic room until the camera has sent a still', async () => {
+    const api = renderApp();
+    vi.spyOn(api, 'captureFrame').mockRejectedValue(new Error('404'));
+    expect(
+      await screen.findByText(/Imagine de probă/, undefined, { timeout: 5000 }),
+    ).toHaveTextContent('Imagine de probă · Încarcă o captură');
   });
 
   it('says saved with a way out, and asks to save only after a change', async () => {

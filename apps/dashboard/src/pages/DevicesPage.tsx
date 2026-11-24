@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { CameraPatch, CameraView, DashboardMetrics, DeviceView } from '../api/client';
 import { useApi } from '../api/context';
-import { AddCameraForm, DEFAULT_CAMERA_ID } from '../components/AddCameraForm';
+import { AddCameraForm, DEFAULT_CAMERA_ID, DEFAULT_DEVICE } from '../components/AddCameraForm';
 import { Icon } from '../components/Icon';
 import { QrCode } from '../components/QrCode';
 import { StaffCaptureButton } from '../components/StaffCapture';
 import type { Metrics } from '../contracts';
 import { CameraThumb } from '../devices/CameraThumb';
-import { cameraState, lastSeenRo, type CameraState } from '../devices/lastSeen';
+import { cameraHealth, type CameraHealth, type CameraHealthState } from '../devices/health';
+import { lastSeenRo, sinceRo } from '../devices/lastSeen';
 import { maskSource } from '../devices/maskSource';
+import { checkHost, maskPassword, parseSourceUrl, replaceCredentials } from '../devices/rtsp';
 import { useDevices } from '../devices/useDevices';
 import { useNow } from '../live/useNow';
 import { isCloudFrames } from '../live/source';
@@ -17,7 +19,7 @@ import { isCloudCamera } from '../phone/sender';
 import { useLiveData } from '../state/context';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Menu } from '../ui/Menu';
-import { EmptyState, Skeleton } from '../ui/controls';
+import { EmptyState, PasswordInput, Skeleton } from '../ui/controls';
 import { plural } from '../ui/plural';
 import { useToast } from '../ui/toast';
 import './DevicesPage.css';
@@ -45,6 +47,8 @@ export function DevicesPage() {
   const taken = new Set(cameras.map((c) => c.id));
   let next = DEFAULT_CAMERA_ID;
   for (let n = 2; taken.has(next); n++) next = `cam-${String(n).padStart(2, '0')}`;
+  // A second IP camera goes on the box that already serves this location's cameras.
+  const device = cameras.find((c) => !isCloudCamera(c))?.device ?? DEFAULT_DEVICE;
 
   return (
     <div className="page">
@@ -97,10 +101,17 @@ export function DevicesPage() {
           <AddCameraForm
             key={next}
             defaultId={next}
+            defaultDevice={device}
             onCancel={() => setAdding(false)}
             onCreated={(c) => {
               addCamera(c);
               setAdding(false);
+              // A phone first needs to be started with the QR; zones come once it sends images.
+              if (isCloudCamera(c)) {
+                toast({ title: `Camera „${c.name}” a fost adăugată`, text: 'Scanează codul.' });
+                setPhone(c);
+                return;
+              }
               toast({
                 title: `Camera „${c.name}” a fost adăugată`,
                 text: 'Desenează acum mesele și intrarea pe imagine.',
@@ -164,8 +175,15 @@ function CameraCard({
   // The devices poll is fresher than the camera list, which loads once.
   const c = device ? { ...camera, online: device.state === 'online' } : camera;
   const now = useNow(device?.last_seen != null);
-  const seen = lastSeenRo(c.online, device?.last_seen, now);
-  const state = cameraState(c.online, device?.last_seen, now);
+  const status = cameraHealth(camera, device, now);
+  const state = status.state;
+  // The freshness line speaks for the camera when the API knows its last frame.
+  const seen =
+    camera.last_frame_at !== undefined && c.online
+      ? camera.last_frame_at
+        ? `ultima imagine acum ${sinceRo(now - Date.parse(camera.last_frame_at))}`
+        : 'nicio imagine încă'
+      : lastSeenRo(c.online, device?.last_seen, now);
   return (
     <li className="card device-card" aria-label={`Camera ${c.name}`}>
       <CameraThumb cameraId={c.id} name={c.name} online={c.online} />
@@ -193,7 +211,7 @@ function CameraCard({
         )}
         {plural(c.zones?.length ?? 0, 'zonă', 'zone')}
       </p>
-      {state !== 'online' && <OfflineChecklist camera={c} stale={state === 'stale'} />}
+      {state !== 'online' && <OfflineChecklist camera={c} health={status} />}
       <Link to={zonesPath(c.id)} className="btn">
         Editează zonele
       </Link>
@@ -226,19 +244,22 @@ function CameraCard({
   );
 }
 
-const PILL: Record<CameraState, { label: string; className: string }> = {
+const PILL: Record<CameraHealthState, { label: string; className: string }> = {
   online: { label: 'online', className: 'pill-live' },
+  reconnecting: { label: 'se reconectează', className: 'pill-warn' },
   // Connected but silent: the sender (laptop script, phone page) stopped, not the device.
   stale: { label: 'fără imagine', className: 'pill-warn' },
   offline: { label: 'offline', className: 'pill-off' },
 };
 
 /**
- * What to check, in order, when a camera stops sending. Cloud cameras (`mqtt-frames://`) are fed
- * by the laptop connector or the /telefon page, so the edge-box steps would send people to look
- * for a box that is not there. The button asks the API again.
+ * What to check, in order, when a camera stops sending. Cloud cameras are fed by the laptop
+ * connector or the /telefon page, so the edge-box steps would send people to look for a box
+ * that is not there; when only this camera is down (its device still answers), the steps are
+ * about the camera. The button asks the API again.
  */
-function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale?: boolean }) {
+function OfflineChecklist({ camera, health }: { camera: CameraView; health: CameraHealth }) {
+  const stale = health.state === 'stale' || health.state === 'reconnecting';
   const api = useApi();
   const toast = useToast();
   const { addCamera } = useLiveData();
@@ -253,7 +274,7 @@ function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale
         toast({ title: `Camera „${camera.name}” e din nou online` });
       } else {
         toast({
-          title: `${camera.device} tot nu răspunde`,
+          title: `Camera „${camera.name}” tot nu răspunde`,
           text: 'Mai verifică o dată pașii, apoi încearcă din nou.',
         });
       }
@@ -275,16 +296,20 @@ function OfflineChecklist({ camera, stale = false }: { camera: CameraView; stale
       {isCloudFrames(camera.source) ? (
         <ol>
           <li>Scriptul de pe laptop rulează? Laptopul are internet?</li>
+          <li>Pagina „Telefonul ca cameră” e deschisă și ecranul aprins?</li>
+        </ol>
+      ) : health.cause === 'camera' ? (
+        <ol>
+          <li>Camera are curent (LED-ul din față)?</li>
+          <li>Cablul de rețea al camerei e în priză la ambele capete.</li>
           <li>
-            Pagina <span className="mono">/telefon</span> e deschisă și ecranul aprins?
+            Adresa IP a camerei s-a schimbat? Verific-o în aplicația camerei, apoi la „Editează
+            camera”.
           </li>
         </ol>
       ) : (
         <ol>
-          <li>
-            Calculatorul <span className="mono">{camera.device}</span> e pornit? Lumina de pe
-            carcasă e aprinsă.
-          </li>
+          <li>Dispozitivul AiVee din local e pornit? Lumina de pe carcasă e aprinsă.</li>
           <li>Cablul de rețea e în priză la ambele capete.</li>
           <li>Camera are curent (LED-ul din față).</li>
         </ol>
@@ -348,20 +373,39 @@ function PhoneQr({ camera, onClose }: { camera: CameraView; onClose: () => void 
   );
 }
 
-/** Name and source; the only place the full source address (with any password) is shown. */
+/**
+ * Name and source. A source with a password is edited as IP, user and a new password (empty
+ * keeps the stored one), so the stored password is never shown; a phone camera's source is not
+ * editable; any other source (no secret in it) stays one field.
+ */
 function EditCamera({ camera, onClose }: { camera: CameraView; onClose: () => void }) {
   const api = useApi();
   const toast = useToast();
   const { addCamera } = useLiveData();
+  const parts = parseSourceUrl(camera.source);
+  const mode: 'credentials' | 'raw' | 'none' = isCloudCamera(camera)
+    ? 'none'
+    : parts?.password
+      ? 'credentials'
+      : 'raw';
   const [name, setName] = useState(camera.name);
-  const [source, setSource] = useState(camera.source);
+  const [source, setSource] = useState(mode === 'raw' ? camera.source : '');
+  const [host, setHost] = useState(parts?.host ?? '');
+  const [user, setUser] = useState(parts?.user ?? '');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     const n = name.trim();
-    const src = source.trim();
     if (!n) return setError('Camera are nevoie de un nume.');
+    let src = camera.source;
+    if (mode === 'raw') src = source.trim();
+    if (mode === 'credentials') {
+      const bad = checkHost(host);
+      if (bad) return setError(bad);
+      src = replaceCredentials(camera.source, { host, user, password });
+    }
     if (!src) return setError('Scrie adresa RTSP din aplicația camerei.');
     const patch: CameraPatch = {};
     if (n !== camera.name) patch.name = n;
@@ -414,19 +458,60 @@ function EditCamera({ camera, onClose }: { camera: CameraView; onClose: () => vo
             }}
           />
         </label>
-        <label className="field">
-          <span>Adresa sursei</span>
-          <input
-            className="input mono"
-            value={source}
-            autoComplete="off"
-            spellCheck={false}
-            onChange={(e) => setSource(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void save();
-            }}
-          />
-        </label>
+        {mode === 'raw' && (
+          <label className="field">
+            <span>Adresa sursei</span>
+            <input
+              className="input mono"
+              value={source}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => setSource(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void save();
+              }}
+            />
+          </label>
+        )}
+        {mode === 'credentials' && (
+          <>
+            <label className="field">
+              <span>Adresa IP</span>
+              <input
+                className="input mono"
+                value={host}
+                autoComplete="off"
+                spellCheck={false}
+                onChange={(e) => setHost(e.target.value)}
+              />
+            </label>
+            <div className="field-pair">
+              <label className="field">
+                <span>Utilizator</span>
+                <input
+                  className="input"
+                  value={user}
+                  autoComplete="off"
+                  spellCheck={false}
+                  onChange={(e) => setUser(e.target.value)}
+                />
+              </label>
+              <PasswordInput
+                label="Parolă nouă"
+                value={password}
+                autoComplete="new-password"
+                placeholder="neschimbată"
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <p className="muted small">
+              Lasă parola goală ca să rămână cea salvată. Adresa:{' '}
+              <span className="mono">
+                {maskPassword(replaceCredentials(camera.source, { host, user, password }))}
+              </span>
+            </p>
+          </>
+        )}
         {error && (
           <small className="field-error" role="alert">
             {error}

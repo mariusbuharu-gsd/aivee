@@ -36,6 +36,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     captureFrame: vi.fn(async () => {
       throw new ApiError('Nu există încă o imagine de la această cameră.', 'not_found', 404);
     }),
+    testCameraSource: vi.fn(async () => ({ url: 'blob:test', at: null, release: () => undefined })),
     saveZones: vi.fn(async (_id, zones) => ({ zones, warnings_ro: [] })),
     deleteCamera: vi.fn(async () => undefined),
     listRules: vi.fn(async () => []),
@@ -50,6 +51,7 @@ export function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient {
     listSuggestions: vi.fn(async () => []),
     subscribeSuggestions: vi.fn(noop),
     subscribeDetections: vi.fn(noop),
+    subscribeReconnect: vi.fn(noop),
     confirmSuggestion: vi.fn(async () => undefined),
     rejectSuggestion: vi.fn(async () => undefined),
     uploadStaffPhoto: vi.fn(async () => undefined),

@@ -307,6 +307,36 @@ describe('HttpApi accounts (auth-roles-audit spec)', () => {
     vi.useRealTimers();
   });
 
+  it('shares one socket between alerts, suggestions and detections', () => {
+    const sockets: { onmessage: ((e: MessageEvent<string>) => void) | null }[] = [];
+    class FakeSocket {
+      onclose: unknown = null;
+      onopen: unknown = null;
+      onmessage: ((e: MessageEvent<string>) => void) | null = null;
+      constructor() {
+        sockets.push(this);
+      }
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    const api = new HttpApi('http://api:8000');
+    const alerts = vi.fn();
+    const boxes = vi.fn();
+    const offs = [
+      api.subscribeAlerts(alerts),
+      api.subscribeSuggestions(() => undefined),
+      api.subscribeDetections('cam-01', boxes),
+    ];
+    expect(sockets).toHaveLength(1);
+    const alert = { event_id: 'e1', camera_id: 'cam-01', snapshot_url: null };
+    sockets[0]?.onmessage?.({
+      data: JSON.stringify({ type: 'alert', data: alert }),
+    } as MessageEvent<string>);
+    expect(alerts).toHaveBeenCalledTimes(1);
+    expect(boxes).not.toHaveBeenCalled();
+    offs.forEach((off) => off());
+  });
+
   it('acknowledges an alert with "Preiau"', async () => {
     const api = new HttpApi('http://api:8000');
     const fetch = mockFetch(json({ event_id: 'e-1', acknowledged_by: 'Ana' }));

@@ -21,7 +21,9 @@
   (default `http://localhost:8000`) and `DEMO_PASSWORD` from the environment; it serves on :5174, which the
   API's CORS allows. These tests are read-only.
 - `e2e/mock/` covers sign-in and `?next=`, sign-out, invites, the role matrix per page, the location switcher,
-  the alert timeline (no "Preiau"), history filters, metrics. `e2e/real/` asserts each role loads its pages
+  the alert timeline (no "Preiau"), history filters, metrics, two cameras on one location (Live, staff
+  without video, the zone editor's camera switch) and adding an IP camera by brand (`cameras.spec.ts`).
+  `e2e/real/` asserts each role loads its pages
   without any 4xx from the API (the anonymous `/api/auth/me` probe excepted).
 - Failures keep a trace and screenshot in `test-results/`; open one with `npx playwright show-trace <zip>`.
 
@@ -32,14 +34,14 @@ Public: `/intra` (login, `?next=` return), `/cont-nou` (new organization + owner
 
 | Route | Page | Permission | Purpose |
 |---|---|---|---|
-| `/` | Live | `alerts.view` | camera tiles, live video with detection boxes (staff light blue, guests white), alert feed, staff suggestions; "Configurare" checklist for owners and managers (8 steps from cameras, zones, rules, staff profiles, push/Telegram; `src/setup/checklist.ts`), one line ("Mai ai 2 pași: …" + "Arată") once ≤ 2 steps are left, "Conectează Telegram" inline for owners, "Ascunde" remembered per user on the device |
+| `/` | Live | `alerts.view` | camera tiles with live video and detection boxes (staff light blue, guests white) for `devices.manage` only (`canWatchLive`): staff (waiters) get the open alerts as cards with the blurred snapshot, never live video; one state per camera (`src/devices/health.ts`: the per-camera `stream_state` / `last_frame_at` when the API sends them, else the shared device and its `last_seen`, polled every 5 s), an offline camera is one row "Cameră offline" with the cause; alert feed, staff suggestions; "Configurare" checklist for owners and managers (8 steps from cameras, zones, rules, staff profiles, push/Telegram; `src/setup/checklist.ts`), one line ("Mai ai 2 pași: …" + "Arată") once ≤ 2 steps are left, "Conectează Telegram" inline for owners, "Ascunde" remembered per user on the device |
 | `/alerte` | Alerte | `alerts.view` | alerts with the timeline Deschisă → Ajuns → Închisă with the wait (no "Preiau": the camera closes alerts; a "Preluată" step shows only on old alerts that were taken); AI verification badge ("Confirmat de AI" / "Neconfirmat" / "Se verifică…") with Înainte / După thumbnails for object_gone; "Notificări pe telefon" |
 | `/metrici` | Metrici | `alerts.view` | service times (Așteptare: median and p90, from arrival times; the Reacție and Drum tiles are hidden since nobody takes alerts), FPS, CPU, verified frames |
 | `/reguli` | Reguli | `rules.manage` | write a rule in Romanian (or dictate) → "Ce am înțeles" draft → Confirmă și salvează / Modifică; "Exemple" per location type (`src/rules/templates.ts`) only fill the text; open rules („dacă e foc”, „dacă vine un urs”) read Unde / Ce caută / Cât timp / Atunci, `anywhere` shows as „oriunde în imagine” (`src/rules/chips.ts`) |
-| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | edge devices online/offline, "Adaugă cameră"; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile; device id, source, FPS/CPU and the latency line sit under "Detalii tehnice"; an online device silent for > 60 s shows "fără imagine"; the offline checklist asks about the laptop script and `/telefon` for `mqtt-frames://` sources |
+| `/dispozitive` (alias `/camere`) | Camere | `devices.manage` | one card per camera with its state (as on Live), "Adaugă cameră": *Cameră IP* (brand Tapo / Hikvision / Dahua / Reolink / Altă marcă, IP, user, password → the substream RTSP address from `src/devices/rtsp.ts`, e.g. Tapo `rtsp://{user}:{pass}@{ip}:554/stream2`, shown only with the password masked under "Avansat, pentru instalator"; "Testează camera" only when `/api/capabilities` says `camera_test`), *Telefon* (a cloud camera, then the QR) or *Altă sursă* (raw address); a second camera defaults to the device of the first; "Editează camera" asks IP, user and a new password (empty keeps it) and never shows the stored one; for a cloud camera (`mqtt-frames://<id>`) the card menu has "Folosește telefonul": a QR to `<origin>/telefon?camera=<id>`; every camera has "👔 Adaugă angajat" (`staff.enrol`): name → live preview + 20 s capture → untick candidates → save publishes the profile; device id, source, FPS/CPU and the latency line sit under "Detalii tehnice"; an online device silent for > 60 s shows "fără imagine"; the offline checklist asks about the laptop script and `/telefon` for `mqtt-frames://` sources |
 | `/angajat-nou` | Adaugă angajat (one phone) | `staff.enrol` | the phone films the employee itself, no stream: name or existing profile → `getUserMedia` preview (back camera, front/back toggle, `object-fit: contain`) → Start: a JPEG every 1.5 s for 20 s (`src/staff/burst.ts`, long side ≤ 640 px) → `POST /api/staff/capture/frames` → untick candidates → confirm. Camera tracks stop after the upload. Linked from the Personal card and as a QR in the camera dialog ("Fă-o de pe telefon") |
 | `/telefon` | Telefonul ca cameră | `devices.manage` | the phone browser becomes a cloud camera: `getUserMedia` (back camera, front/back toggle) → always a 640x360 canvas, the video contain-fitted with black bars (a portrait phone arrives whole, never cropped, so zones and boxes line up with the 16:9 Live tile and zone editor; the preview is 16:9 too, with the hint "Ține telefonul pe orizontală pentru imagine întreagă") → JPEG 0.7 → `POST /api/ingest/frames/<id>` with the session cookie at 5 fps, one request in flight (`src/phone/sender.ts` skips frames instead of queueing); status Trimite / Reconectare… / Oprit, frames/s, Screen Wake Lock. Needs HTTPS (or localhost) |
-| `/camere/:cameraId/zone` | Zone editor | `devices.manage` | draw polygons on a live frame or an uploaded still; tags `table`, `entrance`, `staff` (shown as „Zonă angajați”) |
+| `/camere/:cameraId/zone` | Zone editor | `devices.manage` | a "Camera" switch when the location has several (asks about unsaved changes first); draw polygons on the live frame, else the camera's newest blurred still (`captureFrame`), or an uploaded still; zones save per camera; tags `table`, `entrance`, `staff` (shown as „Zonă angajați”) |
 | `/video` | Testează pe un clip | `devices.manage` | upload a clip (≤ 200 MB, ≤ 2 min), copy zones and rules from a camera, optional rotation; list with status and progress; timeline of the alerts found (mm:ss in the clip); never notifies staff |
 | `/istoric` | Istoric | `audit.view` / `audit.view.own` | audit history with filters (actor, kind, period); read-only |
 | `/echipa` | Echipă | `users.manage` | members, roles, invite link |
@@ -51,7 +53,10 @@ Locații). Reguli and Testează pe un clip open on the first online camera that 
 location. `can(permission)` hides actions and routes; the API is what enforces them.
 
 ### Code map
-`src/api/` client interface, `mock.ts`, `mockAccounts.ts`, `http.ts` (`credentials: 'include'`, 401 → login) ·
+`src/api/` client interface, `mock.ts`, `mockAccounts.ts`, `http.ts` (`credentials: 'include'`, 401 → login),
+`socket.ts` (one shared `/ws/events` socket per tab, back-off 1–15 s; after a reconnect, and when the tab
+becomes visible, `LiveData` reloads alerts, lifecycles, cameras and suggestions; live alerts of other
+locations are dropped) · pages other than Login and Live are `React.lazy` chunks (`App.tsx`) ·
 `src/auth/` AuthProvider, RequireAuth, session helpers · `src/contracts/` generated types (never edit) ·
 `src/zones/geometry.ts` pure polygon logic · `src/alerts/fold.ts`, `format.ts` · `src/rules/describe.ts` ·
 `src/live/` WHEP player and detection overlay · `src/pwa/`, `src/push/` · `src/state/` shared state ·
@@ -65,7 +70,7 @@ Base `VITE_API_URL`, always with the session cookie. Errors: `{detail: {code, me
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/auth/login` · `/register` · `/logout` | login / register return `Me` and set the cookie |
-| GET | `/api/capabilities` | `{videos, enrol}`: optional features this server runs; `videos: false` hides „Testează pe un clip” and sends `/video` to Live (a failed call hides nothing) |
+| GET | `/api/capabilities` | `{videos, enrol, camera_test?}`: optional features this server runs; `videos: false` hides „Testează pe un clip” and sends `/video` to Live (a failed call hides nothing) |
 | GET | `/api/auth/me` | `{user, org, is_owner, locations: [{id, name, type, role, permissions}]}` |
 | GET/POST · PATCH/DELETE | `/api/locations` · `/api/locations/{id}` | owner |
 | POST · GET | `/api/locations/{id}/telegram/link` · `/api/locations/{id}/telegram` | owner; `{url, private_url, expires_at}` · `{connected, chat_title}` |
@@ -145,3 +150,17 @@ Static HTML/CSS, built by `apps/site/build.mjs`, deployed to GitHub Pages by `.g
 - Staff photo profiles are global (shared by every location), not per location.
 - Cameras can be added only at the API's own location (`SITE`); elsewhere "Adaugă cameră" gets an error.
 - Open alerts stay open when their device goes offline — being fixed in `fix/alert-edge-cases`.
+- **Per-camera health is not in the API yet.** With two cameras on one edge box both follow the device's
+  online flag. The dashboard already reads two optional fields on each `GET /api/cameras` item and uses them
+  once they arrive: `last_frame_at: string | null` (ISO time of the newest decoded frame) and
+  `stream_state: 'ok' | 'reconnecting' | 'down' | null`. The edge computes these (`CameraHealth {camera_id,
+  state, last_frame_at, last_frame_age_s, fps, width, height}`, `down` = no frame for > 60 s) but only logs
+  them; they need a contract field (e.g. `DeviceStatus.camera_health`) and the API mapping `state` →
+  `stream_state`.
+- **"Testează camera" has no endpoint.** The UI calls `testCameraSource` only when `/api/capabilities` has
+  `camera_test: true`. Proposed: `POST /api/cameras/test?location_id=` (`devices.manage`), body
+  `{source, device?}`; the API asks the location's edge (an `EdgeCommand`) to open the source once and send
+  back one face-blurred still; 200 `image/jpeg` with `X-Frame-At`, 422 `{detail: {code, message_ro}}` with
+  `camera_auth` | `camera_unreachable` | `camera_no_stream`, 504 when the device does not answer in 10 s.
+- Staff no longer get live video in the UI, but the API still serves `GET /api/cameras/{id}/live.mjpg` to any
+  `alerts.view` user; it should require `devices.manage`.

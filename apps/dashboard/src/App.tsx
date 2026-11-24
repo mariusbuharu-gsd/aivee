@@ -1,24 +1,37 @@
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router';
 import { useAuth } from './auth/context';
 import { RequireAuth, RequirePermission } from './auth/RequireAuth';
 import { Layout } from './components/Layout';
-import { AlertsPage } from './pages/AlertsPage';
-import { DevicesPage } from './pages/DevicesPage';
-import { HistoryPage } from './pages/HistoryPage';
-import { InvitePage } from './pages/InvitePage';
 import { LivePage } from './pages/LivePage';
-import { LocationsPage } from './pages/LocationsPage';
 import { LoginPage } from './pages/LoginPage';
-import { MetricsPage } from './pages/MetricsPage';
-import { NewStaffPage } from './pages/NewStaffPage';
-import { PhoneCameraPage } from './pages/PhoneCameraPage';
-import { RegisterPage } from './pages/RegisterPage';
-import { RulesPage } from './pages/RulesPage';
-import { TeamPage } from './pages/TeamPage';
-import { VideoPage } from './pages/VideoPage';
-import { ZonesPage } from './pages/ZonesPage';
 import { CapabilitiesProvider, RequireCapability } from './state/capabilities';
 import { LiveDataProvider } from './state/LiveData';
+import { Skeleton } from './ui/controls';
+
+/** A page as its own chunk: the first screen (login, Live) stays in the main bundle. */
+function page<K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) {
+  return lazy(async () => ({ default: (await load())[name] }));
+}
+
+const AlertsPage = page(() => import('./pages/AlertsPage'), 'AlertsPage');
+const DevicesPage = page(() => import('./pages/DevicesPage'), 'DevicesPage');
+const HistoryPage = page(() => import('./pages/HistoryPage'), 'HistoryPage');
+const InvitePage = page(() => import('./pages/InvitePage'), 'InvitePage');
+const LocationsPage = page(() => import('./pages/LocationsPage'), 'LocationsPage');
+const MetricsPage = page(() => import('./pages/MetricsPage'), 'MetricsPage');
+const NewStaffPage = page(() => import('./pages/NewStaffPage'), 'NewStaffPage');
+const PhoneCameraPage = page(() => import('./pages/PhoneCameraPage'), 'PhoneCameraPage');
+const RegisterPage = page(() => import('./pages/RegisterPage'), 'RegisterPage');
+const RulesPage = page(() => import('./pages/RulesPage'), 'RulesPage');
+const TeamPage = page(() => import('./pages/TeamPage'), 'TeamPage');
+const VideoPage = page(() => import('./pages/VideoPage'), 'VideoPage');
+const ZonesPage = page(() => import('./pages/ZonesPage'), 'ZonesPage');
+
+/** Public pages outside the app shell wait for their chunk here. */
+const pub = (el: ReactNode) => (
+  <Suspense fallback={<Skeleton rows={1} label="Se încarcă" />}>{el}</Suspense>
+);
 
 /** Shared data reloads from scratch when the user switches location. */
 function LocationScope() {
@@ -36,8 +49,8 @@ export function App() {
   return (
     <Routes>
       <Route path="intra" element={<LoginPage />} />
-      <Route path="cont-nou" element={<RegisterPage />} />
-      <Route path="invitatie/:token" element={<InvitePage />} />
+      <Route path="cont-nou" element={pub(<RegisterPage />)} />
+      <Route path="invitatie/:token" element={pub(<InvitePage />)} />
       <Route element={<RequireAuth />}>
         <Route element={<LocationScope />}>
           <Route element={<Layout />}>

@@ -146,7 +146,11 @@ describe('App with the mock API', () => {
     renderApp();
     expect(await screen.findByRole('article', { name: 'Camera Sala principală' })).toBeVisible();
     const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
-    expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
+    expect(within(terrace).getByText('Cameră offline')).toBeInTheDocument();
+    expect(
+      within(terrace).getByText('Dispozitivul AiVee din local nu răspunde.'),
+    ).toBeInTheDocument();
+    expect(within(terrace).queryByText('edge-terasa')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Alerte recente' })).toBeInTheDocument();
     // The last five closed alerts as rows, the newest an object_gone checked by the AI.
     const rows = await screen.findByRole('list', { name: 'Alerte închise' });
@@ -241,7 +245,9 @@ describe('App with the mock API', () => {
     await user.click(screen.getByRole('button', { name: 'Adaugă cameră' }));
     expect(screen.getByLabelText('Id cameră')).toHaveValue('cam-01');
     await user.type(screen.getByLabelText('Nume'), 'Bar');
-    await user.type(screen.getByLabelText(/Adresa sursei/), 'rtsp://bar/1');
+    await user.type(screen.getByLabelText('Adresa IP'), '192.168.1.30');
+    await user.type(screen.getByLabelText('Utilizator'), 'bar');
+    await user.type(screen.getByLabelText('Parolă'), 'pw');
     await user.click(screen.getByRole('button', { name: 'Adaugă camera' }));
     expect(await screen.findByRole('heading', { name: /Zone · Bar/ })).toBeInTheDocument();
     expect(screen.getByText('Camera „Bar” a fost adăugată')).toBeInTheDocument();

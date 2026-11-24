@@ -51,7 +51,11 @@ describe('Live', () => {
     expect(screen.getByText('Masa 2 așteaptă')).toBeInTheDocument();
     // The offline camera is one row, after the cameras that see.
     const terrace = screen.getByRole('article', { name: 'Camera Terasă' });
-    expect(within(terrace).getByText('Dispozitiv offline')).toBeInTheDocument();
+    expect(within(terrace).getByText('Cameră offline')).toBeInTheDocument();
+    expect(
+      within(terrace).getByText('Dispozitivul AiVee din local nu răspunde.'),
+    ).toBeInTheDocument();
+    expect(within(terrace).queryByText('edge-terasa')).toBeNull();
   });
 
   it('the Alerte nav count is the number of open alerts, like the Deschise filter', async () => {
@@ -93,9 +97,19 @@ describe('Live', () => {
   });
 
   it('offers no "Preiau" on the band: the camera closes the alert when someone arrives', async () => {
-    renderLive('staff@aivee.demo');
+    renderLive('manager@aivee.demo');
     const band = await screen.findByRole('list', { name: 'Alerte deschise' }, { timeout: 5000 });
     expect(within(band).getByText('Nimeni nu a ajuns încă')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Preiau/ })).toBeNull();
+  });
+
+  it('gives staff alert cards with the snapshot, never the live video', async () => {
+    renderLive('staff@aivee.demo');
+    const open = await screen.findByRole('list', { name: 'Alerte deschise' }, { timeout: 5000 });
+    expect(within(open).getByText('Masa 2: nimeni de la personal de 1 minut')).toBeInTheDocument();
+    expect(within(open).getByRole('img', { name: /Captură/ })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Camere' })).toBeNull();
+    expect(screen.queryByRole('article', { name: /^Camera / })).toBeNull();
     expect(screen.queryByRole('button', { name: /Preiau/ })).toBeNull();
   });
 });

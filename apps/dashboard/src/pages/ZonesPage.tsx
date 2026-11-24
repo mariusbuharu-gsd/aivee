@@ -1,13 +1,16 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
+import type { CameraFrame } from '../api/client';
 import { useApi } from '../api/context';
 import { Icon } from '../components/Icon';
 import type { Zone } from '../contracts';
 import { LivePlayer, type PlayerStatus } from '../live/LivePlayer';
 import { isCloudFrames } from '../live/source';
+import { useNow } from '../live/useNow';
+import { sinceRo } from '../devices/lastSeen';
 import { ZONE_TAGS, tagLabel } from '../rules/describe';
 import { useLiveData } from '../state/context';
-import { useLeaveGuard } from '../state/leaveGuard';
+import { useLeave, useLeaveGuard } from '../state/leaveGuard';
 import { Banner } from '../ui/Banner';
 import { Dialog } from '../ui/Dialog';
 import { Segmented, Skeleton } from '../ui/controls';
@@ -29,6 +32,7 @@ import './ZonesPage.css';
 import { BusyLabel } from '../ui/Eyes';
 
 const newId = () => `z-${Date.now().toString(36)}`;
+const zonesPath = (id: string) => `/camere/${encodeURIComponent(id)}/zone`;
 
 const BASE_NAME: Record<string, string> = { table: 'Masa', entrance: 'Intrare' };
 
@@ -84,6 +88,8 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   const [saving, setSaving] = useState(false);
   const [leaving, setLeaving] = useState<(() => void) | null>(null);
   const toast = useToast();
+  const navigate = useNavigate();
+  const leave = useLeave();
   useLeaveGuard(
     dirty
       ? (proceed) => {
@@ -98,6 +104,27 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
   const [frame, setFrame] = useState<[number, number] | null>(null);
 
   useEffect(() => () => void (still && URL.revokeObjectURL(still)), [still]);
+
+  // This camera's newest blurred still from the server: the drawing background whenever the
+  // live picture does not play (no WebRTC, camera behind NAT, mock). Each camera has its own.
+  const [cameraStill, setCameraStill] = useState<CameraFrame | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let got: CameraFrame | null = null;
+    api.captureFrame(cameraId).then(
+      (f) => {
+        if (!alive) return f.release();
+        got = f;
+        setCameraStill(f);
+      },
+      () => undefined, // none yet: the schematic room stays
+    );
+    return () => {
+      alive = false;
+      got?.release();
+    };
+  }, [api, cameraId]);
+  const now = useNow(cameraStill?.at != null, 30_000);
 
   if (!camera) return null;
   const current = zones.find((z) => z.id === selected) ?? null;
@@ -206,11 +233,17 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
 
   // One quiet line on the canvas says what the background is and offers the other sources.
   const showSource = !!still || live !== 'connecting';
+  const useCameraStill = !still && live !== 'playing' && cameraStill !== null;
+  const stillAt = cameraStill?.at ? Date.parse(cameraStill.at) : NaN;
   const sourceLabel = still
     ? 'Captură încărcată'
     : live === 'playing'
       ? 'Imagine live'
-      : 'Imagine de probă';
+      : useCameraStill
+        ? Number.isNaN(stillAt)
+          ? 'Ultima captură a camerei'
+          : `Ultima captură a camerei, de acum ${sinceRo(now - stillAt)}`
+        : 'Imagine de probă';
   // Back to the live frame (as the old "Fundal" card did): only while a capture replaces it
   // and the camera is online, so there is a live frame to go back to.
   const canUseLive = !!still && camera.online;
@@ -260,6 +293,20 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
           )}
         </div>
       </header>
+      {cameras.length > 1 && (
+        // Each camera has its own zones: switching goes through the unsaved-changes question.
+        <Segmented
+          label="Camera"
+          value={camera.id}
+          options={cameras.map((c) => ({
+            value: c.id,
+            label: c.online ? c.name : `${c.name} · offline`,
+          }))}
+          onChange={(id) => {
+            if (id !== camera.id) leave(() => navigate(zonesPath(id)));
+          }}
+        />
+      )}
       {saveError && (
         <Banner
           tone="error"
@@ -300,6 +347,16 @@ function ZoneEditor({ cameraId }: { cameraId: string }) {
                   cloudFrames={isCloudFrames(camera.source)}
                   onStatus={setLive}
                   onFrameSize={(w, h) => w > 0 && h > 0 && setFrame([w, h])}
+                />
+              )}
+              {useCameraStill && (
+                <img
+                  className="editor-still"
+                  src={cameraStill.url}
+                  alt={`Ultima captură de la ${camera.name}, cu fețele estompate`}
+                  onLoad={(e) =>
+                    setFrame([e.currentTarget.naturalWidth, e.currentTarget.naturalHeight])
+                  }
                 />
               )}
               <svg
