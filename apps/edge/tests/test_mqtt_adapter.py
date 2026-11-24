@@ -273,3 +273,78 @@ def test_tls_sets_a_verifying_ssl_context() -> None:
 def test_unknown_transport_is_rejected() -> None:
     with pytest.raises(ValueError):
         MqttEdgeClient("h", 1, "u", "p", "s", "d", transport="carrier-pigeon")
+
+
+# -- several cameras on one device client (V8) -------------------------------------------------
+
+
+def _cmd(cmd_id: str, camera_id: str) -> bytes:
+    return (
+        EdgeCommand(
+            command_id=cmd_id,
+            kind="confirm_staff",
+            camera_id=camera_id,
+            track_id=7,
+            suggestion_id="s1",
+            at=datetime.now(UTC),
+        )
+        .model_dump_json()
+        .encode()
+    )
+
+
+def _two_cameras() -> tuple[MqttEdgeClient, Any, Any]:
+    edge = MqttEdgeClient("localhost", 1883, "u", "pw", "s1", "edge-01", metrics_interval_s=5)
+    one = edge.for_camera(CameraConfig(id="cam-01", name="cam-01", source="rtsp://a"))
+    two = edge.for_camera(CameraConfig(id="cam-02", name="cam-02", source="rtsp://b"))
+    return edge, one, two
+
+
+def test_each_camera_view_reads_its_own_camera_config() -> None:
+    edge, one, two = _two_cameras()
+    assert (one.camera().id, two.camera().id) == ("cam-01", "cam-02")  # fallbacks, no zones
+    assert one.camera().zones == []
+    config = DeviceConfig(device="edge-01", cameras=[_cam("cam-02"), _cam("cam-01")])
+    edge._on_message(edge._client, None, _config_msg(edge, config))
+    assert one.camera() == _cam("cam-01") and two.camera() == _cam("cam-02")
+
+
+def test_commands_reach_the_pipeline_of_their_camera() -> None:
+    edge, one, two = _two_cameras()
+    for cmd_id, cam in [("c1", "cam-01"), ("c2", "cam-02"), ("c3", "cam-01"), ("c4", "cam-09")]:
+        edge._on_message(edge._client, None, _command_msg(edge, _cmd(cmd_id, cam)))
+    assert [c.command_id for c in two.take_commands()] == ["c2"]
+    assert [c.command_id for c in one.take_commands()] == ["c1", "c3"]
+    assert one.take_commands() == [] and two.take_commands() == []
+    assert edge.take_commands() == []  # c4: no such camera on this device, dropped
+
+
+def test_status_lists_every_camera_of_the_device() -> None:
+    edge, _one, _two = _two_cameras()
+    status = DeviceStatus.model_validate_json(edge._status("online"))
+    assert status.cameras == ["cam-01", "cam-02"]
+    will = DeviceStatus.model_validate_json(edge._client._will_payload)
+    assert will.state == "offline" and will.cameras == ["cam-01", "cam-02"]
+
+
+def test_camera_views_share_one_metrics_message_per_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    edge, one, two = _two_cameras()
+    sent: list[tuple[str, Any]] = []
+    monkeypatch.setattr(
+        edge._client, "publish", lambda t, p=None, qos=0, retain=False: sent.append((t, p))
+    )
+    edge._device_metrics._published_at -= 10  # type: ignore[union-attr]  # an interval ago
+    one.publish_metrics(Metrics(device="edge-01", fps=10, verified_ratio=0.2, cpu_percent=50))
+    assert sent == []  # waits for cam-02
+    two.publish_metrics(Metrics(device="edge-01", fps=9, verified_ratio=0.4, cpu_percent=55))
+    [(topic, payload)] = sent
+    assert topic == edge.topics.metrics
+    assert Metrics.model_validate_json(payload).fps == 9
+
+
+def test_camera_views_publish_events_on_the_device_topics(client: Any) -> None:
+    edge, sent = client
+    view = edge.for_camera(CameraConfig(id="cam1", name="cam1", source="rtsp://a"))
+    view.publish_alert(_event(), None)
+    view.publish_detections(Detections(camera_id="cam1", ts=datetime.now(UTC)))
+    assert [t for t, _, _ in sent] == [edge.topics.events, edge.topics.detections]

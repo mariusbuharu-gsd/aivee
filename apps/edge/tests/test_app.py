@@ -205,3 +205,125 @@ def test_crop_failure_gives_none() -> None:
 
     snaps = app.BlurredJpeg(Broken(), lambda img: b"x")
     assert snaps.crop(np.zeros((10, 10, 3)), (0, 0, 1, 1)) is None
+
+
+class _EndedSource:
+    def read(self) -> None:
+        return None
+
+
+class _QuietClient:
+    """Stands in for MqttEdgeClient: no broker, no rules, no commands."""
+
+    def start(self) -> None: ...
+
+    def stop(self) -> None: ...
+
+    def rules(self) -> list[Any]:
+        return []
+
+    def camera(self) -> Any:
+        raise LookupError
+
+    def profiles(self) -> None:
+        return None
+
+    def take_commands(self) -> list[Any]:
+        return []
+
+
+def test_run_logs_the_source_without_its_password(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    vision = app.Vision(_EndedSource(), object(), None, None, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", lambda _s: _QuietClient())
+    settings = EdgeSettings(source="rtsp://admin:s3cr3t@10.0.0.5:554/stream2", _env_file=None)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert "s3cr3t" not in caplog.text
+    assert "source=rtsp://admin:***@10.0.0.5:554/stream2" in caplog.text
+
+
+class _Frames:
+    """A camera that gives `n` frames, then ends."""
+
+    def __init__(self, n: int) -> None:
+        self.left = n
+        self.closed = False
+
+    def read(self) -> tuple[float, Any] | None:
+        if self.left == 0:
+            return None
+        self.left -= 1
+        return float(10 - self.left), np.zeros((4, 4, 3), np.uint8)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _NoPeople:
+    def detect(self, _image: Any, ts: float) -> Any:
+        from aivee_edge.domain.observation import Frame
+
+        return Frame(ts)
+
+
+def test_cameras_run_in_one_process_on_one_mqtt_client(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from aivee_contracts.events import DeviceStatus
+    from aivee_edge.adapters.mqtt import MqttEdgeClient
+
+    for name in ("SOURCE", "CLIP_EPOCH", "PROGRESS_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(
+        "CAMERAS",
+        "cam-01=rtsp://admin:s3cr3t@10.0.0.21/stream2;cam-02=rtsp://admin:s3cr3t@10.0.0.22/stream2",
+    )
+    built: list[tuple[str, str]] = []
+    sources: list[_Frames] = []
+
+    def fake_vision(s: EdgeSettings) -> app.Vision:
+        built.append((s.camera_id, s.source))
+        sources.append(_Frames(3))
+        return app.Vision(sources[-1], _NoPeople(), None, None, None)
+
+    clients: list[MqttEdgeClient] = []
+    real_client = app.build_client
+
+    def fake_client(s: EdgeSettings) -> MqttEdgeClient:
+        client = real_client(s)
+        client.start = lambda timeout=10.0: None  # type: ignore[method-assign]
+        client.stop = lambda: None  # type: ignore[method-assign]
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(app, "build_vision", fake_vision)
+    monkeypatch.setattr(app, "build_client", fake_client)
+    settings = EdgeSettings(_env_file=None, pose_model="", blur=False)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert built == [
+        ("cam-01", "rtsp://admin:s3cr3t@10.0.0.21/stream2"),
+        ("cam-02", "rtsp://admin:s3cr3t@10.0.0.22/stream2"),
+    ]
+    assert all(src.left == 0 and src.closed for src in sources)  # every camera ran to its end
+    [client] = clients
+    status = DeviceStatus.model_validate_json(client._status("online"))
+    assert status.cameras == ["cam-01", "cam-02"]
+    assert "s3cr3t" not in caplog.text
+    assert "camera=cam-02 source=rtsp://admin:***@10.0.0.22/stream2" in caplog.text
+
+
+def test_a_source_next_to_cameras_says_cameras_are_ignored(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    vision = app.Vision(_EndedSource(), object(), None, None, None)  # type: ignore[arg-type]
+    monkeypatch.setattr(app, "build_vision", lambda _s: vision)
+    monkeypatch.setattr(app, "build_client", lambda _s: _QuietClient())
+    monkeypatch.setenv("CAMERAS", "cam-01=rtsp://a/1;cam-02=rtsp://a/2")
+    settings = EdgeSettings(source="rtsp://mediamtx:8554/cam-01", _env_file=None)  # type: ignore[call-arg]
+    with caplog.at_level("INFO"):
+        assert app.run(settings) == 0
+    assert "CAMERAS ignored" in caplog.text

@@ -37,6 +37,21 @@ edge:
 fake-edge:
 	uv run python tools/fake_edge.py --scenario $(SCENARIO) --speed $(SPEED)
 
+.PHONY: edge-cameras
+# Every camera in CAMERAS (from .env) in one edge process with one MQTT connection, e.g.
+#   CAMERAS=cam-01=rtsp://USER:PASS@IP1:554/stream2;cam-02=rtsp://USER:PASS@IP2:554/stream2
+# SOURCE must not be set: it wins over CAMERAS. See docs/handbook/ip-cameras.md.
+edge-cameras:
+	uv run python -m aivee_edge
+
+.PHONY: camera-check
+# Open each camera for ~8 s: resolution, fps, first-frame latency, codec (passwords masked).
+#   make camera-check                       # every camera in CAMERAS (.env)
+#   make camera-check URLS="cam-01=rtsp://…" CHECK_SECONDS=10
+URLS ?=
+camera-check:
+	uv run python tools/camera_check.py --seconds $(or $(CHECK_SECONDS),8) $(URLS)
+
 .PHONY: edge-usb
 # Phone camera over USB (stable where venue Wi-Fi stalls the MJPEG stream). Needs USB debugging allowed
 # and IP Webcam started (FPS limit 15, quality 50). TARGET_FPS=30 stays above the 15 fps source so the

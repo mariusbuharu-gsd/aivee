@@ -10,6 +10,7 @@
 | `make seed` | demo org "AiVee Demo", location `demo` ("Terasa demo"), users `owner@` / `manager@` / `staff@aivee.demo`; password `DEMO_PASSWORD` (generated into `.env` when empty, never printed). Idempotent |
 | `make api` | API on the host with reload (reads `.env`) |
 | `make edge SOURCE=http://<phone>:8080/video` | real edge (needs `models/`, run from the repo root); `SOURCE` may also be a file |
+| `make edge-cameras` / `make camera-check` | every camera in `CAMERAS` in one edge process / check each camera's stream first ([ip-cameras.md](ip-cameras.md)) |
 | `make record SOURCE=… SECONDS=60 ROTATE=90 NAME=sala-1` | record a backup clip into `recordings/sala-1.mp4` (already rotated upright) |
 | `make edge SOURCE=recordings/<name>.mp4` | replay a recorded clip through the real edge |
 | `make fake-edge SCENARIO=unattended SPEED=10` | scripted people through the real edge pipeline (`unattended`, `hand`, `queue`, `uncleared`); zones and rules come from the retained config |
@@ -29,7 +30,7 @@ Models: `uv run python tools/download_models.py` → `models/` (gitignored).
 |---|---|
 | API | `SITE`, `DEVICE`, `MQTT_HOST`, `MQTT_PORT`, `MQTT_API_USER`, `MQTT_API_PASSWORD`, `SNAPSHOT_DIR`, `CORS_ORIGINS`, `COOKIE_SECURE`, `SESSION_TTL_HOURS`, `DASHBOARD_URL`, `CLAUDE_MODEL`, `YOLO_WEIGHTS`, `ANTHROPIC_API_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `VIDEO_DIR`, `VIDEO_PYTHON`, `MQTT_UPLOAD_USER`, `MQTT_UPLOAD_PASSWORD`, `TELEGRAM_BOT_USERNAME` (optional), `TELEGRAM_BOT_TOKEN` (only for getMe when the username is empty) |
 | Ingest | `MQTT_HOST`, `MQTT_PORT`, `MQTT_INGEST_USER`, `MQTT_INGEST_PASSWORD`, `SNAPSHOT_DIR`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_PREFIX`, `TELEGRAM_POLL`, `PUBLIC_DASHBOARD_URL` (optional), `REALERT_AFTER_S`, `REMIND_S` (default 120, 0 = off), `VAPID_*`, `VERIFY_ALERTS`, `VERIFY_MODEL`, `VERIFY_TIMEOUT_S`, `ANTHROPIC_API_KEY` |
-| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
+| Edge | `MQTT_HOST`, `MQTT_PORT`, `MQTT_EDGE_USER`, `MQTT_EDGE_PASSWORD`, `SITE`, `DEVICE`, `CAMERA_ID`, `SOURCE`, `CAMERAS` (several cameras, one process: [ip-cameras.md](ip-cameras.md)), `TARGET_FPS`, `ROTATE`, `ARRIVE_S`, `DETECTOR_MODEL`, `POSE_MODEL`, `APPEARANCE`, `APPEARANCE_LOW`, `APPEARANCE_HIGH`, `STAFF_W_APPEARANCE`, `STAFF_W_STANDING`, `STAFF_W_BEHAVIOUR`, `VISUAL_HZ`; clip runs also `CLIP_EPOCH`, `PROGRESS_FILE`, `CONFIG_WAIT_S` (set by the API) |
 | Postgres (all) | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST_PORT` |
 | Seed / compose | `DEMO_PASSWORD`, `AIVEE_UID`, `AIVEE_GID`, `API_UV_EXTRAS` |
 
