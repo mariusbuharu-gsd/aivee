@@ -155,18 +155,25 @@ every 5 s, and a `camera_health` summary every minute. Draw the zones per camera
 Editează zonele**) and add rules per camera (**Reguli**). Cameras, rules and zones reach the
 edge within a second, no restart needed.
 
-**Live video in the dashboard** comes from MediaMTX (WebRTC at `:8889/<camera id>`); the
-edge does not publish video. To see a Tapo camera live, relay its substream into the local
-MediaMTX (needs `STREAM_PUBLISH_USER/PASSWORD` in `.env`), one terminal per camera:
+**Live video in the dashboard** comes from MediaMTX (WebRTC at `:8889/<camera id>`). The edge
+box publishes it: with `LIVE_RTSP_URL` set it runs one `ffmpeg` per running camera that copies
+the camera's stream (no re-encoding, almost no CPU; an MJPEG phone stream is encoded to H.264)
+to `<LIVE_RTSP_URL>/<camera id>`, authenticated with `STREAM_PUBLISH_USER/PASSWORD`. Cameras
+added or removed in the dashboard start and stop their relay within a second, and a relay that
+drops (camera reboot, MediaMTX restart) comes back on its own. In `.env`:
 
 ```bash
-ffmpeg -rtsp_transport tcp -i "rtsp://USER:PASS@192.168.1.21:554/stream2" -c copy -f rtsp \
-  -rtsp_transport tcp "rtsp://PUBLISH_USER:PUBLISH_PASS@localhost:8554/cam-01"
+LIVE_RTSP_URL=rtsp://localhost:8554        # a box in a restaurant: rtsp://<server>:8554
+STREAM_PUBLISH_USER=...                    # openssl rand -hex 8; same values as MediaMTX
+STREAM_PUBLISH_PASSWORD=...                # openssl rand -hex 24
 ```
 
-The camera's URL in the dashboard can then be `rtsp://localhost:8554/cam-01` instead of the
-camera, so the camera serves a single RTSP session. Without the relay the live page shows the
-boxes over a placeholder, and the zone editor uses the last alert snapshot as its background.
+The box needs `ffmpeg` (`apt install ffmpeg`); without it the edge log says `live view off:
+ffmpeg not found` and detection still runs. The edge log shows `live_started camera=…` per
+camera, and `live_ffmpeg camera=…: …` with ffmpeg's own error when a relay fails. The relay
+opens a second RTSP session on the camera (see the session limit in section 1). Without the
+live view the page shows the boxes over a placeholder, and the zone editor uses the last alert
+snapshot as its background.
 
 ## 6. When a camera goes down
 

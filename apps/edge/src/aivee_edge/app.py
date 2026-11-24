@@ -10,8 +10,10 @@ fake edge and the tests work without the heavy dependencies installed.
 
 import importlib
 import logging
+import shutil
 import signal
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -29,6 +31,7 @@ from aivee_edge.domain.role import StaffWeights
 from aivee_edge.fleet import CameraFleet
 from aivee_edge.health import CameraHealthMonitor, LogHealth, MqttHealth, tick_until
 from aivee_edge.jobs import EdgeJobs
+from aivee_edge.live import LiveRelays
 from aivee_edge.pipeline import EdgePipeline, Embedder, PoseEstimator, SnapshotMaker
 from aivee_edge.redact import redact_url
 from aivee_edge.settings import CameraSpec, EdgeSettings
@@ -334,6 +337,27 @@ def _close(source: object) -> None:
         close()
 
 
+def build_live(settings: EdgeSettings) -> LiveRelays | None:
+    """The live view relays, when LIVE_RTSP_URL turns them on for this run."""
+    if not settings.live_view:
+        return None
+    if not settings.stream_publish_user:
+        log.warning("live view: STREAM_PUBLISH_USER/PASSWORD empty; MediaMTX will refuse it")
+    log.info("live view on: cameras relayed to %s/<camera id>", redact_url(settings.live_rtsp_url))
+    return LiveRelays(
+        settings.live_rtsp_url,
+        settings.stream_publish_user,
+        settings.stream_publish_password,
+        clock=time.monotonic,
+        ffmpeg=shutil.which("ffmpeg"),
+    )
+
+
+def _stop_live(live: LiveRelays | None) -> None:
+    if live is not None:
+        live.stop_all()
+
+
 def _health_monitor(client: MqttEdgeClient, sources: dict[str, object]) -> CameraHealthMonitor:
     """Every live camera's health to the log and onto the device's retained status."""
     return CameraHealthMonitor(sources, [LogHealth(), MqttHealth(client)])
@@ -434,10 +458,19 @@ def run_cameras(settings: EdgeSettings, stop: threading.Event | None = None) -> 
             redact_url(spec.source),
         )
     health = _health_monitor(client, {r.camera_id: r.source for r in runs})
+    live = build_live(settings)
+    sources = {spec.id: spec.source for spec in specs}
+
+    def tick() -> None:
+        health.tick()
+        if live is not None:
+            live.sync(sources)
+
     try:
-        code = Supervisor(runs, tick=health.tick, tick_s=HEALTH_TICK_S).run(stop)
+        code = Supervisor(runs, tick=tick, tick_s=HEALTH_TICK_S).run(stop)
         log.info("edge stopped cameras=%d", len(runs))
     finally:
+        _stop_live(live)
         _close_jobs(jobs)
         client.stop()
     return code
@@ -483,10 +516,13 @@ def run_box(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         settings.device,
     )
     health = CameraHealthMonitor({}, [LogHealth(), MqttHealth(client)])
+    live = build_live(settings)
 
     def tick() -> None:
         fleet.reconcile()
         health.tick()
+        if live is not None:
+            live.sync(fleet.running())
 
     supervisor = Supervisor([], keep_running=True, tick=tick, tick_s=HEALTH_TICK_S)
     fleet = CameraFleet(supervisor, client, health, lambda cam: _box_camera(settings, client, cam))
@@ -494,6 +530,7 @@ def run_box(settings: EdgeSettings, stop: threading.Event | None = None) -> int:
         code = supervisor.run(stop)
         log.info("edge stopped cameras=%d", len(fleet.running()))
     finally:
+        _stop_live(live)
         _close_jobs(jobs)
         client.stop()
     return code

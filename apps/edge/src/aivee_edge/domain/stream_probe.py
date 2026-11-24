@@ -162,7 +162,9 @@ def authorization(
         fields.append(f'response="{response}"')
         if "opaque" in p:
             fields.append(f'opaque="{p["opaque"]}"')
-        fields.append("algorithm=MD5")
+        if "algorithm" in p:
+            # Echo it only when asked: Tapo cameras refuse an `algorithm` they did not name.
+            fields.append("algorithm=MD5")
         return "Digest " + ", ".join(fields)
     if any(c.lower().startswith("basic") for c in challenges):
         token = base64.b64encode(f"{user}:{password}".encode()).decode()

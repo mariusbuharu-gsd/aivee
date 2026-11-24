@@ -48,7 +48,8 @@ def parse_cameras(text: str) -> list[CameraSpec]:
 
 class EdgeSettings(BaseSettings):
     """Env: MQTT_HOST, MQTT_PORT, MQTT_TRANSPORT, MQTT_TLS, MQTT_WS_PATH, MQTT_EDGE_USER,
-    MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, CAMERAS, TARGET_FPS, ROTATE, ARRIVE_S,
+    MQTT_EDGE_PASSWORD, SITE, DEVICE, CAMERA_ID, SOURCE, CAMERAS, LIVE_RTSP_URL,
+    STREAM_PUBLISH_USER, STREAM_PUBLISH_PASSWORD, TARGET_FPS, ROTATE, ARRIVE_S,
     GRACE_S, DETECTOR_MODEL, POSE_MODEL, APPEARANCE, YUNET_MODEL, APPEARANCE_LOW, APPEARANCE_HIGH,
     STAFF_W_APPEARANCE, STAFF_W_STANDING, STAFF_W_BEHAVIOUR, CLIP_EPOCH, PROGRESS_FILE,
     CONFIG_WAIT_S, VISUAL_HZ, EDGE_JOBS, CAMERA_TEST_TIMEOUT_S.
@@ -88,6 +89,14 @@ class EdgeSettings(BaseSettings):
     """Answer the dashboard's camera discovery and camera test requests. Default: on for the
     edge box and CAMERAS, off with SOURCE (the cloud vision workers must not scan the
     server's network); never in an offline clip run."""
+    live_rtsp_url: str = ""
+    """Live view: base RTSP URL of the AiVee MediaMTX (`rtsp://localhost:8554` next to the
+    stack, `rtsp://<server>:8554` for a box in a restaurant). Set = every camera this box
+    runs is relayed to `<url>/<camera id>` with STREAM_PUBLISH_USER/PASSWORD, for the
+    dashboard's Live page. Empty = no live view. Never with SOURCE (the cloud vision workers
+    read from MediaMTX) nor in a clip run."""
+    stream_publish_user: str = ""
+    stream_publish_password: str = Field("", repr=False)
     camera_test_timeout_s: float = Field(6.0, gt=0)
     """How long a camera test waits for the first frame."""
     target_fps: float = 10.0
@@ -195,6 +204,11 @@ class EdgeSettings(BaseSettings):
         if self.edge_jobs is not None:
             return self.edge_jobs
         return self.camera_mode != "single"
+
+    @property
+    def live_view(self) -> bool:
+        """Relay the cameras into MediaMTX (see `live_rtsp_url`)."""
+        return bool(self.live_rtsp_url) and self.camera_mode != "single" and not self.offline
 
     def camera_specs(self) -> list[CameraSpec]:
         """The cameras this run reads: CAMERAS, or the single CAMERA_ID/SOURCE."""

@@ -77,6 +77,17 @@ def test_digest_authorization_follows_rfc_2617() -> None:
     assert 'uri="rtsp://h:554/s"' in header and 'username="admin"' in header
 
 
+def test_digest_names_the_algorithm_only_when_the_camera_did() -> None:
+    # Tapo C310 answers 401 to a Digest that adds `algorithm=MD5` to a challenge without one.
+    tapo = 'Digest realm="TP-LINK IP-Camera", nonce="92782960"'
+    header = authorization(
+        ['Basic realm="TP-LINK IP-Camera"', tapo], "u", "p", "DESCRIBE", "rtsp://h:554/s"
+    )
+    assert header is not None and header.startswith("Digest ") and "algorithm" not in header
+    named = 'Digest realm="r", nonce="n", algorithm="MD5"'
+    assert "algorithm=MD5" in (authorization([named], "u", "p", "DESCRIBE", "rtsp://h/s") or "")
+
+
 def test_digest_with_qop_auth_uses_a_client_nonce() -> None:
     challenge = 'Digest realm="r", nonce="n", qop="auth,auth-int", opaque="o"'
     header = authorization([challenge], "u", "p", "GET", "/video", cnonce="c0ffee")
